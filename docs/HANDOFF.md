@@ -11,9 +11,12 @@ Nothing here assumes chat history.
 
 ## State of the work
 
-- Done and committed: V0-01..18 (workspace, redact, paths, eventlog, ipc, config+gate,
-  localmodel, live model ensure), V0-31/32 (context store packs+ledger),
-  V0-37/38/39 (charter). 26 of 55 items checked.
+- Checked: V0-01..24 (all except 21,25,26 which are live), V0-27,28,30 (think harness parser,
+  MCP tool server, local-only guard), V0-31,32 (context store), V0-37,38,39 (charter),
+  V0-40,41 (surface tree validator + schema). 33 of 55 items checked.
+- Daemon (moted) wires: event log, config+memory gate, charter watcher, context store, talk lane,
+  router, a `turn` IPC method, and `moted mcp` (stdio MCP tool server). Startup refuses a
+  subscription think harness while local_only is true.
 - The three approved models are pulled: qwen3:0.6b, qwen3:4b, qwen3-coder:30b, plus the derived
   qwen3-coder:30b-64k (num_ctx 65536). Ensure() live-verified.
 - Built with std + threads, no async runtime. Cargo.lock committed. rusqlite bundled (FTS5).
@@ -36,11 +39,16 @@ Nothing here assumes chat history.
 
 ## Next action
 
-In progress: V0-40/41/42 surface tree in mote-ui (validator, generated schema, golden PNG
-render). After that: talk lane (V0-19,20,22), router (V0-23,24), think lane (V0-27,28,30),
-memory graph retrieval (V0-33,34,35), watchers/approvals (V0-51,52), bench (V0-55).
-Live/GUI items needing the owner's desktop: V0-43..50 (client screenshots), V0-53 (launchd),
-plus live benches V0-21,25,26,29,36,54.
+Remaining items grouped by risk:
+- Bench + live latency (models ready): V0-55 (bench writes lines), then live V0-21 (talk p50),
+  V0-26 (router p50), V0-25 (router macro-F1 on 60 labelled turns).
+- Memory graph (riskiest; needs an embedder + vector search): V0-33,34,35 and live V0-36.
+  Decision pending: model2vec-rs potion-base-8M (download) + sqlite-vec vs a local embedder.
+- Watchers/approvals: V0-51 (cron tick, controlled clock), V0-52 (approval lifecycle; the
+  screenshot part needs the GUI).
+- Surface tree render: V0-42 (golden PNG; egui headless rendering risk).
+- Think lane live: V0-29 (needs OpenCode installed + Ollama provider).
+- Client/pipeline GUI (owner desktop for screenshots): V0-43..50, service V0-53/54.
 
 ## Uncommitted work
 
