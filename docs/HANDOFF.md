@@ -11,9 +11,9 @@ Nothing here assumes chat history.
 
 ## State of the work
 
-- V0-01 done and committed: Cargo workspace with binaries `moted`, `mote-client` and nine
-  crates under `crates/`. Built with std + threads, no async runtime. Cargo.lock committed.
-- All crates are skeletons with a one-line doc comment, to be filled by their items.
+- Done and committed: V0-01 (workspace), V0-02 (mote-redact), V0-03 (mote-paths),
+  V0-04..07 (mote-eventlog: append+redact, cursor replay, retention, resync).
+- Built with std + threads, no async runtime. Cargo.lock committed. rusqlite bundled.
 - Approved models NOT yet pulled. Ollama currently has qwen2.5 variants only. Live items
   (V0-18, 21, 25, 26, 29, 36, 43-54) need `qwen3:4b`, `qwen3:0.6b`, `qwen3-coder:30b` pulled
   (22 GB). Pull only those three, only when reaching a live item.
@@ -29,8 +29,9 @@ Nothing here assumes chat history.
 
 ## Next action
 
-V0-02: implement `mote-redact` by copying patterns and tests from
-`~/projects/overseer/daemon/src/redact.rs`. Verify `cargo test -p mote-redact`.
+V0-08..11: implement `mote-ipc` (Unix socket server + client). Socket mode 0600, second
+instance exits naming the path, error codes, peer uid refusal, events.subscribe streaming with
+client reconnect from cursor.
 
 ## Uncommitted work
 

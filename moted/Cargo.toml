@@ -6,3 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+mote-paths.workspace = true
+mote-eventlog.workspace = true
+mote-ipc.workspace = true
+serde_json.workspace = true
