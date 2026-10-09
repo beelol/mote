@@ -197,6 +197,29 @@ impl Ollama {
         Ok(out)
     }
 
+    /// Names of currently loaded models (GET /api/ps).
+    pub fn ps(&self) -> Result<Vec<String>, LmError> {
+        let url = format!("{}/api/ps", self.base_url);
+        let resp = match self.agent.get(&url).call() {
+            Ok(r) => r,
+            Err(ureq::Error::Status(code, r)) => {
+                return Err(LmError::Status(code, r.into_string().unwrap_or_default()))
+            }
+            Err(e) => return Err(LmError::Http(e.to_string())),
+        };
+        let v: Value = resp.into_json().map_err(|e| LmError::Decode(e.to_string()))?;
+        let names = v
+            .get("models")
+            .and_then(|m| m.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(names)
+    }
+
     /// Stream a chat, calling `on_chunk` for each streamed chunk. Always sends keep_alive and an
     /// explicit num_ctx.
     pub fn chat_stream(

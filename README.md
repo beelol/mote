@@ -123,5 +123,5 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
 - [x] **V0-51** A `schedules` row fires its prompt into a thread at its cron time. **Verify:** Test with a controlled clock. [§15](docs/rfcs/v0.md#15-watchers-and-approvals) [evidence](docs/verification/V0-51.md)
 - [ ] **V0-52** A `file_write` outside the data directory creates an approval card, nothing executes until Approve, and Deny or expiry leaves it unexecuted. **Verify:** Test plus one screenshot of the card. [§15](docs/rfcs/v0.md#15-watchers-and-approvals)
 - [ ] **V0-53** `moted install` loads the launchd agent, the daemon survives logout and login, and `moted uninstall` removes it. **Verify:** Live; `launchctl print` output in the evidence file. [§16](docs/rfcs/v0.md#16-service)
-- [ ] **V0-54** `moted status` prints socket, uptime, loaded models and the last event seq. **Verify:** Live output in the evidence file. [§16](docs/rfcs/v0.md#16-service)
+- [x] **V0-54** `moted status` prints socket, uptime, loaded models and the last event seq. **Verify:** Live output in the evidence file. [§16](docs/rfcs/v0.md#16-service) [evidence](docs/verification/V0-54.md)
 - [x] **V0-55** All three bench commands write one JSON line each to `bench.jsonl`. **Verify:** Test. [§17](docs/rfcs/v0.md#17-bench) [evidence](docs/verification/V0-55.md)

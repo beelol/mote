@@ -41,6 +41,7 @@ struct Daemon {
     client: Ollama,
     watchers: Mutex<Watchers>,
     data_dir: PathBuf,
+    started: std::time::Instant,
 }
 
 impl Daemon {
@@ -102,6 +103,17 @@ impl Dispatch for Daemon {
     fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
         match method {
             "ping" => Ok(json!({ "ok": true })),
+            "status" => {
+                let uptime = self.started.elapsed().as_secs();
+                let last_seq = self.log.max_seq().unwrap_or(0);
+                let loaded = self.client.ps().unwrap_or_default();
+                Ok(json!({
+                    "socket": mote_paths::socket_path().to_string_lossy(),
+                    "uptime_s": uptime,
+                    "loaded_models": loaded,
+                    "last_seq": last_seq,
+                }))
+            }
             "config.get" => {
                 let key = params.get("key").and_then(|k| k.as_str()).ok_or_else(|| {
                     RpcError::invalid_params("config.get needs a string key")
@@ -244,6 +256,7 @@ fn main() {
     let result = match std::env::args().nth(1).as_deref() {
         Some("mcp") => run_mcp(),
         Some("bench") => run_bench(std::env::args().nth(2)),
+        Some("status") => run_status(),
         _ => run(),
     };
     if let Err(code) = result {
@@ -269,6 +282,36 @@ fn run_bench(name: Option<String>) -> Result<(), i32> {
     })?;
     bench::run_named(&name, &data, &Ollama::local(), &config);
     Ok(())
+}
+
+/// Print daemon status (`moted status`): socket, uptime, loaded models and last event seq.
+fn run_status() -> Result<(), i32> {
+    let socket = mote_paths::socket_path();
+    let mut client = mote_ipc::Client::connect(&socket).map_err(|e| {
+        eprintln!("moted status: cannot connect to {}: {e}", socket.display());
+        1
+    })?;
+    let res = client.call("status", json!({})).map_err(|e| {
+        eprintln!("moted status: {e}");
+        1
+    })?;
+    match res {
+        Ok(v) => {
+            println!("socket:        {}", v["socket"].as_str().unwrap_or(""));
+            println!("uptime:        {} s", v["uptime_s"].as_i64().unwrap_or(0));
+            let models: Vec<String> = v["loaded_models"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|m| m.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            println!("loaded models: {}", if models.is_empty() { "(none)".into() } else { models.join(", ") });
+            println!("last event:    seq {}", v["last_seq"].as_i64().unwrap_or(0));
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("moted status: {}: {}", e.code, e.message);
+            Err(1)
+        }
+    }
 }
 
 /// Serve the MCP tool server over stdio (`moted mcp`).
@@ -365,6 +408,7 @@ fn run() -> Result<(), i32> {
         client: Ollama::local(),
         watchers: Mutex::new(watchers),
         data_dir: data.clone(),
+        started: std::time::Instant::now(),
     });
 
     // Schedule tick loop.
