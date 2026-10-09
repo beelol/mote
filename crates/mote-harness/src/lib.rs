@@ -98,28 +98,35 @@ pub fn run_opencode(
     let stdout = child.stdout.take().ok_or("no stdout")?;
     let start = std::time::Instant::now();
 
-    // Read the stream on a worker thread so the main thread can enforce the timeout.
-    let (tx, rx) = mpsc::channel::<(Vec<ThinkEvent>, Option<std::time::Duration>)>();
+    // Read the stream on a worker thread so the main thread can enforce the timeout. "First
+    // token" of the think lane is its first produced event of any kind (for a tool-using turn
+    // that is the tool call, which is what the model emits first), not the post-tool answer text.
+    type FirstTimes = (Vec<ThinkEvent>, Option<std::time::Duration>, Option<std::time::Duration>);
+    let (tx, rx) = mpsc::channel::<FirstTimes>();
     std::thread::spawn(move || {
         let reader = std::io::BufReader::new(stdout);
-        let mut first_token = None;
+        let mut first_event = None;
+        let mut first_text = None;
         let mut events = Vec::new();
         for line in reader.lines() {
             let Ok(line) = line else { break };
             for ev in parse_line(&line) {
-                if first_token.is_none() && matches!(ev, ThinkEvent::Text { .. }) {
-                    first_token = Some(start.elapsed());
+                if first_event.is_none() {
+                    first_event = Some(start.elapsed());
+                }
+                if first_text.is_none() && matches!(ev, ThinkEvent::Text { .. }) {
+                    first_text = Some(start.elapsed());
                 }
                 events.push(ev);
             }
         }
-        let _ = tx.send((events, first_token));
+        let _ = tx.send((events, first_event, first_text));
     });
 
     match rx.recv_timeout(timeout) {
-        Ok((events, first_token)) => {
+        Ok((events, first_event, _first_text)) => {
             let _ = child.wait();
-            Ok((events, first_token.unwrap_or_else(|| start.elapsed())))
+            Ok((events, first_event.unwrap_or_else(|| start.elapsed())))
         }
         Err(_) => {
             let _ = child.kill();
