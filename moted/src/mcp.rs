@@ -97,11 +97,19 @@ impl McpServer {
         let id = req.get("id").cloned()?; // notifications carry no id and get no reply
         let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
         let result = match method {
-            "initialize" => Ok(json!({
-                "protocolVersion": "2024-11-05",
-                "serverInfo": { "name": "moted", "version": "0" },
-                "capabilities": { "tools": {} }
-            })),
+            "initialize" => {
+                // Echo the client's protocol version so the handshake matches.
+                let version = req
+                    .get("params")
+                    .and_then(|p| p.get("protocolVersion"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("2024-11-05");
+                Ok(json!({
+                    "protocolVersion": version,
+                    "serverInfo": { "name": "moted", "version": "0" },
+                    "capabilities": { "tools": { "listChanged": false } }
+                }))
+            }
             "tools/list" => Ok(self.tools_list()),
             "tools/call" => self.tools_call(req.get("params").unwrap_or(&Value::Null)),
             _ => Err(json!({ "code": -32601, "message": "method not found" })),
