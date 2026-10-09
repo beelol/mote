@@ -349,6 +349,24 @@ mod tests {
         }
     }
 
+    // V0-18: live check that ensure() succeeds for each approved model. Skipped unless
+    // MOTE_LIVE=1 so the no-network workspace run stays green.
+    #[test]
+    fn live_ensure_approved_models() {
+        if std::env::var("MOTE_LIVE").is_err() {
+            return;
+        }
+        let client = Ollama::local();
+        for (model, num_ctx) in
+            [("qwen3:0.6b", 32768u32), ("qwen3:4b", 32768), ("qwen3-coder:30b-64k", 65536)]
+        {
+            let dur = client.ensure(model, num_ctx).unwrap_or_else(|e| {
+                panic!("ensure({model}) failed: {e}");
+            });
+            println!("LIVE ensure {model} loaded in {} ms", dur.as_millis());
+        }
+    }
+
     #[test]
     fn structured_output_sends_format_schema() {
         let srv = ScriptedServer::start().unwrap();
