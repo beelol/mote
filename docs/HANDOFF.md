@@ -29,10 +29,12 @@ at 10k nodes.
 Nothing left can be closed by a driver without the owner's desktop, a deploy, or a model the
 contract fixed. Exact actions:
 
-1. **V0-25 (router macro-F1)** — left open by the contract. Measured 0.333 with qwen3:0.6b (it
-   routes every turn to `talk`). docs/rfcs/v0.md section 7 says to record the number and leave it
-   open; improving the router is a backlog item. No driver action closes this with the fixed
-   0.6b model.
+1. **V0-25 (router macro-F1)** — left open by the contract (§7: measured miss is recorded and
+   left open). Improved from 0.333 to **0.847** (deterministic, temperature 0, sharpened prompt);
+   still just under the 0.85 gate. qwen3:0.6b is at its ceiling and enabling chain-of-thought for
+   accuracy would break the V0-26 latency gate. Further prompt tuning would overfit the 60-sample
+   kit, not add capability. This is a contract exception, not an owner action; improving the
+   router is a backlog item.
 
 2. **V0-29 (live think via OpenCode)** — needs the owner to tune OpenCode + Ollama + MCP so the
    model calls the MCP `file_read` (not OpenCode's native `read`) and streams the final answer,
