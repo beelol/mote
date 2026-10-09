@@ -36,10 +36,12 @@ contract fixed. Exact actions:
    kit, not add capability. This is a contract exception, not an owner action; improving the
    router is a backlog item.
 
-2. **V0-29 (live think via OpenCode)** — needs the owner to tune OpenCode + Ollama + MCP so the
-   model calls the MCP `file_read` (not OpenCode's native `read`) and streams the final answer,
-   then `MOTE_LIVE=1 cargo test -p mote-harness live_think_reads_file_via_file_read`. See
-   docs/verification/V0-29.md. The parser (V0-27) and MCP server (V0-28) are verified.
+2. **V0-29 (live think via OpenCode)** — PROGRESS: fixed two bugs (moted mcp data-dir crash;
+   MCP initialize now echoes the client protocolVersion) and a manual run succeeded — the model
+   called MCP `moted_file_read`, read the file, and answered correctly. OpenCode's MCP startup
+   still intermittently deadlocks, so a stable first-token p50 is being measured with the bounded
+   test (120 s/run cap). Closes only if answer-via-moted_file_read AND p50 < 3 s reliably; else
+   the number is recorded and it stays open. See docs/verification/V0-29.md.
 
 3. **V0-43, 44, 45, 46, 47, 48, 50, 52 (GUI screenshots)** — run `cargo run -p mote-client` with
    `moted` running on the desktop and capture the screenshots each item names (chat + status
