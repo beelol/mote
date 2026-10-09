@@ -140,6 +140,15 @@ pub fn run_talk(
     ]);
     let opts = ChatOptions::new(num_ctx).no_think();
 
+    // Record the outbound call for the pipeline Requests tab. The payload is redacted on storage,
+    // so no secret is ever written.
+    let _ = log.append(
+        "pipeline",
+        "model.request",
+        &json!({ "lane": "talk", "model": model, "num_ctx": num_ctx,
+                 "prompt": format!("{system}\n{user}") }),
+    );
+
     let mut answer = String::new();
     let mut handed_off = false;
     let res = client.chat_stream(model, messages, &opts, |chunk| {
@@ -346,6 +355,42 @@ mod tests {
                 assert_eq!(r.body["model"], "qwen3:4b");
             }
         }
+    }
+
+    #[test]
+    fn requests_store_redacted_payloads_no_secrets() {
+        let srv = ScriptedServer::start().unwrap();
+        srv.set_chat_chunks(chat_chunks(&["ok"]));
+        let client = Ollama::new(srv.base_url());
+        let log = EventLog::open_in_memory().unwrap();
+        let store = ContextStore::open_in_memory().unwrap();
+
+        // A secret planted in the turn must not survive into any stored row.
+        let secret = "sk-abcdefghijklmnopqrstuvwxyz";
+        let mut sub = log.subscribe("pipeline", 0).unwrap();
+        let inputs = TalkInputs {
+            charter: "be kind",
+            profile: "",
+            memories: "",
+            working_set: "",
+            turn: "my key is sk-abcdefghijklmnopqrstuvwxyz please remember",
+        };
+        run_talk(
+            &log, &store, &client, "t1", "qwen3:4b", 32768, &inputs, TALK_BUDGET,
+            &AtomicBool::new(false),
+        );
+
+        // The Requests tab reads model.request events on the pipeline scope.
+        let mut found_request = false;
+        while let Some(ev) = sub.recv_timeout(Duration::from_millis(50)) {
+            if ev.kind == "model.request" {
+                found_request = true;
+                let text = ev.payload.to_string();
+                assert!(!text.contains(secret), "stored request must be redacted: {text}");
+                assert!(text.contains("[redacted]"), "redaction marker expected: {text}");
+            }
+        }
+        assert!(found_request, "an outbound call must be recorded");
     }
 
     #[test]
