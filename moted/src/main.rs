@@ -3,9 +3,11 @@
 //! v0 starts the control socket over the event log. Lanes and methods are added by later
 //! items. A second daemon on the same live socket exits non-zero naming the socket path.
 
+mod charter;
 mod config;
 mod gate;
 
+use charter::{Charter, CharterWatcher};
 use config::ConfigStore;
 use gate::OllamaGate;
 use mote_localmodel::Ollama;
@@ -18,6 +20,7 @@ use std::time::Duration;
 struct Daemon {
     log: EventLog,
     config: Mutex<ConfigStore>,
+    character: Arc<Mutex<Charter>>,
 }
 
 impl Dispatch for Daemon {
@@ -58,6 +61,25 @@ impl Dispatch for Daemon {
                     .map_err(|e| RpcError::invalid_params(e.to_string()))?;
                 Ok(json!({ "seq": new_seq }))
             }
+            "character.info" => {
+                let c = self.character.lock().unwrap();
+                Ok(json!({
+                    "name": c.front.name,
+                    "tools": c.front.tools,
+                    "realms": c.front.realms,
+                    "prose": c.prose,
+                }))
+            }
+            "tools.allowed" => {
+                let tool = params.get("tool").and_then(|t| t.as_str()).ok_or_else(|| {
+                    RpcError::invalid_params("tools.allowed needs a tool name")
+                })?;
+                let c = self.character.lock().unwrap();
+                match charter::check_tool(&c, tool, &self.log) {
+                    Ok(()) => Ok(json!({ "allowed": true })),
+                    Err(reason) => Ok(json!({ "allowed": false, "reason": reason })),
+                }
+            }
             _ => Err(RpcError::new(codes::INVALID_REQUEST, format!("unknown method: {method}"))),
         }
     }
@@ -77,7 +99,6 @@ fn run() -> Result<(), i32> {
         eprintln!("moted: cannot create data directory: {e}");
         1
     })?;
-    let _ = data;
 
     let log = EventLog::open(&mote_paths::db_path()).map_err(|e| {
         eprintln!("moted: cannot open event log: {e}");
@@ -90,8 +111,19 @@ fn run() -> Result<(), i32> {
         1
     })?;
 
+    charter::create_defaults(&data).map_err(|e| {
+        eprintln!("moted: cannot create charter: {e}");
+        1
+    })?;
+    let watcher = CharterWatcher::start(&charter::character_path(&data, "mote"), log.clone())
+        .map_err(|e| {
+            eprintln!("moted: cannot watch charter: {e}");
+            1
+        })?;
+    let character = watcher.current.clone();
+
     let socket = mote_paths::socket_path();
-    let daemon = Arc::new(Daemon { log, config: Mutex::new(config) });
+    let daemon = Arc::new(Daemon { log, config: Mutex::new(config), character });
     let _server = match Server::bind(&socket, daemon) {
         Ok(s) => s,
         Err(e) => {
