@@ -1,76 +1,58 @@
 # Handoff: pick up mote v0 build
 
-Updated 2026-10-08. Replace this file, never append. Delete it when nothing needs transfer.
+Updated 2026-10-09. Replace this file, never append. Delete it when nothing needs transfer.
 Nothing here assumes chat history.
 
 ## Where
 
-- Branch: `main`. No remote (owner adds one later).
-- Scope: the 55-item v0 list at the bottom of `README.md`. Contract: `docs/rfcs/v0.md`.
-- Evidence: `docs/verification/<ID>.md`, one per closed item.
+- Branch: `main`. No remote. Scope: the 55-item v0 list at the bottom of `README.md`.
+- Contract: `docs/rfcs/v0.md`. Evidence: `docs/verification/<ID>.md`, one per item (including the
+  items left open, which record their measured numbers or blockers).
 
-## State of the work (updated 2026-10-09)
+## State: 44 of 55 checked
 
-- 42 of 55 checked. Remaining: V0-25 (open: router macro-F1 0.333 < 0.85, recorded, 0.6b too
-  weak), V0-29 (live think via OpenCode), V0-42 (surface render, in progress), V0-43..50 and
-  V0-52's card screenshot and V0-53 (need the owner's desktop/GUI or a deploy action), V0-53
-  install is a deploy (owner-gated).
-- Memory graph done: sqlite-vec + fused retrieval (V0-33/34/35/36); production embedder is
-  model2vec potion-base-8M, tests use a local HashEmbedder.
+`cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` are green
+with no network. The three approved models are pulled (qwen3:0.6b, qwen3:4b, qwen3-coder:30b)
+plus the derived qwen3-coder:30b-64k.
 
-## V0-29 (live think via OpenCode) investigation
+Built: workspace + nine crates; event log; IPC (socket, subscribe, reconnect); config + memory
+gate; Ollama client (think:false for the latency lanes); talk lane; router; think-harness stream
+parser; MCP tool server (`moted mcp`); context store (packs, ledger); memory graph (sqlite-vec +
+fused retrieval, model2vec potion-base-8M in production, local embedder in tests); charter +
+watcher; surface tree validator, generated schema and golden PNG renderer; schedules + approvals;
+bench (`moted bench talk|router|memory`); `moted status`; `moted install`/`uninstall`;
+`mote-client` (eframe chat + pipeline). Live talk p50 14 ms, router p50 56 ms, retrieve p50 13 ms
+at 10k nodes.
 
-- OpenCode 1.15.13 at ~/.opencode/bin/opencode. Ollama's OpenAI-compatible endpoint
-  (http://127.0.0.1:11434/v1) works and returns tool-capable completions for qwen3-coder:30b-64k.
-- mote-harness has `run_opencode(cwd, prompt)` that runs `opencode run --format json` and parses
-  the stream. A temp opencode.json (ollama provider + `moted mcp` MCP server) and notes.txt go in
-  the cwd.
-- First live attempt with the 30b model + file_read tool produced no output within 120 s (likely
-  first-call model load plus buffered output). Probing a trivial no-tool prompt to learn the
-  output format and confirm the provider. If the integration proves slow/flaky, V0-29 stays open
-  with the blocker recorded (needs the owner to confirm the opencode+ollama+MCP setup).
+## The 11 remaining items ALL need the owner
 
-## Older notes
+Nothing left can be closed by a driver without the owner's desktop, a deploy, or a model the
+contract fixed. Exact actions:
 
-- Checked: V0-01..24 (all except 21,25,26 which are live), V0-27,28,30 (think harness parser,
-  MCP tool server, local-only guard), V0-31,32 (context store), V0-37,38,39 (charter),
-  V0-40,41 (surface tree validator + schema). 33 of 55 items checked.
-- Daemon (moted) wires: event log, config+memory gate, charter watcher, context store, talk lane,
-  router, a `turn` IPC method, and `moted mcp` (stdio MCP tool server). Startup refuses a
-  subscription think harness while local_only is true.
-- The three approved models are pulled: qwen3:0.6b, qwen3:4b, qwen3-coder:30b, plus the derived
-  qwen3-coder:30b-64k (num_ctx 65536). Ensure() live-verified.
-- Built with std + threads, no async runtime. Cargo.lock committed. rusqlite bundled (FTS5).
-  HTTP client is ureq (json feature, no tls). Free memory via sysinfo. Tokens via tiktoken-rs
-  o200k_base. Charter watched via notify.
-- mote-context has the memory graph TABLES but not retrieval/embeddings yet (V0-33..36 pending:
-  needs model2vec-rs potion-base-8M embeddings + vector search; the riskiest remaining piece).
-- Approved models NOT yet pulled. Ollama currently has qwen2.5 variants only. Live items
-  (V0-18, 21, 25, 26, 29, 36, 43-54) need `qwen3:4b`, `qwen3:0.6b`, `qwen3-coder:30b` pulled
-  (22 GB). Pull only those three, only when reaching a live item.
+1. **V0-25 (router macro-F1)** — left open by the contract. Measured 0.333 with qwen3:0.6b (it
+   routes every turn to `talk`). docs/rfcs/v0.md section 7 says to record the number and leave it
+   open; improving the router is a backlog item. No driver action closes this with the fixed
+   0.6b model.
 
-## Rules that bite
+2. **V0-29 (live think via OpenCode)** — needs the owner to tune OpenCode + Ollama + MCP so the
+   model calls the MCP `file_read` (not OpenCode's native `read`) and streams the final answer,
+   then `MOTE_LIVE=1 cargo test -p mote-harness live_think_reads_file_via_file_read`. See
+   docs/verification/V0-29.md. The parser (V0-27) and MCP server (V0-28) are verified.
 
-- models.local_only stays true. Never start Claude Code, Codex or any subscription harness.
-- Every Ollama call sets num_ctx explicitly (min 32768 for tool users).
-- Every model verdict is JSON parsed fail-closed. No regex over natural language.
-- Redaction runs before storage. No secret enters a model call. No API keys.
-- `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` green before commit.
-- Conventional Commits, no AI attribution trailers.
+3. **V0-43, 44, 45, 46, 47, 48, 50, 52 (GUI screenshots)** — run `cargo run -p mote-client` with
+   `moted` running on the desktop and capture the screenshots each item names (chat + status
+   dots + typing, inline surface + a button press as ui.event, system light/dark, the five
+   pipeline stages and their tabs, a config.set from the Config tab with ledger rows before/after,
+   the talk p50 delta with the pipeline view closed then open, the approval card). The client is
+   implemented and builds; see docs/verification/V0-43.md. Drop screenshots beside the evidence
+   files and tick the boxes.
 
-## Next action
+4. **V0-53 (launchd)** — a deploy. The owner runs `moted install`, captures `launchctl print
+   gui/$(id -u)/com.mote.moted`, logs out and back in to confirm it survives, then `moted
+   uninstall`. See docs/verification/V0-53.md. The plist generation is unit tested.
 
-Remaining items grouped by risk:
-- Bench + live latency (models ready): V0-55 (bench writes lines), then live V0-21 (talk p50),
-  V0-26 (router p50), V0-25 (router macro-F1 on 60 labelled turns).
-- Memory graph (riskiest; needs an embedder + vector search): V0-33,34,35 and live V0-36.
-  Decision pending: model2vec-rs potion-base-8M (download) + sqlite-vec vs a local embedder.
-- Watchers/approvals: V0-51 (cron tick, controlled clock), V0-52 (approval lifecycle; the
-  screenshot part needs the GUI).
-- Surface tree render: V0-42 (golden PNG; egui headless rendering risk).
-- Think lane live: V0-29 (needs OpenCode installed + Ollama provider).
-- Client/pipeline GUI (owner desktop for screenshots): V0-43..50, service V0-53/54.
+## Rules that still bite
 
-## Uncommitted work
-
-None after the V0-01 commit.
+- models.local_only stays true; never start Claude/Codex. Every Ollama call sets num_ctx. Every
+  verdict is JSON parsed fail-closed. Redaction runs before storage. No API keys.
+- Conventional Commits, no AI attribution trailers. `cargo test`/`clippy` green before commit.
