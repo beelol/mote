@@ -543,6 +543,10 @@ dependencies = [
 [[package]]
 name = "mote-harness"
 version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "mote-ipc"
@@ -599,6 +603,7 @@ version = "0.0.0"
 dependencies = [
  "mote-context",
  "mote-eventlog",
+ "mote-harness",
  "mote-ipc",
  "mote-localmodel",
  "mote-paths",

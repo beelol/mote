@@ -153,6 +153,16 @@ fn main() {
     }
 }
 
+/// Read (local_only, think model) from config for the startup guard.
+fn config_snapshot(config: &ConfigStore) -> (bool, String) {
+    let local_only = config.get_json("models.local_only").and_then(|v| v.as_bool()).unwrap_or(true);
+    let think = config
+        .get_json("models.think")
+        .and_then(|v| v.as_str().map(String::from))
+        .unwrap_or_default();
+    (local_only, think)
+}
+
 fn run() -> Result<(), i32> {
     let data = mote_paths::ensure_data_dir().map_err(|e| {
         eprintln!("moted: cannot create data directory: {e}");
@@ -169,6 +179,16 @@ fn run() -> Result<(), i32> {
         eprintln!("moted: cannot load config: {e}");
         1
     })?;
+
+    // Refuse a subscription think harness while local_only is true.
+    {
+        let cfg = config_snapshot(&config);
+        if let Err(reason) = mote_harness::enforce_local_only(cfg.0, &cfg.1) {
+            let _ = log.append("daemon", "startup.refused", &json!({ "reason": reason.clone() }));
+            eprintln!("moted: {reason}");
+            return Err(1);
+        }
+    }
 
     charter::create_defaults(&data).map_err(|e| {
         eprintln!("moted: cannot create charter: {e}");
