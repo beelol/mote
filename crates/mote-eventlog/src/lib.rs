@@ -116,6 +116,30 @@ impl EventLog {
         self.inner.lock().unwrap().max_seq()
     }
 
+    /// Fetch a single event by seq, if it still exists.
+    pub fn get(&self, seq: i64) -> rusqlite::Result<Option<Event>> {
+        let guard = self.inner.lock().unwrap();
+        let mut stmt = guard.conn.prepare(
+            "SELECT seq, ts, scope_id, kind, payload FROM events WHERE seq=?1",
+        )?;
+        let mut rows = stmt.query_map([seq], |r| {
+            let payload_text: String = r.get(4)?;
+            let payload = serde_json::from_str(&payload_text)
+                .unwrap_or(serde_json::Value::String(payload_text));
+            Ok(Event {
+                seq: r.get(0)?,
+                ts: r.get(1)?,
+                scope_id: r.get(2)?,
+                kind: r.get(3)?,
+                payload,
+            })
+        })?;
+        match rows.next() {
+            Some(ev) => Ok(Some(ev?)),
+            None => Ok(None),
+        }
+    }
+
     /// Count of real (non-retention) events in a scope.
     pub fn count(&self, scope_id: &str) -> rusqlite::Result<i64> {
         let guard = self.inner.lock().unwrap();
