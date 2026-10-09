@@ -33,12 +33,13 @@ contract fixed. Exact actions:
    tools/memory, with a deterministic temperature-0 decode, reached macro-F1 **0.882** (>= 0.85),
    reproducible. Box checked.
 
-2. **V0-29 (live think via OpenCode)** — PROGRESS: fixed two bugs (moted mcp data-dir crash;
-   MCP initialize now echoes the client protocolVersion) and a manual run succeeded — the model
-   called MCP `moted_file_read`, read the file, and answered correctly. OpenCode's MCP startup
-   still intermittently deadlocks, so a stable first-token p50 is being measured with the bounded
-   test (120 s/run cap). Closes only if answer-via-moted_file_read AND p50 < 3 s reliably; else
-   the number is recorded and it stays open. See docs/verification/V0-29.md.
+2. **V0-29 (live think via OpenCode)** — capability PROVEN by an interactive manual run (model
+   called MCP `moted_file_read`, read the file, answered correctly), after fixing two bugs (moted
+   mcp data-dir crash; MCP initialize echoes the client protocolVersion). But OpenCode's
+   programmatically-spawned `run` deadlocks here — 3/3 bounded runs (120 s cap) time out, with or
+   without the matching tools-disable config. Needs the owner to run OpenCode in their interactive
+   environment (where it worked) and record the first-token timing, or to resolve OpenCode's
+   MCP-startup reliability. See docs/verification/V0-29.md.
 
 3. **V0-43, 44, 45, 46, 47, 48, 50, 52 (GUI screenshots)** — run `cargo run -p mote-client` with
    `moted` running on the desktop and capture the screenshots each item names (chat + status
