@@ -222,6 +222,21 @@ mod tests {
     }
 
     #[test]
+    fn fixtures_render_to_matching_golden_pngs() {
+        let files = fixture_files();
+        assert_eq!(files.len(), 10);
+        for f in files {
+            let bytes = std::fs::read(&f).unwrap();
+            let node = validate(&bytes).unwrap();
+            let png = render::render_png(&node);
+            let golden_path = f.with_extension("png");
+            let golden = std::fs::read(&golden_path)
+                .unwrap_or_else(|_| panic!("missing golden {golden_path:?}; run gen_goldens"));
+            assert_eq!(png, golden, "render drifted from golden for {f:?}");
+        }
+    }
+
+    #[test]
     fn schema_file_matches_generated() {
         let committed_path =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schemas/tree.v0.json");

@@ -9,7 +9,16 @@ Nothing here assumes chat history.
 - Scope: the 55-item v0 list at the bottom of `README.md`. Contract: `docs/rfcs/v0.md`.
 - Evidence: `docs/verification/<ID>.md`, one per closed item.
 
-## State of the work
+## State of the work (updated 2026-10-09)
+
+- 42 of 55 checked. Remaining: V0-25 (open: router macro-F1 0.333 < 0.85, recorded, 0.6b too
+  weak), V0-29 (live think via OpenCode), V0-42 (surface render, in progress), V0-43..50 and
+  V0-52's card screenshot and V0-53 (need the owner's desktop/GUI or a deploy action), V0-53
+  install is a deploy (owner-gated).
+- Memory graph done: sqlite-vec + fused retrieval (V0-33/34/35/36); production embedder is
+  model2vec potion-base-8M, tests use a local HashEmbedder.
+
+## Older notes
 
 - Checked: V0-01..24 (all except 21,25,26 which are live), V0-27,28,30 (think harness parser,
   MCP tool server, local-only guard), V0-31,32 (context store), V0-37,38,39 (charter),
