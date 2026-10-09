@@ -103,26 +103,33 @@ pub fn bench_router(client: &Ollama, model: &str, num_ctx: u32, runs: usize) -> 
     }
 }
 
-/// Benchmark memory write and retrieve latency.
-pub fn bench_memory(store: &ContextStore, runs: usize) -> BenchResult {
-    let mut writes = Vec::new();
-    let mut retrieves = Vec::new();
-    for i in 0..runs {
+/// Benchmark memory write and retrieve at a given node scale. Reports retrieve p50/p95 as the
+/// primary metric and write p50/p95 plus the scale in `extra`.
+pub fn bench_memory_scale(scale: usize, probes: usize) -> BenchResult {
+    let store = ContextStore::open_in_memory().expect("store");
+    let words = ["alpha", "beta", "gamma", "cat", "mat", "sky", "blue", "plan", "note", "owner"];
+    let mut writes = Vec::with_capacity(scale);
+    for i in 0..scale {
+        let text = format!("memory {i} about {} and {}", words[i % 10], words[(i / 10) % 10]);
         let start = Instant::now();
-        store.memory_write("event", &format!("benchmark memory node number {i}"), None).ok();
+        store.memory_write("event", &text, None).ok();
         writes.push(start.elapsed().as_secs_f64() * 1000.0);
-
+    }
+    let mut retrieves = Vec::with_capacity(probes);
+    for i in 0..probes {
+        let q = format!("{} and {}", words[i % 10], words[(i + 3) % 10]);
         let start = Instant::now();
-        let _ = store.memory_search("benchmark", 8);
+        let _ = store.memory_retrieve(&q, 8);
         retrieves.push(start.elapsed().as_secs_f64() * 1000.0);
     }
     BenchResult {
         name: "memory".into(),
-        runs,
+        runs: scale,
         p50_ms: percentile(&retrieves, 50.0),
         p95_ms: percentile(&retrieves, 95.0),
         extra: json!({
             "metric": "retrieve_ms",
+            "scale": scale,
             "write_p50_ms": percentile(&writes, 50.0),
             "write_p95_ms": percentile(&writes, 95.0),
         }),
@@ -142,8 +149,19 @@ pub fn run_named(name: &str, data_dir: &Path, client: &Ollama, config: &crate::c
             bench_router(client, &model, 32768, RUNS)
         }
         "memory" => {
-            let store = ContextStore::open(&mote_paths::db_path()).expect("open store");
-            bench_memory(&store, RUNS)
+            // Scale bench at 10k and 100k nodes; one line per scale.
+            for scale in [10_000usize, 100_000] {
+                let r = bench_memory_scale(scale, 30);
+                let _ = append_bench_line(&bench_path, &r);
+                println!(
+                    "bench memory @ {} nodes: retrieve p50 {:.2} ms, p95 {:.2} ms; write p50 {:.3} ms",
+                    scale,
+                    r.p50_ms,
+                    r.p95_ms,
+                    r.extra["write_p50_ms"].as_f64().unwrap_or(0.0)
+                );
+            }
+            return;
         }
         other => {
             eprintln!("moted bench: unknown benchmark '{other}' (talk|router|memory)");
@@ -170,8 +188,6 @@ mod tests {
             json!({"message":{"role":"assistant","content":"{\"route\":\"talk\",\"reason\":\"hi\"}"},"done":true}).to_string(),
         ]);
         let client = Ollama::new(srv.base_url());
-        let store = ContextStore::open_in_memory().unwrap();
-
         let dir = std::env::temp_dir().join(format!("mote-bench-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -179,7 +195,7 @@ mod tests {
 
         append_bench_line(&path, &bench_talk(&client, "qwen3:4b", 32768, 3)).unwrap();
         append_bench_line(&path, &bench_router(&client, "qwen3:0.6b", 32768, 3)).unwrap();
-        append_bench_line(&path, &bench_memory(&store, 3)).unwrap();
+        append_bench_line(&path, &bench_memory_scale(50, 3)).unwrap();
 
         let text = std::fs::read_to_string(&path).unwrap();
         let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
