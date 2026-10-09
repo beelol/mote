@@ -168,6 +168,11 @@ impl Dispatch for Daemon {
                 }
             }
             "turn" => self.handle_turn(&params),
+            "ui.event" => {
+                let event = params.get("event").and_then(|e| e.as_str()).unwrap_or("");
+                self.log.append("main", "ui.event", &json!({ "event": event })).ok();
+                Ok(json!({ "ok": true }))
+            }
             "schedule.add" => {
                 let cron = params.get("cron").and_then(|c| c.as_str()).ok_or_else(|| {
                     RpcError::invalid_params("schedule.add needs a cron")

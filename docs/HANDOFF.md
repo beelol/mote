@@ -18,6 +18,18 @@ Nothing here assumes chat history.
 - Memory graph done: sqlite-vec + fused retrieval (V0-33/34/35/36); production embedder is
   model2vec potion-base-8M, tests use a local HashEmbedder.
 
+## V0-29 (live think via OpenCode) investigation
+
+- OpenCode 1.15.13 at ~/.opencode/bin/opencode. Ollama's OpenAI-compatible endpoint
+  (http://127.0.0.1:11434/v1) works and returns tool-capable completions for qwen3-coder:30b-64k.
+- mote-harness has `run_opencode(cwd, prompt)` that runs `opencode run --format json` and parses
+  the stream. A temp opencode.json (ollama provider + `moted mcp` MCP server) and notes.txt go in
+  the cwd.
+- First live attempt with the 30b model + file_read tool produced no output within 120 s (likely
+  first-call model load plus buffered output). Probing a trivial no-tool prompt to learn the
+  output format and confirm the provider. If the integration proves slow/flaky, V0-29 stays open
+  with the blocker recorded (needs the owner to confirm the opencode+ollama+MCP setup).
+
 ## Older notes
 
 - Checked: V0-01..24 (all except 21,25,26 which are live), V0-27,28,30 (think harness parser,

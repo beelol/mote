@@ -67,6 +67,42 @@ pub fn parse_transcript(text: &str) -> Vec<ThinkEvent> {
         .collect()
 }
 
+/// Launch OpenCode in `cwd` with `opencode run --format json <prompt>`, parse its stream into
+/// think events, and measure time to first text token. The provider, model and MCP server come
+/// from an `opencode.json` the caller writes in `cwd`. Returns (events, first_token_latency).
+pub fn run_opencode(
+    cwd: &std::path::Path,
+    prompt: &str,
+) -> Result<(Vec<ThinkEvent>, std::time::Duration), String> {
+    use std::io::BufRead;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new("opencode")
+        .args(["run", "--format", "json", prompt])
+        .current_dir(cwd)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("spawn opencode: {e}"))?;
+
+    let stdout = child.stdout.take().ok_or("no stdout")?;
+    let reader = std::io::BufReader::new(stdout);
+    let start = std::time::Instant::now();
+    let mut first_token: Option<std::time::Duration> = None;
+    let mut events = Vec::new();
+    for line in reader.lines() {
+        let line = line.map_err(|e| format!("read: {e}"))?;
+        for ev in parse_line(&line) {
+            if first_token.is_none() && matches!(ev, ThinkEvent::Text { .. }) {
+                first_token = Some(start.elapsed());
+            }
+            events.push(ev);
+        }
+    }
+    let _ = child.wait();
+    Ok((events, first_token.unwrap_or_else(|| start.elapsed())))
+}
+
 /// Harness kinds. OpenCode is local; Claude and Codex are subscription harnesses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Harness {
@@ -133,6 +169,66 @@ mod tests {
     fn error_event_is_done_not_ok() {
         let events = parse_line(r#"{"type":"error","error":{"message":"boom"}}"#);
         assert_eq!(events, vec![ThinkEvent::Done { ok: false }]);
+    }
+
+    // V0-29: live think turn via OpenCode reading a file through the moted mcp file_read tool,
+    // first token p50 under 3 s. Skipped unless MOTE_LIVE=1 and both opencode and the moted
+    // binary are present.
+    #[test]
+    fn live_think_reads_file_via_file_read() {
+        use std::path::PathBuf;
+        if std::env::var("MOTE_LIVE").is_err() {
+            return;
+        }
+        let moted = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/moted");
+        let moted = moted.canonicalize().expect("build moted first: cargo build -p moted");
+
+        let dir = std::env::temp_dir().join(format!("mote-think-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("notes.txt"), "The secret passphrase is blue-otter-42.\n").unwrap();
+        let config = format!(
+            r#"{{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "ollama/qwen3-coder:30b-64k",
+  "enabled_providers": ["ollama"],
+  "provider": {{ "ollama": {{ "npm": "@ai-sdk/openai-compatible", "name": "Ollama",
+    "options": {{ "baseURL": "http://127.0.0.1:11434/v1", "apiKey": "ollama" }},
+    "models": {{ "qwen3-coder:30b-64k": {{ "name": "qwen3-coder", "tool_call": true,
+      "limit": {{ "context": 65536, "output": 4096 }} }} }} }} }},
+  "mcp": {{ "moted": {{ "type": "local", "command": ["{}", "mcp"] }} }}
+}}"#,
+            moted.display()
+        );
+        std::fs::write(dir.join("opencode.json"), config).unwrap();
+
+        let prompt =
+            "Use the file_read tool to read notes.txt, then tell me the secret passphrase it contains.";
+        // Warm run, then three measured runs.
+        let _ = run_opencode(&dir, prompt);
+        let mut firsts = Vec::new();
+        let mut saw_answer = false;
+        let mut saw_file_read = false;
+        for _ in 0..3 {
+            let (events, first) = run_opencode(&dir, prompt).expect("run opencode");
+            firsts.push(first.as_secs_f64());
+            for e in &events {
+                match e {
+                    ThinkEvent::Text { text } if text.contains("blue-otter-42") => saw_answer = true,
+                    ThinkEvent::ToolCall { name, .. } | ThinkEvent::ToolResult { name, .. }
+                        if name.contains("file_read") || name.contains("moted") =>
+                    {
+                        saw_file_read = true
+                    }
+                    _ => {}
+                }
+            }
+        }
+        firsts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let p50 = firsts[firsts.len() / 2];
+        println!("LIVE think first-token p50 = {p50:.2} s; answer={saw_answer} file_read={saw_file_read}");
+        assert!(saw_answer, "the answer must contain the passphrase read from the file");
+        assert!(p50 < 3.0, "first-token p50 {p50:.2}s exceeds 3 s");
     }
 
     #[test]
