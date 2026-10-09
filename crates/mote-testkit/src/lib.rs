@@ -191,6 +191,73 @@ fn route(method: &str, path: &str, state: &Arc<Mutex<ScriptState>>) -> (u16, Str
     }
 }
 
+/// 60 labelled router turns, 30 per route, for the accuracy gate (V0-25). Each is (text, route)
+/// where route is "talk" or "think".
+pub const ROUTER_TURNS: &[(&str, &str)] = &[
+    // talk: greetings, chit-chat, acknowledgements, simple one-shot replies.
+    ("hey there", "talk"),
+    ("good morning", "talk"),
+    ("thanks so much", "talk"),
+    ("ok sounds good", "talk"),
+    ("how are you today", "talk"),
+    ("lol that's funny", "talk"),
+    ("goodnight", "talk"),
+    ("what's your name", "talk"),
+    ("nice to meet you", "talk"),
+    ("yeah exactly", "talk"),
+    ("cool, thanks", "talk"),
+    ("hello!", "talk"),
+    ("have a great weekend", "talk"),
+    ("that makes sense", "talk"),
+    ("awesome work", "talk"),
+    ("no worries", "talk"),
+    ("sure, go ahead", "talk"),
+    ("hi, how's it going", "talk"),
+    ("you're welcome", "talk"),
+    ("sounds perfect", "talk"),
+    ("great, appreciate it", "talk"),
+    ("happy to hear that", "talk"),
+    ("see you later", "talk"),
+    ("yep", "talk"),
+    ("that's hilarious", "talk"),
+    ("good point", "talk"),
+    ("morning!", "talk"),
+    ("thanks for the help", "talk"),
+    ("okay cool", "talk"),
+    ("how was your day", "talk"),
+    // think: tasks needing tools, files, code, multi-step reasoning or memory.
+    ("read my config file and summarise it", "think"),
+    ("refactor this function to be async", "think"),
+    ("find all TODO comments in the repo", "think"),
+    ("what did I tell you about my sister last week", "think"),
+    ("write a script to rename these files", "think"),
+    ("debug why the test is failing", "think"),
+    ("search my notes for the budget numbers", "think"),
+    ("open the readme and list the sections", "think"),
+    ("compute the p95 latency from this log", "think"),
+    ("fix the bug in the parser", "think"),
+    ("summarise the last ten emails", "think"),
+    ("what's in the file at src/main.rs", "think"),
+    ("plan the migration in five steps", "think"),
+    ("grep for the error message across the logs", "think"),
+    ("remember that my meeting moved to 3pm", "think"),
+    ("list the files in my downloads folder", "think"),
+    ("explain what this stack trace means and fix it", "think"),
+    ("convert this CSV into JSON", "think"),
+    ("look up when I last changed my password", "think"),
+    ("write unit tests for the config module", "think"),
+    ("compare these two versions of the document", "think"),
+    ("find the function that handles retries", "think"),
+    ("analyse the memory graph and report cycles", "think"),
+    ("draft a reply to this thread and cite the ticket", "think"),
+    ("check which dependencies are out of date", "think"),
+    ("trace how a request flows through the daemon", "think"),
+    ("extract the action items from this transcript", "think"),
+    ("rename the variable everywhere it is used", "think"),
+    ("what was the decision we made about storage", "think"),
+    ("build a table of the model latencies", "think"),
+];
+
 /// A fake think-lane harness that drives an MCP tool server: it performs the handshake then
 /// calls one tool and returns the JSON-RPC response.
 pub struct FakeHarness;

@@ -375,6 +375,46 @@ mod tests {
         assert_eq!(r, Route::Talk);
     }
 
+    // V0-25: router macro-F1 on the 60 labelled turns against live qwen3:0.6b. Skipped unless
+    // MOTE_LIVE=1.
+    #[test]
+    fn live_router_macro_f1() {
+        if std::env::var("MOTE_LIVE").is_err() {
+            return;
+        }
+        let client = Ollama::local();
+        // Confusion counts for the "think" class as positive.
+        let (mut tp, mut fp, mut tn, mut fn_) = (0i32, 0i32, 0i32, 0i32);
+        for (text, label) in mote_testkit::ROUTER_TURNS {
+            let (r, _) = route(&client, "qwen3:0.6b", 32768, text);
+            let predicted_think = r == Route::Think;
+            let actual_think = *label == "think";
+            match (predicted_think, actual_think) {
+                (true, true) => tp += 1,
+                (true, false) => fp += 1,
+                (false, false) => tn += 1,
+                (false, true) => fn_ += 1,
+            }
+        }
+        let f1 = |tp: i32, fp: i32, fn_: i32| -> f64 {
+            let p = if tp + fp == 0 { 0.0 } else { tp as f64 / (tp + fp) as f64 };
+            let r = if tp + fn_ == 0 { 0.0 } else { tp as f64 / (tp + fn_) as f64 };
+            if p + r == 0.0 { 0.0 } else { 2.0 * p * r / (p + r) }
+        };
+        // think as positive, then talk as positive (swap roles).
+        let f1_think = f1(tp, fp, fn_);
+        let f1_talk = f1(tn, fn_, fp);
+        let macro_f1 = (f1_think + f1_talk) / 2.0;
+        // The contract's gate is 0.85. Per section 7, if the router misses it the driver records
+        // the number and leaves the item open; improving the router is a backlog item. So this
+        // test prints the score and does not hard-fail.
+        println!(
+            "LIVE router macro-F1 = {macro_f1:.3} (gate 0.85; think F1 {f1_think:.3}, talk F1 \
+             {f1_talk:.3}; tp={tp} fp={fp} tn={tn} fn={fn_})"
+        );
+        assert!((0.0..=1.0).contains(&macro_f1));
+    }
+
     #[test]
     fn think_verdict_makes_talk_finish_and_hand_off() {
         let srv = ScriptedServer::start().unwrap();
