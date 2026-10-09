@@ -18,35 +18,36 @@ pub const TALK_BUDGET: usize = 600;
 
 /// The fixed few-shot prompt for the router, stored in the repo.
 pub const ROUTER_PROMPT: &str = "\
-You are a strict router. Output ONLY a JSON object {\"route\": \"think\" | \"talk\", \"reason\": \
-string}. Never answer or perform the request yourself.\n\
+You are a strict router for a two-lane agent. Output ONLY a JSON object \
+{\"route\": \"think\" | \"talk\", \"reason\": string}. Never answer or do the request yourself.\n\
 \n\
-Route \"talk\" when the WHOLE message is social filler with no request for information or action: \
-greetings (hi, hey, hey there, hello, morning, good morning), closings (bye, goodnight, see you), \
-thanks, acknowledgements (ok, cool, yep, sure, no worries), compliments, and pure smalltalk \
-(how are you, how was your day, what's your name, nice to meet you). These are ALWAYS talk even \
-though some are questions.\n\
+Key fact: the TALK lane is a tiny model with NO tools and NO memory. It can only make social \
+small talk. It CANNOT read, open, list, search, summarise, compute, recall, look up, draft, or \
+touch any file, note, email, log, or past conversation. The THINK lane has the tools.\n\
 \n\
-Route \"think\" for any request to DO something with information, files or memory. Trigger verbs: \
-read, open, write, create, rename, find, search, grep, list, show, summarise, compute, count, \
-explain, fix, debug, refactor, convert, compare, analyse, plan, draft, remember, recall, look up, \
-trace, extract, check. Also route \"think\" for any real question seeking facts, and anything \
-mentioning a file, code, logs, notes, emails, a ticket, the past, or \"what did I/you\". Short \
-commands still count: \"list the files\", \"summarise the emails\", \"open the readme\" are think.\n\
-If unsure, choose \"think\".\n\
+Decision rule, in order:\n\
+1. If the message asks to read, open, write, rename, find, search, grep, list, show, summarise, \
+count, compute, explain, fix, debug, refactor, convert, compare, analyse, plan, draft, remember, \
+recall, look up, trace, extract or check ANYTHING -> think.\n\
+2. If it mentions a file, code, logs, notes, emails, a ticket, a document, or the past (\"what \
+did I/you\", \"last week\", \"the decision we made\") -> think.\n\
+3. If it is a factual question that needs an answer -> think.\n\
+4. ONLY if the whole message is a greeting, closing, thanks, acknowledgement, compliment, or \
+pure small talk about the agent/user with no task -> talk.\n\
+When torn between the two, choose think.\n\
 \n\
 Examples:\n\
 hey there -> {\"route\":\"talk\",\"reason\":\"greeting\"}\n\
 morning! -> {\"route\":\"talk\",\"reason\":\"greeting\"}\n\
-what's your name -> {\"route\":\"talk\",\"reason\":\"smalltalk\"}\n\
-thanks! -> {\"route\":\"talk\",\"reason\":\"acknowledgement\"}\n\
-read my config file and summarise it -> {\"route\":\"think\",\"reason\":\"reads a file\"}\n\
-summarise the last ten emails -> {\"route\":\"think\",\"reason\":\"reads and summarises\"}\n\
-list the files in my downloads folder -> {\"route\":\"think\",\"reason\":\"lists files\"}\n\
-open the readme and list the sections -> {\"route\":\"think\",\"reason\":\"opens a file\"}\n\
-search my notes for the budget numbers -> {\"route\":\"think\",\"reason\":\"searches notes\"}\n\
-look up when I last changed my password -> {\"route\":\"think\",\"reason\":\"looks up a fact\"}\n\
-what did I tell you about my sister last week -> {\"route\":\"think\",\"reason\":\"memory recall\"}";
+how are you today -> {\"route\":\"talk\",\"reason\":\"small talk\"}\n\
+what's your name -> {\"route\":\"talk\",\"reason\":\"small talk about the agent\"}\n\
+thanks, appreciate it -> {\"route\":\"talk\",\"reason\":\"acknowledgement\"}\n\
+read my config file and summarise it -> {\"route\":\"think\",\"reason\":\"needs file tools\"}\n\
+summarise the last ten emails -> {\"route\":\"think\",\"reason\":\"needs to read emails\"}\n\
+list the files in my downloads folder -> {\"route\":\"think\",\"reason\":\"needs to list files\"}\n\
+look up when I last changed my password -> {\"route\":\"think\",\"reason\":\"needs to look up a fact\"}\n\
+what did I tell you about my sister last week -> {\"route\":\"think\",\"reason\":\"needs memory\"}\n\
+what's the capital of France -> {\"route\":\"think\",\"reason\":\"a factual question to answer\"}";
 
 /// The route a turn takes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -476,14 +477,13 @@ mod tests {
         let f1_think = f1(tp, fp, fn_);
         let f1_talk = f1(tn, fn_, fp);
         let macro_f1 = (f1_think + f1_talk) / 2.0;
-        // The contract's gate is 0.85. Per section 7, if the router misses it the driver records
-        // the number and leaves the item open; improving the router is a backlog item. So this
-        // test prints the score and does not hard-fail.
+        // The contract's gate is 0.85 (section 7). The decode is deterministic (temperature 0),
+        // so this score is reproducible.
         println!(
             "LIVE router macro-F1 = {macro_f1:.3} (gate 0.85; think F1 {f1_think:.3}, talk F1 \
              {f1_talk:.3}; tp={tp} fp={fp} tn={tn} fn={fn_})"
         );
-        assert!((0.0..=1.0).contains(&macro_f1));
+        assert!(macro_f1 >= 0.85, "router macro-F1 {macro_f1:.3} below the 0.85 gate");
     }
 
     #[test]
