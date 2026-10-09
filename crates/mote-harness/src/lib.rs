@@ -83,6 +83,7 @@ pub fn run_opencode(
     let mut child = Command::new("opencode")
         .args(["run", "--format", "json", prompt])
         .current_dir(cwd)
+        .stdin(Stdio::null()) // else OpenCode blocks reading piped stdin that never EOFs
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
