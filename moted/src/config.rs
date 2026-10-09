@@ -54,8 +54,10 @@ pub trait ModelGate: Send + Sync {
     fn check(&self, model: &str) -> Result<(), String>;
 }
 
-/// Allows every model. Used until the memory gate is wired.
+/// Allows every model. A test gate.
+#[cfg(test)]
 pub struct AllowAll;
+#[cfg(test)]
 impl ModelGate for AllowAll {
     fn check(&self, _model: &str) -> Result<(), String> {
         Ok(())

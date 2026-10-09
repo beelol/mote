@@ -4,8 +4,11 @@
 //! items. A second daemon on the same live socket exits non-zero naming the socket path.
 
 mod config;
+mod gate;
 
-use config::{AllowAll, ConfigStore};
+use config::ConfigStore;
+use gate::OllamaGate;
+use mote_localmodel::Ollama;
 use mote_eventlog::{EventLog, Subscription};
 use mote_ipc::{codes, Dispatch, RpcError, Server};
 use serde_json::{json, Value};
@@ -81,11 +84,11 @@ fn run() -> Result<(), i32> {
         1
     })?;
 
-    let config = ConfigStore::load(&mote_paths::config_path(), log.clone(), Arc::new(AllowAll))
-        .map_err(|e| {
-            eprintln!("moted: cannot load config: {e}");
-            1
-        })?;
+    let gate = Arc::new(OllamaGate::new(Ollama::local()));
+    let config = ConfigStore::load(&mote_paths::config_path(), log.clone(), gate).map_err(|e| {
+        eprintln!("moted: cannot load config: {e}");
+        1
+    })?;
 
     let socket = mote_paths::socket_path();
     let daemon = Arc::new(Daemon { log, config: Mutex::new(config) });

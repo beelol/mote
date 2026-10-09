@@ -37,3 +37,5 @@ regex = "1"
 libc = "0.2"
 rusqlite = { version = "0.31", features = ["bundled"] }
 toml = "0.8"
+ureq = { version = "2", default-features = false, features = ["json"] }
+sysinfo = "0.32"

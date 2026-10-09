@@ -12,8 +12,13 @@ Nothing here assumes chat history.
 ## State of the work
 
 - Done and committed: V0-01 (workspace), V0-02 (mote-redact), V0-03 (mote-paths),
-  V0-04..07 (mote-eventlog: append+redact, cursor replay, retention, resync).
+  V0-04..07 (mote-eventlog), V0-08..11 (mote-ipc), V0-12..14 (config + memory gate),
+  V0-15..17 (mote-localmodel: Ollama client, memory gate, structured fail-closed).
+  mote-testkit has the scripted Ollama server.
 - Built with std + threads, no async runtime. Cargo.lock committed. rusqlite bundled.
+  HTTP client is ureq (json feature, no tls). Free memory via sysinfo.
+- Next crate to grow: mote-context (store, packs, ledger, memory graph) for V0-31+, and the
+  talk/router/think lanes (V0-19..30) which the daemon wires together.
 - Approved models NOT yet pulled. Ollama currently has qwen2.5 variants only. Live items
   (V0-18, 21, 25, 26, 29, 36, 43-54) need `qwen3:4b`, `qwen3:0.6b`, `qwen3-coder:30b` pulled
   (22 GB). Pull only those three, only when reaching a live item.
@@ -29,9 +34,10 @@ Nothing here assumes chat history.
 
 ## Next action
 
-V0-08..11: implement `mote-ipc` (Unix socket server + client). Socket mode 0600, second
-instance exits naming the path, error codes, peer uid refusal, events.subscribe streaming with
-client reconnect from cursor.
+V0-18: live check that the three approved models pull and `ensure()` succeeds for each
+(MOTE_LIVE=1). Needs `qwen3:4b`, `qwen3:0.6b`, `qwen3-coder:30b` pulled (22 GB), and a Modelfile
+for `qwen3-coder:30b-64k` (num_ctx 65536). If not pulling now, skip V0-18 and continue with
+V0-19 (talk lane) which uses the scripted server.
 
 ## Uncommitted work
 

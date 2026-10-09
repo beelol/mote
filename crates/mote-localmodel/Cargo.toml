@@ -6,3 +6,10 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+serde.workspace = true
+serde_json.workspace = true
+ureq.workspace = true
+sysinfo.workspace = true
+
+[dev-dependencies]
+mote-testkit.workspace = true

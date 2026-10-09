@@ -9,5 +9,9 @@ rust-version.workspace = true
 mote-paths.workspace = true
 mote-eventlog.workspace = true
 mote-ipc.workspace = true
+mote-localmodel.workspace = true
 serde_json.workspace = true
 toml.workspace = true
+
+[dev-dependencies]
+mote-testkit.workspace = true
