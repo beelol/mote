@@ -1,0 +1,374 @@
+# Backlog: every criterion written during planning
+
+Preserved from the README board on 2026-10-08 when the v0 build list replaced it. IDs are
+stable. Nothing here is in scope until the owner moves it into the README's v0 list or starts a
+later list. The RFCs and reuse documents these link to remain the reference for each area.
+
+### Current features
+
+- [ ] **[Daemon core](docs/rfcs/mote.md#daemon-core)**
+  - [ ] **MOTE-01** `moted` starts as one binary with an owner-only data directory, a SQLite store and a Unix socket, and refuses to start twice.
+  - [ ] **MOTE-02** One append-only event log with cursor replay; a reconnecting client misses nothing and sees nothing twice.
+  - [ ] **MOTE-03** A scripted model server and a fake `claude` shim make every lane test run with no network and no paid turns.
+- [ ] **[Talk lane](docs/rfcs/mote.md#talk-lane)**
+  - [ ] **MOTE-04** Local model first, gated by free memory, first token within 300 ms at the median.
+  - [ ] **MOTE-05** Haiku 5.5 fallback through `claude -p --model haiku`, and the card names the lane that answered.
+  - [ ] **MOTE-06** Talk streams while the router runs; a `think` or `work` verdict hands off without a second answer.
+  - [ ] **TALK-00 The owner approves the local talk model choice and the fallback rule in docs/reuse/talk.md.
+  - [ ] **TALK-01** `chat_stream` yields the first chunk and every later chunk in order and reports `eval_count`, `prompt_eval_count` and `load_duration` from the final chunk.
+  - [ ] **TALK-02** The talk lane refuses to load a model that fails `fits_simple` over `estimate(weights, geometry, ctx)` or fails `approve`, records the refusal in the event log, and takes the Haiku path.
+  - [ ] **TALK-03** After a turn the model stays resident with `expires_at` in the future.
+  - [ ] **TALK-04** Turn 2 in a thread reports `prompt_eval_count` no greater than the new tokens plus 16.
+  - [ ] **TALK-05** A `think` or `work` verdict cancels the stream within one chunk and the card keeps only the acknowledgement.
+  - [ ] **TALK-06** The request carries `think: false` and no think text reaches a card.
+  - [ ] **TALK-07** `moted bench talk` prints p50 and p95 TTFT, decode t/s and the runner name, and exits non-zero when p50 exceeds the configured target.
+  - [ ] **TALK-08** The hardware profile picks the Pi model and runtime when total memory is under 16 GiB.
+  - [ ] **TALK-09** Every talk call, including the Haiku fallback, writes a ledger row with TTFT and total latency.
+- [ ] **[Router](docs/rfcs/mote.md#router)**
+  - [ ] **MOTE-07** One JSON verdict with `route` and `reason`; anything malformed routes to `think`, never `talk`.
+  - [ ] **MOTE-08** The router adds at most 150 ms at the median to a `talk` turn.
+  - [ ] **ROUTE-00 The owner approves the router model and calibration plan in docs/reuse/router.md.
+  - [ ] **ROUTE-01** The parser accepts only the exact verdict object, and unknown fields, unknown routes, trailing text, truncation, prose and think blocks all map to `think` with reason `parse_error`.
+  - [ ] **ROUTE-02** The rules pre-filter reads only structural signals, can only raise the `think` or `work` logit, and a property test shows it never yields `talk` on random input.
+  - [ ] **ROUTE-03** The head returns three probabilities that sum to 1 within 0.001, abstains under the threshold, and builds its verdict through the parser type.
+  - [ ] **ROUTE-04** The judge path sends `think: false` and the schema, and returns a parsed verdict within 150 ms p50 on the Mac.
+  - [ ] **ROUTE-05** Every verdict writes a ledger row with input hash, route, probabilities, reason, model, latency split and an empty label.
+  - [ ] **ROUTE-06** `moted router label` fills labels from owner actions, re-asks, think-lane tool use and work hand-offs in the stated priority.
+  - [ ] **ROUTE-07** `moted router train` fits the head, the temperature and both thresholds from the seed file plus the ledger, and prints per-class precision and recall, the confusion matrix and the calibration error.
+  - [ ] **ROUTE-08** On the held-out set macro F1 is at least 0.90 and the wrong `talk` rate is at most 2%.
+  - [ ] **ROUTE-09** The router runs beside the talk stream and its verdict arrives before the talk's second chunk at the median.
+  - [ ] **ROUTE-10** The Pi profile runs the head only and never starts a judge when total memory is under 16 GiB.
+  - [ ] **ROUTE-11** The head's p50 latency is at most 20 ms on the Mac.
+- [ ] **[Think lane](docs/rfcs/mote.md#think-lane)**
+  - [ ] **MOTE-09** Claude Code under the owner's login with streaming partial messages into the event log.
+  - [ ] **MOTE-10** Memory, files, GitHub and delegate tools, each call written to the ledger.
+  - [ ] **MOTE-11** Per-thread `--resume` sessions; an expired login shows a sign-in card and queues the turn.
+  - [ ] **THINK-00 The owner approves the think lane reuse plan in docs/reuse/think.md, including the single `moted mcp` tool server.
+  - [ ] **THINK-01** `mote-harness::launch` for `claude` builds Overseer's argv plus `--include-partial-messages`, `--session-id` or `--resume`, `--mcp-config`, `--strict-mcp-config`, `--allowedTools`, `--disallowedTools` and `--fallback-model`, never `--bare`, and forwards no forbidden env key.
+  - [ ] **THINK-02** The preflight runs `claude auth status` and any non-zero exit or an `authMethod` other than `claude.ai` or `oauth_token` yields a sign-in card and a queued turn.
+  - [ ] **THINK-03** Each `stream_event` text delta becomes one `Partial` event in the log within 50 ms, and the final `assistant` text is emitted once.
+  - [ ] **THINK-04** A thread stores its session id before the first line arrives and passes `--resume` on every later turn.
+  - [ ] **THINK-05** The `result` line writes exactly one ledger row with lane, model, session id, tokens from `modelUsage`, `total_cost_usd`, `num_turns` and `duration_ms`.
+  - [ ] **THINK-06** An `authentication_failed` line classifies as `auth`, shows the sign-in card, keeps the turn queued, and resumes once `claude auth status` exits 0.
+  - [ ] **THINK-07** `moted mcp` serves `memory_search`, `memory_write`, `delegate` and `slack_read`, and each call writes a ledger row and an event.
+  - [ ] **THINK-08** A `can_use_tool` request becomes a card and the owner's answer returns as `control_response` to the same child.
+  - [ ] **THINK-09** Interrupt writes the control request, sends SIGINT after 3 s and SIGTERM after 10 s, and the turn ends `interrupted`, not `failed`.
+  - [ ] **THINK-10** Every line from the child passes redaction before storage.
+  - [ ] **THINK-11** Spawn to `init` is under 2.5 s p50 and child RSS under 400 MB.
+  - [ ] **THINK-12** Stdin closes after `result` only when no background task is pending, and the child exits within 2 s.
+- [ ] **[Work lane](docs/rfcs/mote.md#work-lane)**
+  - [ ] **MOTE-12** Start an overseerd run over its socket and follow its events into mote's log.
+  - [ ] **MOTE-13** Live progress card; completion or need-for-input becomes a card with actions.
+  - [ ] **WORK-00 The owner approves the Overseer client plan in docs/reuse/work.md.
+  - [ ] **WORK-01** `mote-ipc::client::Client::connect` reaches overseerd at the `mote-paths` socket, sends hello with client `mote`, and refuses a protocol other than 1.
+  - [ ] **WORK-02** The delegate tool calls `task.create` in worktree mode and stores task id, run id, workspace id and path in the thread's working set.
+  - [ ] **WORK-03** Following subscribes after the stored cursor with a run filter, mirrors every event once with `overseer_seq`, and writes the cursor in the same transaction.
+  - [ ] **WORK-04** A `resync` or a dropped connection leads to reconnect with backoff and resubscribe from the cursor with no duplicate.
+  - [ ] **WORK-05** The progress card shows status, elapsed, harness, current tool, last output line, changed file count and usage, updated within 100 ms of the event.
+  - [ ] **WORK-06** A `permission` event becomes a card, Allow or Deny calls `run.permission`, and `permission_answered` clears it.
+  - [ ] **WORK-07** Interrupt calls `run.interrupt` and the card ends `interrupted`.
+  - [ ] **WORK-08** The completion card offers Open diff, Follow up, Open PR behind approval, and Cleanup.
+  - [ ] **WORK-09** With no overseerd the delegate yields a "not running" card with Start, stores the request as `queued`, and starts it once hello succeeds.
+  - [ ] **WORK-10** Start spawns overseerd in its own process group and the child outlives moted.
+  - [ ] **WORK-11** mote never creates worktrees itself.
+  - [ ] **WORK-12** A 12,000-line run mirrors with no gap in under 15 s at no more than 10 card renders per second.
+- [ ] **[Generative UI v0](docs/rfcs/mote.md#generative-ui-v0)**
+  - [ ] **MOTE-14** Every emitted tree is validated fail-closed; an invalid tree shows a plain text card.
+  - [ ] **MOTE-15** mote-client renders the tree inline in chat and as full surfaces, streams partial trees, and returns UI events to mote-cloud.
+  - [ ] **MOTE-16** Closing and reopening the window keeps every thread and its cards.
+- [ ] **[Context engine](docs/rfcs/mote.md#context-engine)**
+  - [ ] **MOTE-17** Store for profile, memories, working set and connector snapshots; every call logs its context pack and cost.
+  - [ ] **MOTE-18** Per-lane context budgets, and the window can show what a call saw.
+  - [ ] **MOTE-19** Memories change only through the memory tool, visibly and reversibly.
+- [ ] **[Attention detector](docs/rfcs/mote.md#attention-detector)**
+  - [ ] **MOTE-22** A detector scores every utterance for whether the owner addressed mote, with no tools and no memory writes.
+  - [ ] **MOTE-23** Above the threshold it answers, inside the band it asks, below it stays silent, and the thresholds are settings.
+  - [ ] **MOTE-24** Every verdict and reason land in the event log and the window can show them.
+  - [ ] **ATT-00 The owner approves the attention detector approach and thresholds in docs/reuse/attention.md.
+  - [ ] **ATT-01** VAD segments a fixture recording into utterances with start and end within 100 ms of the reference labels.
+  - [ ] **ATT-02** Enrolment stores one owner embedding and verification scores every owner sample above every stranger sample in the fixture set.
+  - [ ] **ATT-03** The text scorer returns one JSON verdict and any malformed output scores 0 with reason `parse_error`.
+  - [ ] **ATT-04** Fusion yields a sureness from 0 to 100 and the three bands map to answer, ask and silent with thresholds read from settings.
+  - [ ] **ATT-05** On the labelled set the expected calibration error is at most 0.10 and the report is in the evidence file.
+  - [ ] **ATT-06** The detector opens no network socket and writes no memory row.
+  - [ ] **ATT-07** Each verdict row names the utterance id, speaker score, text score, sureness, band and reason.
+  - [ ] **ATT-08** End of speech to verdict p50 is under 400 ms on the Mac.
+  - [ ] **ATT-09** A wake word, when enabled, sets sureness to 100 for the next utterance.
+  - [ ] **ATT-10** No raw audio is stored. Only utterance ids and redacted text reach the data directory.
+  - [ ] **ATT-11** The ask action produces one short question and never a second question before the owner answers.
+  - [ ] **ATT-12** When `logprobs` are present the calibrated score is used and the ledger row records both the raw logit gap and the calibrated value.
+- [ ] **[Charter and audit](docs/rfcs/mote.md#charter-and-audit)**
+  - [ ] **MOTE-25** `house.md` and `<character>.md` lead every pack, their structured headers are enforced by the daemon, and only the owner edits them.
+  - [ ] **MOTE-26** A memory browser shows why mote knows each thing, retracts reversibly, and a daily digest offers one-tap forget.
+  - [ ] **MOTE-27** Every pack is stored for 30 days and any card can replay the exact pack behind its answer.
+- [ ] **[Topology](docs/rfcs/mote.md#topology)**
+  - [ ] **MOTE-28** mote-cloud and mote-client are separate processes; one Mac runs both, and the same client reaches a remote mote-cloud.
+  - [ ] **MOTE-29** mote-client on the Mac lends browser sessions, files and Overseer to mote-cloud behind switches the coverage map reflects.
+  - [ ] **MOTE-30** mote-ui runs standalone with no state and recovers its surface from a cursor after restart.
+  - [ ] **MOTE-31** A chat answer can be an inline surface; a delivery question renders as a map, a provider widget or a status card.
+- [ ] **[Visibility and control](docs/rfcs/mote.md#visibility-and-control-1)**
+  - [ ] **MOTE-32** A pipeline view shows every stage with live events, config, numbers and requests, drawn by mote-ui inside the client.
+  - [ ] **MOTE-33** Any stage control changes hot through a validated, revertible settings event, including swapping the think harness or a lane's model.
+  - [ ] **MOTE-34** A request inspector lists every outbound call with redacted payload, timing and ledger row.
+  - [ ] **MOTE-35** Every stage has a latency budget with live p50 and p95, and the view adds no measurable latency.
+- [ ] **[Always-on](docs/rfcs/mote.md#always-on)**
+  - [ ] **MOTE-20** `moted install` registers a launchd agent; the daemon survives window close and reboot.
+  - [ ] **MOTE-21** Cron and Slack mention watchers wake the router; outward actions need owner approval.
+  - [ ] **ALWAYS-00 The owner approves the launchd, watcher and approval-gate plan in docs/reuse/always-on.md.
+  - [ ] **ALWAYS-01** `moted install` writes the plist with `Label`, `ProgramArguments`, `RunAtLoad`, `KeepAlive {SuccessfulExit: false}`, `ThrottleInterval 5`, `PATH`, and log paths under the data directory, then bootstraps it.
+  - [ ] **ALWAYS-02** The daemon survives window close and reboot.
+  - [ ] **ALWAYS-03** `moted uninstall` boots the agent out and removes the plist.
+  - [ ] **ALWAYS-04** After `kill -9` launchd restarts moted within 10 s and the window replays from its cursor with nothing shown twice.
+  - [ ] **ALWAYS-05** On Linux `moted install` writes the user unit with `Restart=always`, `Type=notify`, `WatchdogSec=30`, calls `READY=1` after bind, and prints the linger command.
+  - [ ] **ALWAYS-06** The cron watcher fires each enabled schedule within 1 s of its second, emits `utterance` with source `watcher:cron`, and survives restart with `last_fired_ms`.
+  - [ ] **ALWAYS-07** With tokens, the Slack watcher connects in Socket Mode, acknowledges every envelope, and turns `app_mention` into an utterance with channel, thread ts, user and text. Without tokens it emits `watcher_status disabled` and the window shows it.
+  - [ ] **ALWAYS-08** The GitHub watcher polls `gh api notifications` with `If-Modified-Since`, honors `X-Poll-Interval`, and turns each new notification into an utterance.
+  - [ ] **ALWAYS-09** Every outward action inserts an `approvals` row, the window shows Approve and Deny, nothing executes before `approved`, and a row past 24 h becomes `expired`.
+  - [ ] **ALWAYS-10** Watchers hold no write-capable client.
+  - [ ] **ALWAYS-11** Idle RSS is under 60 MB and CPU under 0.5% over 10 minutes with watchers on.
+  - [ ] **ALWAYS-12** After a 2 h clock jump the cron watcher recomputes and fires each schedule at most once.
+  - [ ] **ALWAYS-13** A watcher task that fails restarts with backoff from 1 s to 60 s and emits `watcher_restart`.
+- [ ] **[Context layer](docs/rfcs/context-layer.md)**
+  - [ ] **CTXL-00** The owner approves this RFC, the four-part topology as applied here, the realm model, the SQLite default and the spike gate.
+  - [ ] **CTXL-01** The registry holds one row per connection and one per lent capability with a state in `connected`, `syncing`, `stale`, `needs_reauth`, `missing_scope`, `denied`, `disabled`, `never_synced`, `client_offline`, `rate_limited`, `error`, `removed`, and every state change writes an event with the reason.
+  - [ ] **CTXL-02** Every retrieval builds a coverage report in code that lists, per realm and source, state, freshness, covered window, whether it was searched, hits and a verdict in `strong`, `weak`, `none`, and stores it in `query_log` and against the pack.
+  - [ ] **CTXL-03** A source in the thread's realm scope that is not `connected` appears in the card's sources strip with its state and exact fix, rendered by the daemon regardless of the model's text.
+  - [ ] **CTXL-04** Freshness is `now - covered_to` per stream, a stream past three expected intervals is `stale`, and the card says the age in words.
+  - [ ] **CTXL-05** The `coverage` pack part sits last before the turn, is at most 60 tokens for talk and 300 for think, and lists only unavailable, stale and empty sources plus the verdict.
+  - [ ] **CTXL-06** `moted mcp` serves `coverage` and `context_search`, every call writes a ledger row and an event, and `context_search` returns per-source hit counts with every result.
+  - [ ] **CTXL-07** Queries with verdict `none` are recorded with realm scope and sources consulted, the window lists them under "What I could not find", and the reflect job can propose a connection as a card but never create one.
+  - [ ] **CTXL-08** The code-computed verdict separates LongMemEval's answerable questions from its abstention questions with AUROC at least 0.75, with no model call.
+  - [ ] **CTXL-09** The Connections screen groups connections by realm with identity, state, freshness, covered window, scopes and a fix action, and a lent capability reads "reachable while the Mac client is connected" and flips to `client_offline` within 5 s of the client disconnecting.
+  - [ ] **CTXL-10** Every connection row carries provider, kind, realm, identity id, display, fingerprint, tenant, scopes granted, scopes needed, token reference, follows-app, lender and health, and never the token itself.
+  - [ ] **CTXL-11** At connect time mote proposes a realm from the `hd` claim, the Microsoft `tid`, the Slack `team_id` and `enterprise_id`, GitHub org memberships or the mail domain, and no inbox row exists before the owner confirms.
+  - [ ] **CTXL-12** Every doc, chunk, vector row, inbox row, stream, memory node and memory edge carries a realm, and the vec0 partition key is the realm.
+  - [ ] **CTXL-13** A thread's pack never contains evidence, memory nodes or coverage lines from outside its realm scope unless the owner set the scope to `all`, which is an event and a badge.
+  - [ ] **CTXL-14** Outward actions default to the thread's realm and connection, the approval card names the realm and the acting identity, and a target in another realm needs an explicit owner choice.
+  - [ ] **CTXL-15** Removing a connection deletes its docs, chunks, vectors, inbox rows and keychain item, keeps a `removed` registry row with counts, and leaves other realms unchanged.
+  - [ ] **CTXL-16** The same person in two realms is two entity nodes until the owner merges them, and the merge is a reversible event.
+  - [ ] **CTXL-17** A login mote does not own (`gh`, `claude`) is registered as `follows_app` with a fingerprint only, is never logged out by mote, and the registry shows when it changes underneath.
+  - [ ] **CTXL-18** Every connector emits inbox rows of the one schema and the id is the connection id plus the source event id, so a redelivered event changes only `observed_ms`.
+  - [ ] **CTXL-19** Push sources deliver an inbox row within 5 s at p95 of the source event, and every push source has a reconciliation poll that finds a change made while the push link was down.
+  - [ ] **CTXL-20** Priority 3 and 4 rows wake the router as `utterance` with source `watcher:<connection>` within 1 s, priority 2 rows batch into one digest card per hour per realm, lower rows only index, and wakes are capped at 10 per minute per realm with overflow in the digest.
+  - [ ] **CTXL-21** Edits and deletions (`message_changed`, `message_deleted`, IMAP `VANISHED` or a missing UID, FSEvents removal, a cancelled calendar event, a 404 on refetch) become `updated` or `tombstone` rows, and the index reflects them within one ingest cycle.
+  - [ ] **CTXL-22** A stream's cursor advances only in the transaction that commits the last index write for its batch, and a kill between the two re-ingests without duplicates.
+  - [ ] **CTXL-23** A full listing per stream runs on its schedule in key order with resumable progress while incremental polling continues, diffs remote ids against local ids, and emits tombstones for ids that vanished.
+  - [ ] **CTXL-24** Slack ingests Socket Mode events and user-token history with cursor pagination at Tier 3, backfills per channel newest first, uses the user token for search and non-member channels, and without the user token shows `missing_scope` naming `search:read`.
+  - [ ] **CTXL-25** GitHub polls notifications through `gh api` with `If-Modified-Since` and `X-Poll-Interval`, lists issues and PRs with `since` and `sort=updated` through `gh api --paginate`, indexes code from local clones through the file connector, and never reads a token from `gh`.
+  - [ ] **CTXL-26** IMAP re-issues IDLE under 29 minutes, treats a `UIDVALIDITY` change as a full resync, uses QRESYNC when advertised, parses bodies with mail-parser, reads the credential from the keychain, and never touches the Gmail API unless enabled.
+  - [ ] **CTXL-27** CalDAV uses `sync-collection` with the stored token, resyncs fully on the precondition error, falls back to `getctag` where RFC 6578 is absent, the Google Calendar option uses `syncToken` and handles 410, and events carry start, end, attendees and status.
+  - [ ] **CTXL-28** The file connector uses FSEvents through notify with the stored event id and volume UUID, replays since the id on start, rescans on `MustScanSubDirs` or a UUID change, honours gitignore and mote's ignore list, uses Spotlight only for discovery with `-onlyin`, and a 300,000-file tree yields under 5,000 documents with default ignores.
+  - [ ] **CTXL-29** Apple Mail, Notes, Calendar and Messages are read by the Mac client from a copy of each store opened read-only, each is its own connection with its own switch (Messages off by default), a TCC denial shows `denied` with the Full Disk Access fix, and a store schema the reader does not recognize shows `error` with the macOS version.
+  - [ ] **CTXL-30** Chrome, Brave and Safari history and bookmarks are read from a copy per profile, each profile is a connection with a realm, visit times convert from the WebKit and Apple epochs, and no page content is fetched.
+  - [ ] **CTXL-31** Linear and Notion poll with `updatedAt` and `last_edited_time` cursors under 2,500 requests per hour and 180 per minute, index only pages shared with the integration, and have webhooks disabled until a relay exists.
+  - [ ] **CTXL-32** The web connector fetches only explicit URLs, honours `robots.txt`, sends at most one request per second per host, extracts main text with dom_smoothie, stores snapshots with `fetched_ms` and TTL, and uses a lent browser session only for allowlisted domains with the switch on.
+  - [ ] **CTXL-33** Agent transcripts from Claude Code, Codex and Overseer index as documents with user and assistant text only, tool outputs excluded, under the project path's realm.
+  - [ ] **CTXL-34** The index lives in `index.sqlite` with `doc`, `chunk`, `chunk_fts`, `chunk_vec`, `link`, `mention`, `inbox` and `stream`, has its own writer, and an ingest transaction never delays an event-log append beyond 5 ms at p99.
+  - [ ] **CTXL-35** Ingestion normalizes, redacts, excludes, dedupes by content hash and simhash, chunks at 400 tokens with a situating header, embeds with model2vec int8, writes in batches, links entities by canonical key, and makes no model call.
+  - [ ] **CTXL-36** Re-ingesting an unchanged document is a no-op, a changed document replaces its chunks and vectors in one transaction, and a near-duplicate links `duplicate_of` and is not indexed twice.
+  - [ ] **CTXL-37** Every doc carries `event_ms`, `updated_ms` and `observed_ms`, and the planner filters by source time window.
+  - [ ] **CTXL-38** Ingest pauses within 50 ms of a talk turn start and resumes after it, and backfill never uses more than one core.
+  - [ ] **CTXL-39** Talk retrieval fuses FTS5 and vec0 over the hot partition with RRF k 60, recency decay per kind, the working-set boost and dedupe, and returns at most 8 items under 600 tokens within 40 ms p50 and 80 ms p95 at 500,000 chunks.
+  - [ ] **CTXL-40** Think retrieval adds entity seeds, a walk bounded to 2 hops, 200 edges and 20 edges per node, PPR, both vector tiers and explicit filters, returns at most 20 items under 4,000 tokens within 250 ms p95, and marks a deadline miss `partial`.
+  - [ ] **CTXL-41** A hub node with 4,000 edges does not push think retrieval past its deadline.
+  - [ ] **CTXL-42** `moted bench context membench` replays LoCoMo and LongMemEval_S through the real ingest path and prints recall@5, recall@10, MRR, latency and tokens for `fts`, `vec`, `fused` and `fused+graph`, and `fused` beats both single lanes on recall@10.
+  - [ ] **CTXL-43** At or above 250,000 vectors the think lane uses binary-first rescoring or the `ann` feature and keeps its deadline.
+  - [ ] **CTXL-44** The planner never classifies natural-language query text with regexes, and source and time filters come only from structured tokens.
+  - [ ] **CTXL-45** Evidence parts carry cite id, realm, source, kind, pointer, title, author fingerprint, time, age, tokens and redacted text, and are ordered by `(realm, source, event_ms, position)` after the budget cut.
+  - [ ] **CTXL-46** The model cites with `[c<n>]` markers, the daemon maps each marker to its pointer on the card, drops unknown markers and counts them in the ledger row, and each citation chip opens the source.
+  - [ ] **CTXL-47** Raw redacted text is the default, a summary replaces it only for documents over 1,500 tokens from a structured verdict parsed fail-closed and cached by hash and model, and a malformed verdict leaves the raw head.
+  - [ ] **CTXL-48** The spike measures the SQLite store and the `lbug` 0.21.2 store on the replays and the synthetic hub graphs against the gate in the storage section, and the result is recorded before any engine change.
+  - [ ] **CTXL-49** Graph storage sits behind a `GraphStore` trait with the SQLite implementation as default, the walk bounded as above, and the `lbug` implementation behind a feature that is off by default.
+  - [ ] **CTXL-50** Every crate used by `mote-index` and `mote-connectors` is pinned to an exact version or a git tag, and `cargo tree` shows no `lbug` or `surrealdb` in the default build.
+  - [ ] **CTXL-51** The index grows by at most 80 MB per 10,000 documents at 2 KB average text, ingest sustains 200 documents per second with embedding, and the two crates add at most 150 MB resident.
+  - [ ] **CTXL-52** The coverage report takes at most 5 ms, the query log write at most 1 ms, and the context layer adds at most 0.2 percentage points of idle CPU over 10 minutes with connectors on.
+  - [ ] **CTXL-53** Nothing from the index, inbox, registry, query log or token store leaves the machine except redacted pack parts in a model call, and connector traffic goes only to the connector's own host.
+  - [ ] **CTXL-54** A planted secret in any source never appears in `index.sqlite`, `mote.sqlite`, a pack, a ledger row or a card.
+  - [ ] **CTXL-55** Opt-outs per connection, stream, path, domain, kind and realm are enforced before indexing, and a later opt-out deletes already-indexed items from that scope.
+  - [ ] **CTXL-56** A source tombstone removes chunks, FTS rows, vectors, links and mentions within one ingest cycle, marks derived memory nodes `source_deleted`, "forget this" on an evidence chip does the same with an event, and secret-bearing and binary files are never indexed.
+- [ ] **[Memory graph](docs/reuse/memory.md)**
+  - [ ] **MEM-00** The owner approves the memory model (SQLite with sqlite-vec, model2vec and petgraph, temporal edges, no LLM call per write) and the pinning policy.
+  - [ ] **MEM-01** The context store holds `mem_node`, `mem_edge`, `mem_fts`, `mem_vec`, `mem_working` and `mem_pack` tables inside the daemon's SQLite file, and every node and edge carries a `source_seq` that resolves to an event-log row.
+  - [ ] **MEM-02** An episodic write embeds locally and completes in one transaction with no model call.
+  - [ ] **MEM-03** Edges carry `valid_from`, `valid_to`, `created_at` and `expired_at`, a superseding fact closes the old edge without deleting it, and both "true on date D" and "believed on date D" queries answer correctly.
+  - [ ] **MEM-04** The memory tool and the reflect job emit a JSON verdict with `action` in `add`, `supersede` or `noop`, and any malformed verdict becomes `noop` with a visible card.
+  - [ ] **MEM-05** Retrieval fuses vector, keyword, graph walk and recency with reciprocal rank fusion inside the lane's token budget, and the pack is recorded against the ledger row of the call.
+  - [ ] **MEM-06** Talk lane retrieval returns within 40 ms at p50 and 80 ms at p95 with 10,000 memories on the Mac.
+  - [ ] **MEM-07** Think lane retrieval with the graph walk returns within 250 ms at p95 with 10,000 memories on the Mac, and a deadline miss returns a pack marked `partial`.
+  - [ ] **MEM-08** The database grows by no more than 50 MB per 10,000 memories with int8 vectors.
+  - [ ] **MEM-09** Every node and edge change is an event, and the window can revert any change to the prior state.
+  - [ ] **MEM-10** Every crate used by `mote-memory` is pinned to an exact version or a git tag, and the model weights are pinned by content hash.
+  - [ ] **MEM-11** `moted bench membench` imports LongMemEval_S and LoCoMo into the event log and prints recall@5, recall@10, MRR, latency and tokens per configuration with no network.
+  - [ ] **MEM-12** Decayed or expired memories drop out of packs but remain queryable by sequence, and compaction into a summary runs only after owner approval.
+  - [ ] **MEM-13** The working set per thread caps at 64 rows, evicts by age unless pinned, and leads every pack for that thread.
+  - [ ] **MEM-14** The same bench meets the Pi targets on a Raspberry Pi 5.
+- [ ] **[Context packs and ledger](docs/reuse/context.md)**
+  - [ ] **CTX-00** The owner approves the pack model, the cache-stable part order, and whether `--bare` is ever passed.
+  - [ ] **CTX-01** Every model call stores a pack with ordered parts, each with kind, source reference, redacted-content hash and token estimate, and its ledger row points at that pack.
+  - [ ] **CTX-02** Two consecutive packs of one thread are byte-identical up to the first changed part, and only parts at or after it differ.
+  - [ ] **CTX-03** Budgets per lane are enforced by cutting the lowest-priority parts first, the turn part is never cut, and cut parts are recorded with `cut = 1`.
+  - [ ] **CTX-04** Token estimates use `o200k_base` times a per-model ratio learned from exact counts, and after 50 live turns the estimate is within 10% of exact for each model used.
+  - [ ] **CTX-05** Ledger rows carry the OTel names for input, output, cache read, cache write and reasoning tokens, first-token and total latency, and a USD estimate when the harness reports one.
+  - [ ] **CTX-06** The think lane never changes the system prompt text, the tool set or the model within a session, and a required change opens a new session with `cache_break_expected = 1` on the next row.
+  - [ ] **CTX-07** Ollama prompts place volatile parts last, and a repeated prefix shows `prompt_eval_duration` under 20% of the cold call.
+  - [ ] **CTX-08** Compaction is staged: stubs first, then a summary from a structured verdict parsed fail-closed, and a malformed summary leaves the stubs in place.
+  - [ ] **CTX-09** A compaction summary lists every failed action and refusal from the compacted span, and a scripted agent does not repeat a failed action after compaction.
+  - [ ] **CTX-10** The "what did you know" action on any card lists every part of that call's pack with kind, source, age and tokens within 100 ms.
+  - [ ] **CTX-11** Connector snapshots store `fetched_ms`, validator and TTL, GitHub polls send `If-None-Match` or `If-Modified-Since` and respect `X-Poll-Interval`, and Slack history polls stay at or under one request per minute with 15 items.
+  - [ ] **CTX-12** Every part is redacted before hashing, and a planted secret in a snapshot never appears in a pack, a ledger row or a card.
+  - [ ] **CTX-13** Daily and per-lane ledger totals are queryable and the window shows them.
+- [ ] **[Hardware path](docs/reuse/hardware.md)**
+  - [ ] **HW-00** The owner approves the Pi 5 parts list and the relay trust boundary before any purchase or build.
+  - [ ] **HW-01** The owner approves the parts list above or an amended one, and the amendment is recorded in this document.
+  - [ ] **HW-02** A `moted` binary built on the Mac with `cargo zigbuild --target aarch64-unknown-linux-gnu.2.36` runs on Raspberry Pi OS Lite Trixie with no extra packages.
+  - [ ] **HW-03** The Pi boots to `multi-user.target` and mote owns `DSI-1` at 720 by 1280 through DRM/KMS with no X11 or Wayland process.
+  - [ ] **HW-04** Touch events arrive through evdev as multitouch with axes mapped to the landscape frame, and a 44-pixel target is hit at all four corners.
+  - [ ] **HW-05** Idle CPU stays under 3% and the renderer RSS under 100 MB with a surface on screen, and scrolling holds at least 30 fps on the software path.
+  - [ ] **HW-06** The Pi client reconnects to the Mac's gateway after a 60 s Wi-Fi cut, resumes from its cursor, and shows nothing twice.
+  - [ ] **HW-07** With display, cooler and the audio device attached, a 10 minute scroll and playback run reports no undervoltage.
+  - [ ] **HW-08** Ten minutes of sustained local inference stays under 80 C with the Active Cooler and no throttle flag.
+  - [ ] **HW-09** `moted bench talk` on the Pi reports prefill and decode tokens per second for a 1.5B and a 3B model, and open decision 7 is resolved from the numbers.
+  - [ ] **HW-10** Full-duplex capture while playing a tone shows at least 20 dB of echo attenuation from the chosen device's hardware AEC.
+  - [ ] **HW-11** A relay threat table lists what the relay sees and never sees, a test relay forwards opaque frames end to end, and a hostile relay that replays message 1 is refused by the counter check.
+  - [ ] **HW-12** Overseer's `phone/core` client pairs with mote's gateway using prologue `mote-gateway-v1` and prefix `MOTE1` and passes the mote Noise vectors.
+- [ ] **[Event log](docs/reuse/eventlog.md)**
+  - [ ] **LOG-00 The owner approves the single-table SQLite event log design in docs/reuse/eventlog.md.
+  - [ ] **LOG-01** `migrate` creates the schema above and renames Overseer's `run_id` and `task_id` columns once when they exist.
+  - [ ] **LOG-02** `append` redacts the payload and returns a seq strictly greater than every earlier seq, including after a prune.
+  - [ ] **LOG-03** Replay after any cursor returns every retained event once, in order, with no gap, after a 12,000 append burst.
+  - [ ] **LOG-04** A subscriber on a capacity-1 bus sees `Lagged`, resumes with `after(cursor)`, and ends with every seq once.
+  - [ ] **LOG-05** `subscribe` sends replay, `replayed`, then live events, delivers each seq exactly once when the connection is cut at 100 random points, and sends `resync` on lag.
+  - [ ] **LOG-06** The connection applies the six PRAGMAs.
+  - [ ] **LOG-07** `prune_scope` keeps 5,000 rows, never deletes `retention` markers, writes `events_truncated_through_seq`, and `oldest_retained` reports the new minimum.
+  - [ ] **LOG-08** The WAL file is under 64 MB after 100,000 appends with the checkpoint task running.
+  - [ ] **LOG-09** Append p50 under 1 ms and 10,000 per second, replay of 1,000 under 20 ms.
+  - [ ] **LOG-10** A window closed mid-turn and reopened shows every event once.
+  - [ ] **LOG-11** A process killed with SIGKILL mid-append leaves a database that passes `PRAGMA integrity_check` and holds every committed seq.
+  - [ ] **LOG-12** A payload over 256 KiB is stored truncated with `truncated: true`.
+- [ ] **[Scripted-model testing](docs/reuse/testing.md)**
+  - [ ] **TEST-00 The owner approves the test kit plan in docs/reuse/testing.md.
+  - [ ] **TEST-01** `scripted-model` serves `/api/chat` as newline JSON chunks ending in `done: true` with eval counts, plus `/api/tags`, `/api/ps`, `/api/show` and `/health`, from a JSON script, under 20 MB RSS.
+  - [ ] **TEST-02** A `format` request returns the scripted object as `message.content`, and `stream: false` returns one object.
+  - [ ] **TEST-03** `fake-claude` reproduces every `claude-fixture.js` mode byte for byte on stdout for the shared modes and adds `partial` and `mcp`.
+  - [ ] **TEST-04** `cargo test --workspace` passes with networking disabled.
+  - [ ] **TEST-05** `MOTE_RECORD` writes redacted transcripts and the golden test replays them into `Norm` snapshots.
+  - [ ] **TEST-06** Overseer's four transcripts replay to the same `Norm` sequence at parser version `2026-09-24.1`.
+  - [ ] **TEST-07** `mote-testkit::Daemon::start` spawns `moted serve` in a temp home, and `call`, `raw`, `events`, `wait_status` and `Drop` behave as Overseer's helper.
+  - [ ] **TEST-08** Property tests show the router parser never returns `talk` for arbitrary bytes, redaction is idempotent, and the tree validator rejects unknown nodes, 1,000 cases each.
+  - [ ] **TEST-09** Watcher tests run under paused time and finish under 1 s each.
+  - [ ] **TEST-10** Slack and GitHub tests use wiremock and assert no other host is contacted.
+  - [ ] **TEST-11** The suite finishes under 90 s and no test except `slow` tagged ones exceeds 10 s.
+  - [ ] **TEST-12** Live checks are `#[ignore]` behind `MOTE_LIVE=1` and write their output to `docs/verification/`.
+- [ ] **[Browser use](docs/reuse/browser.md)**
+  - [ ] **BROWSE-00** The owner approves the two-mode browser design, the per-character profiles, and the rule that the Chrome default profile and its keychain item are never read.
+  - [ ] **BROWSE-01** `moted browser install` downloads the pinned Chrome for Testing for the host platform, verifies the version string, and `mote-browser` launches it with a per-character, per-mode `--user-data-dir` on a loopback port.
+  - [ ] **BROWSE-02** `browser_snapshot` returns one line per node with stable refs, the interactive filter on by default, and a 12,000 token cap with a notice.
+  - [ ] **BROWSE-03** `browser_click`, `browser_type` and `browser_select` act on refs, a stale ref after navigation returns an error that names re-snapshot, and no action runs on a page without a current snapshot.
+  - [ ] **BROWSE-04** A click whose verdict is `commit`, a malformed verdict, a submit control inside a form, a non-GET fetch, a download and an OAuth host each insert an `approvals` row and nothing happens until it is `approved`.
+  - [ ] **BROWSE-05** Read actions never insert approvals and fill actions run only on allowed sites.
+  - [ ] **BROWSE-06** mote never opens the Chrome default profile path and never reads the keychain.
+  - [ ] **BROWSE-07** Page text reaches the think lane only inside a boundary-marked tool result, and an injected instruction on a fixture page is quoted in the card and not executed.
+  - [ ] **BROWSE-08** Every step writes a `browser_step` event and a ledger row with token estimate, every `commit` keeps before and after screenshots, and every task keeps a redacted HAR.
+  - [ ] **BROWSE-09** The local headed profile keeps a sign-in across Chrome restarts and the cloud profile holds only lent sites.
+  - [ ] **BROWSE-10** `moted browser lend <site>` exports only that domain's cookies, needs an approval, and the row shows domain and cookie count.
+  - [ ] **BROWSE-11** The coverage map records `signed_in`, `signed_out`, `blocked` or `unknown` per site and mode, a redirect to the configured login URL yields `signed_out`, and a malformed verdict yields `unknown`.
+  - [ ] **BROWSE-12** A character asked about a site the current mode cannot reach replies with a card that names the mode and the action the owner can take.
+  - [ ] **BROWSE-13** When mote-client connects, tasks whose site is reachable only locally move to the local host, and when it disconnects mid-task the cloud host reopens the URL, re-snapshots and refills from `form_state` within 5 s.
+  - [ ] **BROWSE-14** A pending approval survives a handoff and is answerable from the window, the phone client or Slack for listed kinds, and `buy` and `send` never accept Slack.
+  - [ ] **BROWSE-15** Cloud downloads land under the cloud data directory and the window offers Fetch, local downloads land under `~/Downloads/mote/<task>`.
+  - [ ] **BROWSE-16** `browser_fetch` with GET runs in the page context with the site's cookies and non-GET methods need approval.
+  - [ ] **BROWSE-17** The DoorDash journey ends in a UI tree card with a map, a provider widget or a food bag and the minutes underneath, rendered by mote-ui from a fixture order page.
+  - [ ] **BROWSE-18** Snapshot p50 tokens are at most 4,000 and step p50 latency at most 1.5 s on the seed sites.
+- [ ] **[Shared crates from Overseer](docs/rfcs/shared-crates.md)**
+  - [ ] **CRATE-00** The owner approves the shared-crates RFC and its extraction order.
+  - [ ] **CRATE-01** Nine crates exist under `crates/` with a README naming their Overseer source.
+  - [ ] **CRATE-02** `mote-redact` matches Overseer's redaction patterns and secret keys.
+  - [ ] **CRATE-03** `mote-paths` reproduces Overseer's socket path for an Overseer app id.
+  - [ ] **CRATE-04** `mote-eventlog` appends with increasing seq, replays after any cursor without gaps or duplicates, and prunes with a retention marker.
+  - [ ] **CRATE-05** A lagging subscriber gets a resync signal and resumes from the durable log without loss.
+  - [ ] **CRATE-06** `mote-ipc::serve` binds a 0600 socket in a 0700 directory, refuses other uids and oversized requests, and answers standard error codes.
+  - [ ] **CRATE-07** Both IPC clients reconnect and resubscribe from their cursor so nothing is delivered twice.
+  - [ ] **CRATE-08** `mote-harness::launch` builds Overseer's argv, stdin and env for every harness and never forwards a forbidden key.
+  - [ ] **CRATE-09** `mote-harness::parse` turns the four transcript fixtures into Overseer's `Norm` sequence.
+  - [ ] **CRATE-10** The supervisor records output segments, serves its control socket, and keeps the harness alive when its parent dies.
+  - [ ] **CRATE-11** Claude partial messages become `Norm::Partial` and the final text is still emitted once.
+  - [ ] **CRATE-12** `mote-accounts` isolates credential folders, reports API-key logins as not usable, and never leaks secrets.
+  - [ ] **CRATE-13** `mote-usage` parses Codex and Claude limit events, normalizes usage payloads, and round-trips ledger rows.
+  - [ ] **CRATE-14** `mote-localmodel` reads real memory, computes budgets as Overseer's tests expect, and streams `/api/chat`.
+  - [ ] **CRATE-15** `mote-gateway` reproduces Overseer's Noise vectors and passes the ported pairing, session and exactly-once tests.
+  - [ ] **CRATE-16** Overseer on `main` consumes the seven core crates by path with every protocol and TUI test green and an existing database opening.
+  - [ ] **CRATE-17** Every crate carries the MIT license and a derivation notice, and the fixtures contain nothing redaction would change.
+- [ ] **[UI language research](docs/rfcs/ui-language.md)**
+  - [ ] **UI-00** The owner reviews the UI language RFC, keeps or changes its wire-format and state-model recommendations, and approves its criteria.
+  - [ ] **UI-01** [tree] Compact nested JSON is the only wire form.
+  - [ ] **UI-02** [tree] The tree schema is generated, not hand-written.
+  - [ ] **UI-03** [tree] Short keys are never used.
+  - [ ] **UI-04** [tree] Token cost is measured in CI.
+  - [ ] **UI-05** [tree] Limits are enforced.
+  - [ ] **UI-06** [lang] Every section 6 example parses, lowers, and matches its tree.
+  - [ ] **UI-07** [lang] The decompiler round-trips.
+  - [ ] **UI-08** [lang] The formatter is idempotent and semantics-preserving.
+  - [ ] **UI-09** [lang] Casing is compiler-invariant.
+  - [ ] **UI-10** [lang] Unknown words and modifiers fail closed.
+  - [ ] **UI-11** [lang] Scope rules are checked.
+  - [ ] **UI-12** [lang] Action contracts are derived from declarations.
+  - [ ] **UI-13** [lang] Strings never carry markup.
+  - [ ] **UI-14** [lang] Grammars are exported and accepted.
+  - [ ] **UI-15** [both] Scrolling is implicit.
+  - [ ] **UI-16** [both] Focus and keyboard work without declarations.
+  - [ ] **UI-17** [both] Touch targets meet the minimum.
+  - [ ] **UI-18** [both] Selection is implicit from `select`.
+  - [ ] **UI-19** [both] Loading, empty, and error states appear without declarations.
+  - [ ] **UI-20** [both] Theme follows the system.
+  - [ ] **UI-21** [both] Responsive layout is implicit.
+  - [ ] **UI-22** [both] Every node has an accessibility role and name.
+  - [ ] **UI-23** [both] Style words are the only styling.
+  - [ ] **UI-24** [both] Validity rate is measured per model and format.
+  - [ ] **UI-25** [both] Interaction state survives re-render.
+  - [ ] **UI-26** [both] No declared store exists.
+  - [ ] **UI-27** [both] No routes exist.
+  - [ ] **UI-28** [both] Built-in actions never reach the model.
+  - [ ] **UI-29** [both] Events are validated against contracts.
+  - [ ] **UI-30** [both] Data-bound nodes update without a model turn.
+  - [ ] **UI-31** [tree] Partial JSON renders progressively.
+  - [ ] **UI-32** [lang] Partial language renders per line.
+  - [ ] **UI-33** [both] Interactive nodes never fire while open.
+  - [ ] **UI-34** [both] Layout is stable during streaming.
+  - [ ] **UI-35** [both] Repair is bounded and visible.
+  - [ ] **UI-36** [both] Retry is one turn with diagnostics.
+  - [ ] **UI-37** [both] Constrained decoding is wired where supported.
+  - [ ] **UI-38** [both] The UI block is last and unconstrained reasoning precedes it.
+  - [ ] **UI-39** [tree] The Tauri renderer has no model-reachable HTML, CSS, or JS.
+  - [ ] **UI-40** [tree] Streaming reaches the webview over a Channel.
+  - [ ] **UI-41** [lang] Slint renders every fixture on the Pi over DRM.
+  - [ ] **UI-42** [lang] Golden parity across targets.
+  - [ ] **UI-43** [both] Headless layout invariants hold.
+  - [ ] **UI-44** [lang] Fallback renderer is proven.
+  - [ ] **UI-45** [both] Diagnostics are stable and machine-readable.
+  - [ ] **UI-46** [lang] Compile time is bounded.
+  - [ ] **UI-47** [lang] Slint compile per surface is bounded or replaced.
+  - [ ] **UI-48** [both] Fixtures are the contract.
+
+### Deferred
+
+- [ ] **[Raspberry Pi touchscreen renderer](docs/rfcs/mote.md#decisions-from-the-owner-2026-10-08)**
+  - [ ] **DEF-01** The owner approves the Pi hardware, the Rust-native renderer and the input model before implementation.
+- [ ] **[Cloud connector and relay](docs/rfcs/mote.md#decisions-from-the-owner-2026-10-08)**
+  - [ ] **DEF-02** The owner approves a relay design that keeps the Mac as the only place work runs.
+- [ ] **[Voice for the talk lane](docs/reuse/voice.md)**
+  - [ ] **DEF-03** The owner approves a local-first speech-to-text and text-to-speech approach.
+  - [ ] **VOICE-01** `cpal` capture delivers 16 kHz mono 16 ms frames on macOS and on the Pi's Linux.
+  - [ ] **VOICE-02** STT transcribes the fixture set with a word error rate at most 2 points above the chosen model's published WER.
+  - [ ] **VOICE-03** TTS first audio arrives within the target for a 20-word sentence.
+  - [ ] **VOICE-04** Speech during playback stops playback within the target, cancels the talk stream, and the event log marks the reply as interrupted at the last played word.
+  - [ ] **VOICE-05** Playback of a fixture through the speaker does not trigger VAD on the mic.
+  - [ ] **VOICE-06** End of speech is detected within the target on fixtures with silence tails.
+  - [ ] **VOICE-07** Every STT and TTS call writes a ledger row with model, audio seconds, wall time and real-time factor.
+  - [ ] **VOICE-08** The voice process opens no outbound socket.
+  - [ ] **VOICE-09** The Pi profile picks the Pi models under 16 GiB total memory.
+  - [ ] **VOICE-10** Speech end to first audio p50 is within the target on each machine.
+  - [ ] **VOICE-11** No GPL-3.0 code links into `moted`.
+- [ ] **[UI language compiler](docs/rfcs/ui-language.md)**
+  - [ ] **DEF-04** Starts only after UI-00 and the language criteria it adds are approved.
+- [ ] **[Codex as a think lane option](docs/rfcs/mote.md#open-decisions)**
+  - [ ] **DEF-05** The owner approves Codex as a second think lane harness.

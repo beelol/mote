@@ -1,0 +1,88 @@
+<title>mote Under the Hood</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&display=swap">
+<style>
+/* Layout: one engineering piece per screen, big statement, one line of how, three facts. Same system as the promises page. */
+:root{
+  --bg:#ffffff; --fg:#1a1216; --muted:#76646c; --line:#eadfe4; --accent:#d9305d; --leaf:#5f9a3c; --wash:#fbeef3;
+  --sans:"Geist",-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171114; --fg:#f6eef1; --muted:#a8949c; --line:#332328; --accent:#f04a7e; --leaf:#86c45f; --wash:#2a1620; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171114; --fg:#f6eef1; --muted:#a8949c; --line:#332328; --accent:#f04a7e; --leaf:#86c45f; --wash:#2a1620; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:17px;line-height:1.45;letter-spacing:-0.005em}
+.deck{height:100dvh;overflow-y:auto;scroll-snap-type:y mandatory;scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){.deck{scroll-behavior:auto}}
+.s{min-height:100dvh;scroll-snap-align:start;display:grid;align-content:center;gap:22px;padding-block:72px;padding-inline:clamp(20px,8vw,140px);max-width:1180px;margin:0 auto}
+.n{font-size:14px;color:var(--leaf);font-weight:500;font-variant-numeric:tabular-nums}
+h1{font-size:clamp(34px,6.4vw,80px);font-weight:500;letter-spacing:-0.025em;line-height:1.02;margin:0;text-wrap:balance;max-width:16ch}
+h1 em{font-style:normal;color:var(--accent)}
+.how{font-size:clamp(17px,1.7vw,22px);color:var(--muted);max-width:44ch;margin:0;line-height:1.4}
+.small{font-size:14px;color:var(--muted);max-width:60ch;margin:0}
+.facts{display:grid;gap:6px;font-size:15px;color:var(--muted);max-width:56ch;padding-left:0;list-style:none;margin:0}
+.facts li::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--leaf);margin-right:10px;vertical-align:middle}
+.cover{background:radial-gradient(120% 90% at 0% 100%,var(--wash) 0%,transparent 60%)}
+.cover h1{max-width:14ch}
+.list{display:grid;gap:10px;font-size:15px;max-width:60ch;color:var(--muted)}
+.list a{color:var(--fg);text-decoration:none;border-bottom:1px solid var(--line)}
+.list a:hover{border-color:var(--accent)}
+hr{border:0;border-top:2px solid var(--leaf);margin:0;width:48px}
+.rail{position:fixed;left:16px;top:50%;transform:translateY(-50%);display:grid;gap:9px;z-index:2}
+.rail a{width:5px;height:5px;border-radius:50%;background:var(--line);display:block}
+.rail a.on{background:var(--accent)}
+.counter{position:fixed;right:20px;bottom:16px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;z-index:2}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media (max-width:700px){.rail{display:none}}
+</style>
+
+<nav class="rail" aria-label="Screens"></nav>
+<div class="counter" aria-live="polite">1 / 21</div>
+
+<main class="deck" id="deck">
+
+<section class="s" id="t0"><div class="n">How it is built</div><h1>One daemon in Rust, <em>on a machine you pick.</em></h1><p class="how">Twenty-two screens of engineering, in the same order as the promises they deliver.</p><ul class="facts"><li>Repository ~/projects/mote. Board in the README under Ready for Go.</li><li>Every piece has a reuse document in docs/reuse and criteria on the board.</li><li>Planning finished 2026-10-08. No code yet.</li></ul></section>
+<section class="s" id="t1"><div class="n">01</div><h1>Four parts, <em>one of them holds state.</em></h1><p class="how">mote-cloud is the engine: lanes, memory, context, log, ledger. mote-client is the chat app. mote-ui is the renderer, alone on a Pi or inside the client. mote-talk is voice.</p><ul class="facts"><li>One Mac runs mote-cloud and mote-client together today. The same client reaches a server later. The Pi stores nothing.</li><li>Unix socket locally. A WebSocket gateway with a Noise handshake for everything else.</li><li>Closing a client never ends a thread.</li></ul></section>
+<section class="s" id="t2"><div class="n">02</div><h1>Talk lane: <em>a local model first.</em></h1><p class="how">Ollama runs qwen3:4b on the Mac. Haiku through your Claude subscription when the Mac cannot.</p><ul class="facts"><li>Warm 1B to 4B models answer in 22 to 90 ms to first token on Apple Silicon.</li><li>The memory gate loads a model only when free memory is 1.25 times its size.</li><li>The Pi cannot hit 300 ms with prefill, so it stays a client of the Mac for talk.</li></ul></section>
+<section class="s" id="t3"><div class="n">03</div><h1>Attention: <em>is this for me?</em></h1><p class="how">Voice activity, a speaker embedding and a 0.6B scorer over the last few seconds of transcript produce one calibrated sureness.</p><ul class="facts"><li>No open model for device-directed speech exists. The Amazon and Apple pattern is ported.</li><li>Bands default to answer at 75, ask between 40 and 75, silent below. All settings.</li><li>Every verdict is logged with its reason.</li></ul></section>
+<section class="s" id="t4"><div class="n">04</div><h1>Router: <em>a trained head, not a tiny LLM.</em></h1><p class="how">Small embeddings plus a logistic head decide talk, think or work in 2 to 4 ms. Abstentions go to the resident talk model as judge.</p><ul class="facts"><li>Sub-2B models score under 50% zero-shot on intent benchmarks. A trained head on small embeddings reaches about 86% from 8 examples per class.</li><li>One fail-closed parser is the only producer of a route. Malformed never means talk.</li><li>Rules read only structural signals such as a code fence or a diff header.</li></ul></section>
+<section class="s" id="t5"><div class="n">05</div><h1>Think lane: <em>Claude Code as a child process.</em></h1><p class="how">One claude -p per turn, streaming partial messages, resumed per thread, under your login.</p><ul class="facts"><li>Never with the bare flag: bare mode skips the keychain login and needs an API key.</li><li>Tools come from one moted mcp server: memory, delegate, Slack read. GitHub through an allowlisted gh.</li><li>An expired login is classified as auth and becomes a sign-in card. The turn waits.</li></ul></section>
+<section class="s" id="t6"><div class="n">06</div><h1>Work lane: <em>your Mac when it is on, the device when it is not.</em></h1><p class="how">With the Mac up, mote starts an Overseer run over its socket and mirrors every event. With the Mac off, the device plans what it can do alone and queues the rest.</p><ul class="facts"><li>A persistence loop retries, lines up alternatives, and waits for you only when truly blocked.</li><li>Overseer owns worktrees, accounts and diffs. mote owns the thread and the cards.</li><li>Both of these need criteria. They are new as of today.</li></ul></section>
+<section class="s" id="t7"><div class="n">07</div><h1>Context layer: <em>reach everything, efficiently.</em></h1><p class="how">Connectors sync Slack, mail, calendar, files, code and the web into one local index. Retrieval and consumption serve every lane under a budget. A coverage map says what mote can and cannot see.</p><ul class="facts"><li>Knowing what it does not know is a product promise, so the coverage map is first class.</li><li>The storage engine is open: SQLite with graph tables, or an embedded graph database. A spike decides.</li><li>The RFC is being written now.</li></ul></section>
+<section class="s" id="t8"><div class="n">08</div><h1>Memory: <em>a temporal graph.</em></h1><p class="how">Entities, events, procedures and summaries as nodes. Edges carry valid-from, valid-to, created and expired. Every row points at the event that caused it.</p><ul class="facts"><li>Writes are one transaction and zero model calls. Local embeddings from a 30 MB model.</li><li>Retrieval fuses vectors, full text, a two-hop walk and recency under a per-lane token budget.</li><li>None of the ten memory libraries in the post can be embedded in Rust. Ideas ported from Graphiti and Zep.</li></ul></section>
+<section class="s" id="t9"><div class="n">09</div><h1>Context packs <em>and the ledger.</em></h1><p class="how">Each call gets an ordered pack: system, profile, tools, memory, snapshots, summary, working set, turn. Each part carries a hash and a token estimate. The ledger row points at the pack.</p><ul class="facts"><li>Stable parts first, volatile parts last, so the prompt cache stays warm.</li><li>Usage comes from the claude -p result line and Ollama counters. Costs are deltas, since resume reports cumulative totals.</li><li>Column names follow the OpenTelemetry GenAI conventions.</li></ul></section>
+<section class="s" id="t10"><div class="n">10</div><h1>Event log: <em>one table, one cursor.</em></h1><p class="how">Append-only SQLite in WAL mode. Clients replay from a cursor and never see an event twice.</p><ul class="facts"><li>AUTOINCREMENT is required: pruning plus plain rowids can move a cursor backwards.</li><li>Lagging subscribers get a resync signal and resume from the durable log.</li><li>Targets: append under 1 ms, replay of 1,000 under 20 ms, 5,000 events kept per scope.</li></ul></section>
+<section class="s" id="t11"><div class="n">11</div><h1>Screens: <em>a small language to pixels.</em></h1><p class="how">Models emit a validated tree today and a small language later. Flexbox plus anchors, one theme per screen, typed bindings. A renderer the daemon owns turns it into animated pixels.</p><ul class="facts"><li>Compact JSON costs 512 tokens for three fixtures. The language 338.</li><li>The model emits whole surfaces. The renderer diffs and animates the difference.</li><li>Targets: Mac window, Pi touchscreen over DRM, PNG for tests, terminal through a pixel protocol.</li></ul></section>
+<section class="s" id="t12"><div class="n">12</div><h1>Chat surface: <em>sent, delivered, read, typing.</em></h1><p class="how">The texting feel from dots stays. Every message carries delivery and read state. Characters are a setting.</p><ul class="facts"><li>Built on the same event log: each state change is an event with a cursor.</li><li>Characters change voice, tone and name. They never change what mote may do.</li><li>Needs criteria. New as of today.</li></ul></section>
+<section class="s" id="t13"><div class="n">13</div><h1>Always-on: <em>supervised, gated.</em></h1><p class="how">launchd on the Mac and a systemd user unit on the Pi keep the daemon up. Watchers wake the router. Every outward action waits in an approvals table.</p><ul class="facts"><li>Slack through Socket Mode with a bot token you provide. GitHub by polling notifications.</li><li>Approve, Edit or Deny on a card. Approvals expire after 24 hours. Watchers can never approve.</li><li>Cron through a small scheduler over a schedules table.</li></ul></section>
+<section class="s" id="t14"><div class="n">14</div><h1>Hardware: <em>a Pi 5 as a client.</em></h1><p class="how">Pi 5 with 8 GB and the official 7 inch touch display, no desktop, DRM and evdev straight from Rust. About $276 before audio.</p><ul class="facts"><li>Cross-compiled from the Mac with cargo-zigbuild.</li><li>The gateway uses Overseer's Noise IK handshake. A relay sees only envelopes, never plaintext.</li><li>Echo cancellation in hardware or a pure-Rust AEC3 port.</li></ul></section>
+<section class="s" id="t15b"><div class="n">15</div><h1>Browser: <em>a real one, driven by the agent.</em></h1><p class="how">Two modes. Cloud: a headless browser on the machine you picked as the cloud, with only the sessions you gave it. Local: your own signed-in browser on the Mac, used to make calls and reach sites as you.</p><ul class="facts"><li>Pages are read as accessibility trees first and pixels second. A task moves between modes when the Mac comes online.</li><li>Form submits, purchases and sends go through the same approval gate as every outward action.</li><li>Sign-ins stay the owner's. The agent never creates accounts or types credentials.</li></ul></section>
+<section class="s" id="t15"><div class="n">16</div><h1>Shared crates: <em>nine, out of Overseer.</em></h1><p class="how">redact, paths, usage, eventlog, ipc, harness, accounts, localmodel, gateway. mote consumes them now. Overseer migrates in 11 proved steps.</p><ul class="facts"><li>Most of the source is pure functions over JSON values. The cuts are small.</li><li>Extraction order follows coupling. mote's first criteria need four crates.</li><li>MIT, with derivation notices per crate.</li></ul></section>
+<section class="s" id="t16"><div class="n">17</div><h1>Testing: <em>zero paid turns.</em></h1><p class="how">A scripted server speaks the Ollama wire format. A fake claude speaks stream-json. A fake Overseer answers the socket. Every lane runs deterministically.</p><ul class="facts"><li>Golden snapshots for parsers, property tests for fail-closed parsing, recorded transcripts replayed.</li><li>Network isolation is enforced by a loopback-only guard, not assumed.</li><li>Live checks run only behind a flag and are recorded with command, output and date.</li></ul></section>
+<section class="s" id="t17b"><div class="n">18</div><h1>Visibility: <em>click any stage.</em></h1><p class="how">A pipeline view inside the client, drawn by mote-ui. Each stage shows its live events, its config as controls, its numbers against budget, and every request it made.</p><ul class="facts"><li>Swap the think harness or a lane's model hot. The daemon validates fail-closed, applies next turn, and can revert from the event log.</li><li>Metrics are computed in Rust in the daemon from a ring buffer and the ledger. The view updates within one frame.</li><li>Opening the view adds no measurable latency to the lane it inspects.</li></ul></section>
+<section class="s" id="t17"><div class="n">19</div><h1>Security: <em>nothing leaks, nothing acts alone.</em></h1><p class="how">Owner-only data directory. Redaction before storage. No secret ever enters a model call. Memory changes only through one tool, visibly and reversibly.</p><ul class="facts"><li>Subscription logins stay in their harness's keychain. mote never copies them.</li><li>Outward actions need approval in the window.</li><li>The relay trust boundary is written down before any relay exists.</li></ul></section>
+<section class="s" id="t18"><div class="n">Where it stands</div><h1>Planned, <em>not yet built.</em></h1><p class="how">The board holds about 250 criteria, each with a Verify clause. A driver can start on the daemon core and the four core crates today.</p><ul class="facts"><li>Waiting on the owner: wire format, extraction order, memory model, a chat model to pull, a Slack token.</li><li>New today and without criteria: persistence loop, computer-off mode, the chat surface, characters, the context layer, browser use.</li><li>Everything is uncommitted in ~/projects/mote.</li></ul></section>
+
+</main>
+<script>
+(function(){
+  var deck=document.getElementById('deck');
+  var slides=Array.prototype.slice.call(document.querySelectorAll('.s'));
+  var rail=document.querySelector('.rail');
+  var counter=document.querySelector('.counter');
+  slides.forEach(function(s,i){var a=document.createElement('a');a.href='#'+s.id;a.setAttribute('aria-label','Screen '+(i+1));rail.appendChild(a);});
+  var dots=Array.prototype.slice.call(rail.children);
+  var current=0;
+  function setCurrent(i){current=i;dots.forEach(function(d,j){d.classList.toggle('on',j===i);});counter.textContent=(i+1)+' / '+slides.length;}
+  var io=new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting&&e.intersectionRatio>0.5){setCurrent(slides.indexOf(e.target));}});},{root:deck,threshold:[0.6]});
+  slides.forEach(function(s){io.observe(s);});
+  function go(i){i=Math.max(0,Math.min(slides.length-1,i));slides[i].scrollIntoView({block:'start'});setCurrent(i);}
+  document.addEventListener('keydown',function(ev){
+    if(ev.key==='ArrowDown'||ev.key==='PageDown'||ev.key===' '||ev.key==='ArrowRight'){ev.preventDefault();go(current+1);}
+    if(ev.key==='ArrowUp'||ev.key==='PageUp'||ev.key==='ArrowLeft'){ev.preventDefault();go(current-1);}
+    if(ev.key==='Home'){go(0);} if(ev.key==='End'){go(slides.length-1);}
+  });
+  setCurrent(0);
+})();
+</script>
