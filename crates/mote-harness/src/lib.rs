@@ -216,7 +216,8 @@ mod tests {
     "models": {{ "qwen3-coder:30b-64k": {{ "name": "qwen3-coder", "tool_call": true,
       "limit": {{ "context": 65536, "output": 4096 }} }} }} }} }},
   "tools": {{ "read": false, "list": false, "grep": false, "glob": false, "write": false,
-    "edit": false, "bash": false }},
+    "edit": false, "bash": false, "webfetch": false, "task": false, "todowrite": false,
+    "todoread": false }},
   "mcp": {{ "moted": {{ "type": "local", "command": ["{}", "mcp"] }} }}
 }}"#,
             moted.display()

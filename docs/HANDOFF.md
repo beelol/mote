@@ -9,7 +9,7 @@ Nothing here assumes chat history.
 - Contract: `docs/rfcs/v0.md`. Evidence: `docs/verification/<ID>.md`, one per item (including the
   items left open, which record their measured numbers or blockers).
 
-## State: 44 of 55 checked
+## State: 45 of 55 checked (V0-25 closed; V0-29 under measurement)
 
 `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` are green
 with no network. The three approved models are pulled (qwen3:0.6b, qwen3:4b, qwen3-coder:30b)
@@ -29,12 +29,9 @@ at 10k nodes.
 Nothing left can be closed by a driver without the owner's desktop, a deploy, or a model the
 contract fixed. Exact actions:
 
-1. **V0-25 (router macro-F1)** — left open by the contract (§7: measured miss is recorded and
-   left open). Improved from 0.333 to **0.847** (deterministic, temperature 0, sharpened prompt);
-   still just under the 0.85 gate. qwen3:0.6b is at its ceiling and enabling chain-of-thought for
-   accuracy would break the V0-26 latency gate. Further prompt tuning would overfit the 60-sample
-   kit, not add capability. This is a contract exception, not an owner action; improving the
-   router is a backlog item.
+1. **V0-25 (router macro-F1)** — CLOSED. Reframing the prompt around the talk lane having no
+   tools/memory, with a deterministic temperature-0 decode, reached macro-F1 **0.882** (>= 0.85),
+   reproducible. Box checked.
 
 2. **V0-29 (live think via OpenCode)** — PROGRESS: fixed two bugs (moted mcp data-dir crash;
    MCP initialize now echoes the client protocolVersion) and a manual run succeeded — the model
