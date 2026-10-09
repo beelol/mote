@@ -66,11 +66,13 @@ pub struct ChatOptions {
     /// When set, sent as Ollama's `think` flag. False disables chain-of-thought on thinking
     /// models (qwen3), which is what the latency-sensitive talk and router lanes want.
     pub think: Option<bool>,
+    /// When set, sent as `options.temperature`. 0 gives a deterministic greedy decode.
+    pub temperature: Option<f32>,
 }
 
 impl ChatOptions {
     pub fn new(num_ctx: u32) -> Self {
-        Self { num_ctx, keep_alive: KEEP_ALIVE.to_string(), format: None, think: None }
+        Self { num_ctx, keep_alive: KEEP_ALIVE.to_string(), format: None, think: None, temperature: None }
     }
     pub fn with_format(mut self, schema: Value) -> Self {
         self.format = Some(schema);
@@ -79,6 +81,11 @@ impl ChatOptions {
     /// Disable chain-of-thought for low latency.
     pub fn no_think(mut self) -> Self {
         self.think = Some(false);
+        self
+    }
+    /// Set the sampling temperature.
+    pub fn temperature(mut self, t: f32) -> Self {
+        self.temperature = Some(t);
         self
     }
 }
@@ -154,6 +161,9 @@ impl Ollama {
             "keep_alive": opts.keep_alive,
             "options": { "num_ctx": opts.num_ctx },
         });
+        if let Some(t) = opts.temperature {
+            body["options"]["temperature"] = json!(t);
+        }
         if let Some(schema) = &opts.format {
             body["format"] = schema.clone();
         }
@@ -259,7 +269,7 @@ impl Ollama {
         schema: Value,
         num_ctx: u32,
     ) -> Result<T, VerdictError> {
-        let opts = ChatOptions::new(num_ctx).with_format(schema).no_think();
+        let opts = ChatOptions::new(num_ctx).with_format(schema).no_think().temperature(0.0);
         let body = self.build_body(model, messages, &opts, false);
         let resp = self.post("/api/chat", &body).map_err(|_| VerdictError)?;
         let v: Value = resp.into_json().map_err(|_| VerdictError)?;

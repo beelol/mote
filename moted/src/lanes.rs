@@ -18,15 +18,35 @@ pub const TALK_BUDGET: usize = 600;
 
 /// The fixed few-shot prompt for the router, stored in the repo.
 pub const ROUTER_PROMPT: &str = "\
-You are a router. Classify the user's latest message into one of two lanes and reply with only a \
-JSON object {\"route\": \"talk\" | \"think\", \"reason\": string}. Use \"talk\" for chit-chat, \
-greetings, acknowledgements and simple questions a small model answers instantly. Use \"think\" \
-for anything needing tools, files, code, multi-step reasoning or memory lookup.\n\
+You are a strict router. Output ONLY a JSON object {\"route\": \"think\" | \"talk\", \"reason\": \
+string}. Never answer or perform the request yourself.\n\
+\n\
+Route \"talk\" when the WHOLE message is social filler with no request for information or action: \
+greetings (hi, hey, hey there, hello, morning, good morning), closings (bye, goodnight, see you), \
+thanks, acknowledgements (ok, cool, yep, sure, no worries), compliments, and pure smalltalk \
+(how are you, how was your day, what's your name, nice to meet you). These are ALWAYS talk even \
+though some are questions.\n\
+\n\
+Route \"think\" for any request to DO something with information, files or memory. Trigger verbs: \
+read, open, write, create, rename, find, search, grep, list, show, summarise, compute, count, \
+explain, fix, debug, refactor, convert, compare, analyse, plan, draft, remember, recall, look up, \
+trace, extract, check. Also route \"think\" for any real question seeking facts, and anything \
+mentioning a file, code, logs, notes, emails, a ticket, the past, or \"what did I/you\". Short \
+commands still count: \"list the files\", \"summarise the emails\", \"open the readme\" are think.\n\
+If unsure, choose \"think\".\n\
+\n\
 Examples:\n\
-user: hey there -> {\"route\":\"talk\",\"reason\":\"greeting\"}\n\
-user: thanks! -> {\"route\":\"talk\",\"reason\":\"acknowledgement\"}\n\
-user: read my config file and summarise it -> {\"route\":\"think\",\"reason\":\"needs file tools\"}\n\
-user: refactor this function -> {\"route\":\"think\",\"reason\":\"needs code reasoning\"}";
+hey there -> {\"route\":\"talk\",\"reason\":\"greeting\"}\n\
+morning! -> {\"route\":\"talk\",\"reason\":\"greeting\"}\n\
+what's your name -> {\"route\":\"talk\",\"reason\":\"smalltalk\"}\n\
+thanks! -> {\"route\":\"talk\",\"reason\":\"acknowledgement\"}\n\
+read my config file and summarise it -> {\"route\":\"think\",\"reason\":\"reads a file\"}\n\
+summarise the last ten emails -> {\"route\":\"think\",\"reason\":\"reads and summarises\"}\n\
+list the files in my downloads folder -> {\"route\":\"think\",\"reason\":\"lists files\"}\n\
+open the readme and list the sections -> {\"route\":\"think\",\"reason\":\"opens a file\"}\n\
+search my notes for the budget numbers -> {\"route\":\"think\",\"reason\":\"searches notes\"}\n\
+look up when I last changed my password -> {\"route\":\"think\",\"reason\":\"looks up a fact\"}\n\
+what did I tell you about my sister last week -> {\"route\":\"think\",\"reason\":\"memory recall\"}";
 
 /// The route a turn takes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,7 +76,7 @@ pub fn router_schema() -> serde_json::Value {
     json!({
         "type": "object",
         "properties": {
-            "route": { "type": "string", "enum": ["talk", "think"] },
+            "route": { "type": "string", "enum": ["think", "talk"] },
             "reason": { "type": "string" }
         },
         "required": ["route", "reason"]
@@ -436,9 +456,15 @@ mod tests {
             let actual_think = *label == "think";
             match (predicted_think, actual_think) {
                 (true, true) => tp += 1,
-                (true, false) => fp += 1,
+                (true, false) => {
+                    fp += 1;
+                    println!("  FP (talk->think): {text}");
+                }
                 (false, false) => tn += 1,
-                (false, true) => fn_ += 1,
+                (false, true) => {
+                    fn_ += 1;
+                    println!("  FN (think->talk): {text}");
+                }
             }
         }
         let f1 = |tp: i32, fp: i32, fn_: i32| -> f64 {
