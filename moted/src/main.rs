@@ -10,6 +10,7 @@ mod embed;
 mod gate;
 mod lanes;
 mod mcp;
+mod service;
 mod watchers;
 
 use charter::{Charter, CharterWatcher};
@@ -262,6 +263,14 @@ fn main() {
         Some("mcp") => run_mcp(),
         Some("bench") => run_bench(std::env::args().nth(2)),
         Some("status") => run_status(),
+        Some("install") => service::install().map_err(|e| {
+            eprintln!("moted install: {e}");
+            1
+        }),
+        Some("uninstall") => service::uninstall().map_err(|e| {
+            eprintln!("moted uninstall: {e}");
+            1
+        }),
         _ => run(),
     };
     if let Err(code) = result {
