@@ -9,6 +9,7 @@ mod config;
 mod gate;
 mod lanes;
 mod mcp;
+mod watchers;
 
 use charter::{Charter, CharterWatcher};
 use config::ConfigStore;
@@ -19,11 +20,17 @@ use mote_localmodel::Ollama;
 use mote_eventlog::{EventLog, Subscription};
 use mote_ipc::{codes, Dispatch, RpcError, Server};
 use serde_json::{json, Value};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use watchers::{WriteDecision, Watchers};
 
 const TALK_CTX: u32 = 32768;
 const ROUTER_CTX: u32 = 32768;
+
+fn now_ms() -> i64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+}
 
 struct Daemon {
     log: EventLog,
@@ -31,6 +38,8 @@ struct Daemon {
     character: Arc<Mutex<Charter>>,
     store: Mutex<ContextStore>,
     client: Ollama,
+    watchers: Mutex<Watchers>,
+    data_dir: PathBuf,
 }
 
 impl Daemon {
@@ -141,6 +150,82 @@ impl Dispatch for Daemon {
                 }
             }
             "turn" => self.handle_turn(&params),
+            "schedule.add" => {
+                let cron = params.get("cron").and_then(|c| c.as_str()).ok_or_else(|| {
+                    RpcError::invalid_params("schedule.add needs a cron")
+                })?;
+                let prompt = params.get("prompt").and_then(|p| p.as_str()).ok_or_else(|| {
+                    RpcError::invalid_params("schedule.add needs a prompt")
+                })?;
+                let enabled = params.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
+                let id = self
+                    .watchers
+                    .lock()
+                    .unwrap()
+                    .add_schedule(cron, prompt, enabled, now_ms())
+                    .map_err(|e| RpcError::internal(e.to_string()))?;
+                Ok(json!({ "id": id }))
+            }
+            "file.write" => {
+                let thread = params.get("thread").and_then(|t| t.as_str()).unwrap_or("main");
+                let path = params.get("path").and_then(|p| p.as_str()).ok_or_else(|| {
+                    RpcError::invalid_params("file.write needs a path")
+                })?;
+                let content = params.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                let decision = self
+                    .watchers
+                    .lock()
+                    .unwrap()
+                    .request_file_write(&self.data_dir, thread, std::path::Path::new(path), content, now_ms())
+                    .map_err(|e| RpcError::internal(e.to_string()))?;
+                Ok(match decision {
+                    WriteDecision::Executed => json!({ "decision": "executed" }),
+                    WriteDecision::Pending(id) => json!({ "decision": "pending", "id": id }),
+                })
+            }
+            "approve" => {
+                let id = params.get("id").and_then(|i| i.as_i64()).ok_or_else(|| {
+                    RpcError::invalid_params("approve needs an id")
+                })?;
+                let executed = self
+                    .watchers
+                    .lock()
+                    .unwrap()
+                    .approve(id, now_ms())
+                    .map_err(|e| RpcError::internal(e.to_string()))?;
+                Ok(json!({ "executed": executed }))
+            }
+            "deny" => {
+                let id = params.get("id").and_then(|i| i.as_i64()).ok_or_else(|| {
+                    RpcError::invalid_params("deny needs an id")
+                })?;
+                self.watchers.lock().unwrap().deny(id).map_err(|e| RpcError::internal(e.to_string()))?;
+                Ok(json!({ "ok": true }))
+            }
+            "approval.card" => {
+                let id = params.get("id").and_then(|i| i.as_i64()).ok_or_else(|| {
+                    RpcError::invalid_params("approval.card needs an id")
+                })?;
+                let card = self
+                    .watchers
+                    .lock()
+                    .unwrap()
+                    .approval_card(id)
+                    .map_err(|e| RpcError::internal(e.to_string()))?;
+                Ok(card)
+            }
+            "approval.status" => {
+                let id = params.get("id").and_then(|i| i.as_i64()).ok_or_else(|| {
+                    RpcError::invalid_params("approval.status needs an id")
+                })?;
+                let status = self
+                    .watchers
+                    .lock()
+                    .unwrap()
+                    .status(id)
+                    .map_err(|e| RpcError::internal(e.to_string()))?;
+                Ok(json!({ "status": status }))
+            }
             _ => Err(RpcError::new(codes::INVALID_REQUEST, format!("unknown method: {method}"))),
         }
     }
@@ -248,6 +333,15 @@ fn run() -> Result<(), i32> {
         1
     })?;
 
+    let watchers = Watchers::open(rusqlite::Connection::open(mote_paths::db_path()).map_err(|e| {
+        eprintln!("moted: cannot open watchers: {e}");
+        1
+    })?)
+    .map_err(|e| {
+        eprintln!("moted: cannot create watchers tables: {e}");
+        1
+    })?;
+
     let socket = mote_paths::socket_path();
     let daemon = Arc::new(Daemon {
         log,
@@ -255,7 +349,20 @@ fn run() -> Result<(), i32> {
         character,
         store: Mutex::new(store),
         client: Ollama::local(),
+        watchers: Mutex::new(watchers),
+        data_dir: data.clone(),
     });
+
+    // Schedule tick loop.
+    {
+        let d = daemon.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(1));
+            let w = d.watchers.lock().unwrap();
+            let _ = w.tick(now_ms(), &d.log);
+            let _ = w.expire_due(now_ms());
+        });
+    }
     let _server = match Server::bind(&socket, daemon) {
         Ok(s) => s,
         Err(e) => {

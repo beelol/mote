@@ -120,7 +120,7 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
 - [ ] **V0-48** Changing `models.talk` from the Config tab calls `config.set` and the next turn uses the new model. **Verify:** Live run; ledger rows before and after. [§14](docs/rfcs/v0.md#14-pipeline-view)
 - [ ] **V0-49** The Requests tab shows every outbound call with a redacted payload and timing. **Verify:** Grep the stored rows for the redaction patterns; none match. [§14](docs/rfcs/v0.md#14-pipeline-view)
 - [ ] **V0-50** Opening the pipeline view adds under 5 ms at p50 to the talk lane. **Verify:** `moted bench talk` with the view closed, then open. [§14](docs/rfcs/v0.md#14-pipeline-view)
-- [ ] **V0-51** A `schedules` row fires its prompt into a thread at its cron time. **Verify:** Test with a controlled clock. [§15](docs/rfcs/v0.md#15-watchers-and-approvals)
+- [x] **V0-51** A `schedules` row fires its prompt into a thread at its cron time. **Verify:** Test with a controlled clock. [§15](docs/rfcs/v0.md#15-watchers-and-approvals) [evidence](docs/verification/V0-51.md)
 - [ ] **V0-52** A `file_write` outside the data directory creates an approval card, nothing executes until Approve, and Deny or expiry leaves it unexecuted. **Verify:** Test plus one screenshot of the card. [§15](docs/rfcs/v0.md#15-watchers-and-approvals)
 - [ ] **V0-53** `moted install` loads the launchd agent, the daemon survives logout and login, and `moted uninstall` removes it. **Verify:** Live; `launchctl print` output in the evidence file. [§16](docs/rfcs/v0.md#16-service)
 - [ ] **V0-54** `moted status` prints socket, uptime, loaded models and the last event seq. **Verify:** Live output in the evidence file. [§16](docs/rfcs/v0.md#16-service)
