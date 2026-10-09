@@ -330,6 +330,11 @@ fn run_status() -> Result<(), i32> {
 
 /// Serve the MCP tool server over stdio (`moted mcp`).
 fn run_mcp() -> Result<(), i32> {
+    // The MCP server may be spawned before the daemon ever ran, so ensure the data directory.
+    mote_paths::ensure_data_dir().map_err(|e| {
+        eprintln!("moted mcp: cannot create data directory: {e}");
+        1
+    })?;
     let store = ContextStore::open(&mote_paths::db_path()).map_err(|e| {
         eprintln!("moted mcp: cannot open context store: {e}");
         1
