@@ -113,9 +113,19 @@ impl PackBuilder {
         self
     }
 
+    /// Assemble the pack and return the trimmed part texts alongside it, in [`PartKind::ORDER`].
+    /// The texts are what a lane sends to the model; the pack records only hashes and tokens.
+    pub fn build_with_texts(self, budget: usize) -> (Pack, Vec<(PartKind, String)>) {
+        self.build_inner(budget)
+    }
+
     /// Assemble the pack, trimming trimmable parts so the total stays within `budget` tokens.
     /// Parts always appear in [`PartKind::ORDER`].
     pub fn build(self, budget: usize) -> Pack {
+        self.build_inner(budget).0
+    }
+
+    fn build_inner(self, budget: usize) -> (Pack, Vec<(PartKind, String)>) {
         // Index texts by kind, keeping the fixed order.
         let mut ordered: Vec<(PartKind, String, String)> = Vec::new();
         for kind in PartKind::ORDER {
@@ -148,6 +158,8 @@ impl PackBuilder {
             }
         }
 
+        let texts: Vec<(PartKind, String)> =
+            ordered.iter().map(|(k, _, t)| (*k, t.clone())).collect();
         let parts = ordered
             .into_iter()
             .map(|(kind, source_ref, text)| Part {
@@ -157,7 +169,7 @@ impl PackBuilder {
                 tokens: count_tokens(&text),
             })
             .collect();
-        Pack { lane: self.lane, parts }
+        (Pack { lane: self.lane, parts }, texts)
     }
 }
 

@@ -117,6 +117,7 @@ impl std::fmt::Display for EnsureError {
 }
 
 /// A client for a local Ollama server.
+#[derive(Clone)]
 pub struct Ollama {
     base_url: String,
     agent: ureq::Agent,

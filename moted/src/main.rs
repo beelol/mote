@@ -6,10 +6,13 @@
 mod charter;
 mod config;
 mod gate;
+mod lanes;
 
 use charter::{Charter, CharterWatcher};
 use config::ConfigStore;
 use gate::OllamaGate;
+use lanes::{run_turn, TalkInputs, TalkOutcome, TALK_BUDGET};
+use mote_context::ContextStore;
 use mote_localmodel::Ollama;
 use mote_eventlog::{EventLog, Subscription};
 use mote_ipc::{codes, Dispatch, RpcError, Server};
@@ -17,10 +20,65 @@ use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+const TALK_CTX: u32 = 32768;
+const ROUTER_CTX: u32 = 32768;
+
 struct Daemon {
     log: EventLog,
     config: Mutex<ConfigStore>,
     character: Arc<Mutex<Charter>>,
+    store: Mutex<ContextStore>,
+    client: Ollama,
+}
+
+impl Daemon {
+    fn handle_turn(&self, params: &Value) -> Result<Value, RpcError> {
+        let thread_id = params
+            .get("thread")
+            .and_then(|t| t.as_str())
+            .ok_or_else(|| RpcError::invalid_params("turn needs a thread id"))?;
+        let message = params
+            .get("message")
+            .and_then(|m| m.as_str())
+            .ok_or_else(|| RpcError::invalid_params("turn needs a message"))?;
+
+        let (talk_model, router_model, budget, charter_prose) = {
+            let cfg = self.config.lock().unwrap();
+            let talk = cfg.get_json("models.talk").and_then(|v| v.as_str().map(String::from));
+            let router = cfg.get_json("models.router").and_then(|v| v.as_str().map(String::from));
+            let budget = cfg
+                .get_json("packs.talk")
+                .and_then(|v| v.as_i64())
+                .map(|n| n as usize)
+                .unwrap_or(TALK_BUDGET);
+            let prose = self.character.lock().unwrap().prose.clone();
+            (talk, router, budget, prose)
+        };
+        let talk_model = talk_model.ok_or_else(|| RpcError::internal("models.talk unset"))?;
+        let router_model = router_model.ok_or_else(|| RpcError::internal("models.router unset"))?;
+
+        let store = self.store.lock().unwrap();
+        let profile = store.get_profile("profile").ok().flatten().unwrap_or_default();
+        let working_set = store.working_set_text(thread_id).unwrap_or_default();
+        let inputs = TalkInputs {
+            charter: &charter_prose,
+            profile: &profile,
+            memories: "",
+            working_set: &working_set,
+            turn: message,
+        };
+        let outcome = run_turn(
+            &self.log, &store, &self.client, thread_id, &talk_model, TALK_CTX, &router_model,
+            ROUTER_CTX, &inputs, budget,
+        );
+        Ok(match outcome {
+            TalkOutcome::Done { ledger_id, pack_id } => {
+                json!({ "status": "done", "ledger_id": ledger_id, "pack_id": pack_id })
+            }
+            TalkOutcome::Handoff => json!({ "status": "handoff" }),
+            TalkOutcome::Unavailable(reason) => json!({ "status": "unavailable", "reason": reason }),
+        })
+    }
 }
 
 impl Dispatch for Daemon {
@@ -80,6 +138,7 @@ impl Dispatch for Daemon {
                     Err(reason) => Ok(json!({ "allowed": false, "reason": reason })),
                 }
             }
+            "turn" => self.handle_turn(&params),
             _ => Err(RpcError::new(codes::INVALID_REQUEST, format!("unknown method: {method}"))),
         }
     }
@@ -122,8 +181,19 @@ fn run() -> Result<(), i32> {
         })?;
     let character = watcher.current.clone();
 
+    let store = ContextStore::open(&mote_paths::db_path()).map_err(|e| {
+        eprintln!("moted: cannot open context store: {e}");
+        1
+    })?;
+
     let socket = mote_paths::socket_path();
-    let daemon = Arc::new(Daemon { log, config: Mutex::new(config), character });
+    let daemon = Arc::new(Daemon {
+        log,
+        config: Mutex::new(config),
+        character,
+        store: Mutex::new(store),
+        client: Ollama::local(),
+    });
     let _server = match Server::bind(&socket, daemon) {
         Ok(s) => s,
         Err(e) => {
