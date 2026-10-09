@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/mote-redact",
+    "crates/mote-paths",
+    "crates/mote-eventlog",
+    "crates/mote-ipc",
+    "crates/mote-localmodel",
+    "crates/mote-harness",
+    "crates/mote-context",
+    "crates/mote-ui",
+    "crates/mote-testkit",
+    "moted",
+    "mote-client",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.89"
+
+[workspace.dependencies]
+mote-redact = { path = "crates/mote-redact" }
+mote-paths = { path = "crates/mote-paths" }
+mote-eventlog = { path = "crates/mote-eventlog" }
+mote-ipc = { path = "crates/mote-ipc" }
+mote-localmodel = { path = "crates/mote-localmodel" }
+mote-harness = { path = "crates/mote-harness" }
+mote-context = { path = "crates/mote-context" }
+mote-ui = { path = "crates/mote-ui" }
+mote-testkit = { path = "crates/mote-testkit" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex = "1"
+libc = "0.2"
+rusqlite = { version = "0.31", features = ["bundled"] }

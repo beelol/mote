@@ -45,7 +45,7 @@ Copy this goal into a driver. Scope is the v0 build list. The backlog is exclude
 ```text
 Continue mote's v0 build from repository state at ~/projects/mote, without relying on chat history.
 
-Read AGENTS.md, docs/rfcs/v0.md (the build contract; every default is decided there), the root README section "Ready for Go", and docs/HANDOFF.md if present. The criteria are the checkboxes under README.md -> Ready for Go -> v0 build list. Each one links to the v0.md section that defines it. docs/backlog.md is out of scope until the owner moves an item into the v0 list. The long RFCs and reuse documents are reference only and never override v0.md.
+Read AGENTS.md, docs/rfcs/v0.md (the build contract; every default is decided there), the root README section "Ready for Go", and docs/HANDOFF.md if present. The criteria are the checkboxes at the bottom of README.md under Ready for Go -> v0 build list. Each one links to the v0.md section that defines it. docs/backlog.md is out of scope until the owner moves an item into the v0 list. The long RFCs and reuse documents are reference only and never override v0.md.
 
 Work the list top to bottom. Each item is independent enough to close on its own; respect the order because later crates consume earlier ones. Inspect existing code first and build only what is missing. When work reveals a gap inside v0 scope, add a V0 item with the next free number, link it to the v0.md section, and keep going. Never remove or weaken an item. If a measured number misses its target, record the number in the evidence file and leave the item open.
 
@@ -53,7 +53,7 @@ Rules that are not negotiable: models.local_only stays true; never start Claude 
 
 Delegate bounded items to the least costly capable subagent when delegation is available, with the item IDs, the v0.md section, owned files and the Verify clause. Inspect every result before accepting it. Otherwise implement directly.
 
-Verify each item by its Verify clause: cargo test --workspace and cargo clippy --workspace -- -D warnings with no network, and live checks only with MOTE_LIVE=1 against the local models. Record command, output, environment, date and commit in docs/verification/<ID>.md. Recheck affected closed items after changes.
+Verify each item by its Verify clause: cargo test --workspace and cargo clippy --workspace -- -D warnings with no network, and live checks only with MOTE_LIVE=1 against the local models. Record command, output, environment, date and commit in docs/verification/<ID>.md. When an item's Verify clause passes, change its box in README.md from [ ] to [x] and append a link to its evidence file, in the same commit as the work. An unchecked box means not done; a checked box without an evidence file is a bug to fix. Recheck affected checked items after changes and uncheck any that no longer pass.
 
 Deliver small verified changes as Conventional Commits on main in the local repository, no AI attribution trailers. There is no remote until the owner adds one. Never post, send, buy, delete outside the data directory, or deploy; v0 has no such actions.
 
@@ -62,11 +62,15 @@ After each commit reread the v0 list for new items. Continue until every V0 item
 Keep docs/HANDOFF.md current: selected items, branch, delegated tasks, uncommitted work, verified results and limits, blockers, exact next action. Checkpoint before delegation or long operations and after every edit batch, test run, commit or blocker, at most two minutes apart during active work. Before a blocking call record the in-flight action and checkpoint again on return. Save before stopping. Replace the snapshot, never append. On resume reconcile files and commits against it. Delete it when nothing needs transfer.
 ```
 
+### Later
+
+Every other criterion written during planning, 329 of them with stable IDs, is in [docs/backlog.md](docs/backlog.md). The owner moves items from there into a v1 list when ready, starting with flipping `models.local_only`.
+
 ### v0 build list
 
 Work top to bottom. Each item stands alone: what, how to verify, and the section of [docs/rfcs/v0.md](docs/rfcs/v0.md) that defines it. Nothing here needs an owner decision.
 
-- [ ] **V0-01** The Cargo workspace builds the `moted` and `mote-client` binaries and the nine crates named in the table, and both `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` pass on the empty project. **Verify:** Run both commands. [§1](docs/rfcs/v0.md#1-workspace)
+- [x] **V0-01** The Cargo workspace builds the `moted` and `mote-client` binaries and the nine crates named in the table, and both `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` pass on the empty project. **Verify:** Run both commands. [§1](docs/rfcs/v0.md#1-workspace) [evidence](docs/verification/V0-01.md)
 - [ ] **V0-02** `mote-redact` replaces the same secret patterns and secret keys as Overseer's `redact.rs`, with Overseer's tests carried over. **Verify:** `cargo test -p mote-redact`. [§1](docs/rfcs/v0.md#1-workspace)
 - [ ] **V0-03** `mote-paths` returns the macOS data directory and socket path and creates the directory with mode 0700. **Verify:** Unit test checks the path and the mode. [§1](docs/rfcs/v0.md#1-workspace)
 - [ ] **V0-04** Appending an event returns a strictly increasing `seq` and stores already-redacted JSON. **Verify:** Test appends 1,000 events, checks order, and checks that a planted token is redacted. [§2](docs/rfcs/v0.md#2-event-log)
@@ -121,7 +125,3 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
 - [ ] **V0-53** `moted install` loads the launchd agent, the daemon survives logout and login, and `moted uninstall` removes it. **Verify:** Live; `launchctl print` output in the evidence file. [§16](docs/rfcs/v0.md#16-service)
 - [ ] **V0-54** `moted status` prints socket, uptime, loaded models and the last event seq. **Verify:** Live output in the evidence file. [§16](docs/rfcs/v0.md#16-service)
 - [ ] **V0-55** All three bench commands write one JSON line each to `bench.jsonl`. **Verify:** Test. [§17](docs/rfcs/v0.md#17-bench)
-
-### Later
-
-Every other criterion written during planning, 329 of them with stable IDs, is in [docs/backlog.md](docs/backlog.md). The owner moves items from there into a v1 list when ready, starting with flipping `models.local_only`.
