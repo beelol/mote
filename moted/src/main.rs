@@ -6,6 +6,7 @@
 mod bench;
 mod charter;
 mod config;
+mod embed;
 mod gate;
 mod lanes;
 mod mcp;
@@ -71,10 +72,15 @@ impl Daemon {
         let store = self.store.lock().unwrap();
         let profile = store.get_profile("profile").ok().flatten().unwrap_or_default();
         let working_set = store.working_set_text(thread_id).unwrap_or_default();
+        // The talk pack carries the last 8 memories by retrieval (v0.md section 6).
+        let memories = store
+            .memory_retrieve(message, 8)
+            .map(|hits| hits.iter().map(|h| h.text.clone()).collect::<Vec<_>>().join("\n"))
+            .unwrap_or_default();
         let inputs = TalkInputs {
             charter: &charter_prose,
             profile: &profile,
-            memories: "",
+            memories: &memories,
             working_set: &working_set,
             turn: message,
         };
@@ -328,10 +334,18 @@ fn run() -> Result<(), i32> {
         })?;
     let character = watcher.current.clone();
 
-    let store = ContextStore::open(&mote_paths::db_path()).map_err(|e| {
+    let mut store = ContextStore::open(&mote_paths::db_path()).map_err(|e| {
         eprintln!("moted: cannot open context store: {e}");
         1
     })?;
+    // Use the contract's embedder in production; fall back to the local embedder if it cannot load.
+    match embed::PotionEmbedder::try_new() {
+        Ok(e) => store.set_embedder(Arc::new(e)),
+        Err(reason) => {
+            let _ = log.append("daemon", "embedder.fallback", &json!({ "reason": reason }));
+            eprintln!("moted: embedder fallback (local): {reason}");
+        }
+    }
 
     let watchers = Watchers::open(rusqlite::Connection::open(mote_paths::db_path()).map_err(|e| {
         eprintln!("moted: cannot open watchers: {e}");

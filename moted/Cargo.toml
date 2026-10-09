@@ -19,6 +19,7 @@ notify.workspace = true
 rusqlite.workspace = true
 cron.workspace = true
 chrono.workspace = true
+model2vec-rs = "0.3"
 
 [dev-dependencies]
 mote-testkit.workspace = true

@@ -195,15 +195,23 @@ pub struct LedgerEntry {
 pub struct ContextStore {
     conn: Connection,
     clock: Clock,
+    embedder: Arc<dyn mem::Embedder>,
 }
 
 impl ContextStore {
     pub fn open(path: &std::path::Path) -> rusqlite::Result<Self> {
+        mem::ensure_vec_extension();
         Self::from_conn(Connection::open(path)?)
     }
 
     pub fn open_in_memory() -> rusqlite::Result<Self> {
+        mem::ensure_vec_extension();
         Self::from_conn(Connection::open_in_memory()?)
+    }
+
+    /// Replace the embedder (production injects model2vec potion-base-8M).
+    pub fn set_embedder(&mut self, embedder: Arc<dyn mem::Embedder>) {
+        self.embedder = embedder;
     }
 
     fn from_conn(conn: Connection) -> rusqlite::Result<Self> {
@@ -222,7 +230,7 @@ impl ContextStore {
                  cost_usd REAL NOT NULL, status TEXT NOT NULL);",
         )?;
         mem::create_tables(&conn)?;
-        Ok(Self { conn, clock: Arc::new(now_millis) })
+        Ok(Self { conn, clock: Arc::new(now_millis), embedder: Arc::new(mem::HashEmbedder) })
     }
 
     /// Replace the clock, for tests.
@@ -321,12 +329,27 @@ impl ContextStore {
         text: &str,
         source_seq: Option<i64>,
     ) -> rusqlite::Result<i64> {
-        mem::write_node(&self.conn, kind, mem::DEFAULT_REALM, text, None, source_seq)
+        mem::write_node(&self.conn, self.embedder.as_ref(), kind, mem::DEFAULT_REALM, text, source_seq)
     }
 
-    /// Text search over memory nodes.
+    /// Plain text search over memory nodes (backs the MCP memory_search tool).
     pub fn memory_search(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<mem::MemHit>> {
         mem::search_like(&self.conn, query, limit)
+    }
+
+    /// Fused retrieval: FTS, vector, bounded 2-hop walk and recency.
+    pub fn memory_retrieve(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<mem::MemHit>> {
+        mem::retrieve(&self.conn, self.embedder.as_ref(), query, limit)
+    }
+
+    /// Mark a memory node forgotten (superseded). Nothing is deleted.
+    pub fn memory_forget(&self, id: i64, superseded_by: Option<i64>) -> rusqlite::Result<()> {
+        mem::forget(&self.conn, id, superseded_by)
+    }
+
+    /// Add an edge between two memory nodes.
+    pub fn memory_edge(&self, src: i64, dst: i64, kind: &str) -> rusqlite::Result<()> {
+        mem::add_edge(&self.conn, src, dst, kind)
     }
 
     /// Fetch a pack's parts by id.
