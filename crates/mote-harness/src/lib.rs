@@ -74,14 +74,20 @@ pub fn parse_transcript(text: &str) -> Vec<ThinkEvent> {
 pub fn run_opencode(
     cwd: &std::path::Path,
     prompt: &str,
+    model: &str,
     timeout: std::time::Duration,
 ) -> Result<(Vec<ThinkEvent>, std::time::Duration), String> {
     use std::io::BufRead;
     use std::process::{Command, Stdio};
     use std::sync::mpsc;
 
+    // `--dir` pins the project directory (so OpenCode loads this dir's opencode.json as the
+    // project config) and `--model` forces the model, so the global config cannot override the
+    // provider to something unreachable.
     let mut child = Command::new("opencode")
-        .args(["run", "--format", "json", prompt])
+        .args(["run", "--format", "json", "--dir"])
+        .arg(cwd)
+        .args(["--model", model, prompt])
         .current_dir(cwd)
         .stdin(Stdio::null()) // else OpenCode blocks reading piped stdin that never EOFs
         .stdout(Stdio::piped())
@@ -230,13 +236,13 @@ mod tests {
         let timeout = std::time::Duration::from_secs(120);
         // Warm run (ignored), then measured runs. OpenCode's MCP startup can intermittently
         // deadlock, so timed-out runs are recorded, not fatal.
-        let _ = run_opencode(&dir, prompt, timeout);
+        let _ = run_opencode(&dir, prompt, "ollama/qwen3-coder:30b-64k", timeout);
         let mut firsts = Vec::new();
         let mut saw_answer = false;
         let mut saw_file_read = false;
         let mut timeouts = 0;
         for _ in 0..3 {
-            match run_opencode(&dir, prompt, timeout) {
+            match run_opencode(&dir, prompt, "ollama/qwen3-coder:30b-64k", timeout) {
                 Ok((events, first)) => {
                     firsts.push(first.as_secs_f64());
                     for e in &events {
