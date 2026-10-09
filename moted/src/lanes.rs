@@ -138,7 +138,7 @@ pub fn run_talk(
         { "role": "system", "content": system },
         { "role": "user", "content": user }
     ]);
-    let opts = ChatOptions::new(num_ctx);
+    let opts = ChatOptions::new(num_ctx).no_think();
 
     let mut answer = String::new();
     let mut handed_off = false;

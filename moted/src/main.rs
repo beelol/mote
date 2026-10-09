@@ -3,6 +3,7 @@
 //! v0 starts the control socket over the event log. Lanes and methods are added by later
 //! items. A second daemon on the same live socket exits non-zero naming the socket path.
 
+mod bench;
 mod charter;
 mod config;
 mod gate;
@@ -151,11 +152,32 @@ impl Dispatch for Daemon {
 fn main() {
     let result = match std::env::args().nth(1).as_deref() {
         Some("mcp") => run_mcp(),
+        Some("bench") => run_bench(std::env::args().nth(2)),
         _ => run(),
     };
     if let Err(code) = result {
         std::process::exit(code);
     }
+}
+
+/// Run a named benchmark (`moted bench talk|router|memory`).
+fn run_bench(name: Option<String>) -> Result<(), i32> {
+    let name = name.ok_or_else(|| {
+        eprintln!("moted bench: name required (talk|router|memory)");
+        1
+    })?;
+    let data = mote_paths::ensure_data_dir().map_err(|e| {
+        eprintln!("moted bench: {e}");
+        1
+    })?;
+    let gate = Arc::new(OllamaGate::new(Ollama::local()));
+    let log = EventLog::open(&mote_paths::db_path()).map_err(|_| 1)?;
+    let config = ConfigStore::load(&mote_paths::config_path(), log, gate).map_err(|e| {
+        eprintln!("moted bench: {e}");
+        1
+    })?;
+    bench::run_named(&name, &data, &Ollama::local(), &config);
+    Ok(())
 }
 
 /// Serve the MCP tool server over stdio (`moted mcp`).
