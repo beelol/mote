@@ -7,6 +7,7 @@ mod charter;
 mod config;
 mod gate;
 mod lanes;
+mod mcp;
 
 use charter::{Charter, CharterWatcher};
 use config::ConfigStore;
@@ -148,9 +149,28 @@ impl Dispatch for Daemon {
 }
 
 fn main() {
-    if let Err(code) = run() {
+    let result = match std::env::args().nth(1).as_deref() {
+        Some("mcp") => run_mcp(),
+        _ => run(),
+    };
+    if let Err(code) = result {
         std::process::exit(code);
     }
+}
+
+/// Serve the MCP tool server over stdio (`moted mcp`).
+fn run_mcp() -> Result<(), i32> {
+    let store = ContextStore::open(&mote_paths::db_path()).map_err(|e| {
+        eprintln!("moted mcp: cannot open context store: {e}");
+        1
+    })?;
+    let root = std::env::current_dir().unwrap_or_else(|_| mote_paths::data_dir());
+    let server = mcp::McpServer::new(Arc::new(Mutex::new(store)), root);
+    let stdin = std::io::stdin();
+    server.serve(stdin.lock(), std::io::stdout()).map_err(|e| {
+        eprintln!("moted mcp: {e}");
+        1
+    })
 }
 
 /// Read (local_only, think model) from config for the startup guard.

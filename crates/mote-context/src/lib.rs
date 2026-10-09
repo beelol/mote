@@ -314,6 +314,21 @@ impl ContextStore {
         self.conn.query_row("SELECT COUNT(*) FROM ledger", [], |r| r.get(0))
     }
 
+    /// Write a memory node (one transaction, no model call).
+    pub fn memory_write(
+        &self,
+        kind: &str,
+        text: &str,
+        source_seq: Option<i64>,
+    ) -> rusqlite::Result<i64> {
+        mem::write_node(&self.conn, kind, mem::DEFAULT_REALM, text, None, source_seq)
+    }
+
+    /// Text search over memory nodes.
+    pub fn memory_search(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<mem::MemHit>> {
+        mem::search_like(&self.conn, query, limit)
+    }
+
     /// Fetch a pack's parts by id.
     pub fn pack_parts(&self, pack_id: i64) -> rusqlite::Result<Vec<Part>> {
         let parts_json: String =

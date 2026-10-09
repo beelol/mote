@@ -191,6 +191,25 @@ fn route(method: &str, path: &str, state: &Arc<Mutex<ScriptState>>) -> (u16, Str
     }
 }
 
+/// A fake think-lane harness that drives an MCP tool server: it performs the handshake then
+/// calls one tool and returns the JSON-RPC response.
+pub struct FakeHarness;
+
+impl FakeHarness {
+    /// Run `initialize`, `tools/list`, then `tools/call` for `tool` with `args`. `dispatch`
+    /// stands in for the MCP server's message handler.
+    pub fn call_tool<F: Fn(Value) -> Value>(dispatch: F, tool: &str, args: Value) -> Value {
+        let _ = dispatch(json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} }));
+        let _ = dispatch(json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }));
+        dispatch(json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": { "name": tool, "arguments": args }
+        }))
+    }
+}
+
 fn write_response(stream: &mut TcpStream, status: u16, body: &str) -> std::io::Result<()> {
     let reason = match status {
         200 => "OK",
