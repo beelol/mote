@@ -11,14 +11,16 @@ Nothing here assumes chat history.
 
 ## State of the work
 
-- Done and committed: V0-01 (workspace), V0-02 (mote-redact), V0-03 (mote-paths),
-  V0-04..07 (mote-eventlog), V0-08..11 (mote-ipc), V0-12..14 (config + memory gate),
-  V0-15..17 (mote-localmodel: Ollama client, memory gate, structured fail-closed).
-  mote-testkit has the scripted Ollama server.
-- Built with std + threads, no async runtime. Cargo.lock committed. rusqlite bundled.
-  HTTP client is ureq (json feature, no tls). Free memory via sysinfo.
-- Next crate to grow: mote-context (store, packs, ledger, memory graph) for V0-31+, and the
-  talk/router/think lanes (V0-19..30) which the daemon wires together.
+- Done and committed: V0-01..18 (workspace, redact, paths, eventlog, ipc, config+gate,
+  localmodel, live model ensure), V0-31/32 (context store packs+ledger),
+  V0-37/38/39 (charter). 26 of 55 items checked.
+- The three approved models are pulled: qwen3:0.6b, qwen3:4b, qwen3-coder:30b, plus the derived
+  qwen3-coder:30b-64k (num_ctx 65536). Ensure() live-verified.
+- Built with std + threads, no async runtime. Cargo.lock committed. rusqlite bundled (FTS5).
+  HTTP client is ureq (json feature, no tls). Free memory via sysinfo. Tokens via tiktoken-rs
+  o200k_base. Charter watched via notify.
+- mote-context has the memory graph TABLES but not retrieval/embeddings yet (V0-33..36 pending:
+  needs model2vec-rs potion-base-8M embeddings + vector search; the riskiest remaining piece).
 - Approved models NOT yet pulled. Ollama currently has qwen2.5 variants only. Live items
   (V0-18, 21, 25, 26, 29, 36, 43-54) need `qwen3:4b`, `qwen3:0.6b`, `qwen3-coder:30b` pulled
   (22 GB). Pull only those three, only when reaching a live item.
@@ -34,10 +36,11 @@ Nothing here assumes chat history.
 
 ## Next action
 
-V0-18: live check that the three approved models pull and `ensure()` succeeds for each
-(MOTE_LIVE=1). Needs `qwen3:4b`, `qwen3:0.6b`, `qwen3-coder:30b` pulled (22 GB), and a Modelfile
-for `qwen3-coder:30b-64k` (num_ctx 65536). If not pulling now, skip V0-18 and continue with
-V0-19 (talk lane) which uses the scripted server.
+In progress: V0-40/41/42 surface tree in mote-ui (validator, generated schema, golden PNG
+render). After that: talk lane (V0-19,20,22), router (V0-23,24), think lane (V0-27,28,30),
+memory graph retrieval (V0-33,34,35), watchers/approvals (V0-51,52), bench (V0-55).
+Live/GUI items needing the owner's desktop: V0-43..50 (client screenshots), V0-53 (launchd),
+plus live benches V0-21,25,26,29,36,54.
 
 ## Uncommitted work
 

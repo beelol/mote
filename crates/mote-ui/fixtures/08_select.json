@@ -1,0 +1,1 @@
+{"type":"select","label":"Talk model","name":"models.talk","options":["qwen3:4b","qwen3:0.6b"],"value":"qwen3:4b"}
