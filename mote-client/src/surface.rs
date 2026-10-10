@@ -61,7 +61,7 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, clicked: &mut Vec<String>) {
                 .data_mut(|data| data.get_temp::<bool>(id))
                 .unwrap_or(*value);
             control(ui, |ui| {
-                ui.add_sized([48.0, 36.0], egui::Checkbox::new(&mut edited, label));
+                ui.add(egui::Checkbox::new(&mut edited, label));
             });
             ui.data_mut(|data| data.insert_temp(id, edited));
         }
@@ -155,13 +155,14 @@ fn control<R>(ui: &mut egui::Ui, draw: impl FnOnce(&mut egui::Ui) -> R) -> R {
 
 pub fn button(ui: &mut egui::Ui, label: &str) -> egui::Response {
     control(ui, |ui| {
-        ui.add_sized([48.0, 36.0], egui::Button::new(label))
+        ui.add(egui::Button::new(label).min_size(egui::vec2(48.0, 36.0)))
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use egui::output::OutputEvent;
 
     fn frame(
         ctx: &egui::Context,
@@ -217,6 +218,70 @@ mod tests {
                 _ => None,
             })
             .unwrap_or_else(|| panic!("missing rendered text {value}"))
+    }
+
+    fn assert_single_line_text(output: &egui::FullOutput, value: &str) {
+        let text = output
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == value => Some(text),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("missing rendered text {value}"));
+        assert_eq!(text.galley.rows.len(), 1, "{value} wrapped");
+    }
+
+    #[test]
+    fn long_action_label_stays_on_one_line_and_clicks_at_padded_edge() {
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let label = "Preview action";
+        let node = Node::Action {
+            label: label.into(),
+            event: "gallery.preview".into(),
+        };
+        let (output, _, rect) = frame(&ctx, &node, vec![]);
+        assert_single_line_text(&output, label);
+        assert!(
+            rect.width() > 48.0,
+            "action stayed fixed at 48 points: {rect:?}"
+        );
+        assert!(rect.height() >= 48.0);
+        let (_, clicked, _) = frame(
+            &ctx,
+            &node,
+            click_events(egui::pos2(rect.right() - 1.0, rect.bottom() - 1.0)),
+        );
+        assert_eq!(clicked, vec!["gallery.preview"]);
+    }
+
+    #[test]
+    fn long_toggle_label_stays_on_one_line_and_changes_at_padded_edge() {
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let label = "Enable preview";
+        let node = Node::Toggle {
+            label: label.into(),
+            name: "gallery_preview_enabled".into(),
+            value: true,
+        };
+        let (output, _, rect) = frame(&ctx, &node, vec![]);
+        assert_single_line_text(&output, label);
+        assert!(
+            rect.width() > 48.0,
+            "toggle stayed fixed at 48 points: {rect:?}"
+        );
+        assert!(rect.height() >= 48.0);
+        let (clicked, _, _) = frame(
+            &ctx,
+            &node,
+            click_events(egui::pos2(rect.right() - 1.0, rect.bottom() - 1.0)),
+        );
+        assert!(clicked.platform_output.events.iter().any(|event| {
+            matches!(event, OutputEvent::Clicked(info)
+                if info.typ == egui::WidgetType::Checkbox && info.selected == Some(false))
+        }));
     }
 
     #[test]
