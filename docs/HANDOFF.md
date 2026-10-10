@@ -1,62 +1,58 @@
-# Handoff: Mote closeout driver
+# Handoff: Mote closeout
 
-Updated 2026-10-10 00:42 PDT. Replace this file, never append. Delete it when nothing needs
+Updated 2026-10-10 01:56 PDT. Replace this file, never append. Delete it when nothing needs
 transfer. Nothing here assumes chat history.
 
 ## Where
 
-- Branch: `main`. Remote: `origin` at `bc9cc4b` when this snapshot was written.
+- Branch: `main`. `HEAD` and `origin/main` are `414c0af` before this handoff update.
 - Contract: `docs/rfcs/v0.md`. Driver goal: `docs/goal-close-out.md`. Matrix plan:
   `matrix/CLOSEOUT.md`.
-- The owner directed this session to drive Mote and delegate the Matrix UI work. Do not ask the
-  owner questions before 09:00 America/Los_Angeles. Make conservative choices and defer anything
-  that truly needs the owner.
+- The owner directed this session to drive Mote and delegate Matrix UI work. Do not ask the owner
+  questions before 09:00 America/Los_Angeles. Make conservative choices and defer owner decisions.
 
-## State
+## Completed and pushed
 
-- The v0 board is 46 of 55 checked. The remaining items are GUI live verification plus V0-53's
-  literal logout/login check.
-- Matrix closeout Tasks 1 and 2 are already committed and pushed: design coverage at `f93b87e`
-  and the Vector default theme at `bc9cc4b`.
-- Subagent `/root/matrix_ui` owns Matrix Task 3 only. Its goal is to freeze the grammar, resolve
-  the open design questions, reconcile examples, measure source size, commit, and push without
-  touching production code. Persistent task state is in `.superpowers/sdd/CLOSEOUT/`.
+- Matrix pattern recipes: `f93b87e`.
+- Vector design defaults: `bc9cc4b`.
+- Frozen Matrix grammar and resolved design defaults: `e7d7895` and `618a0e6`.
+- Validated `surface.render` daemon seam and `ui.surface` event: `845eb5e`.
+- First Mac-native Matrix runtime with Vector: `ca89996`, `45c7e68` and `d2f4110`.
+- Acceptance reconciliation for all open UI criteria: `414c0af`.
+- Independent task reviews are clean. The last complete workspace run passed 85 tests with zero
+  failures. Clippy with warnings denied, the client build and whitespace checks also passed.
 
-## Driver work in progress
+The client uses exact `eframe` and `egui` 0.31.0 with `winit` 0.30.13. It renders all eleven
+unchanged v0 `Node` variants, supports the fixture preview, follows system appearance and applies
+the Vector light and dark themes. The daemon validates requested trees fail-closed before storing
+them. The Matrix grammar supports only the published v0 lowering subset. Unsupported semantics
+must return `E_LOWER_UNSUPPORTED`.
 
-The prior driver left an uncommitted `surface.render` seam. Current owned changes are:
+## Open gates
 
-- `moted/Cargo.toml` and `Cargo.lock`: add the existing `mote-ui` workspace dependency.
-- `moted/src/main.rs`: validate a requested surface fail-closed, append `ui.surface` on the chosen
-  thread, return whether the original tree was valid, and cover validation plus event emission
-  with three tests.
-- `docs/goal-close-out.md`: record Mac-native first and the two-layer inferred UI boundary.
-
-Targeted evidence is green:
-
-- `cargo test -p moted surface_tests`: 3 passed, 0 failed.
-- `cargo clippy --workspace -- -D warnings`: exit 0.
-- `git diff --check`: exit 0 before this handoff update.
-
-The full suite cannot be honestly reported inside the current filesystem sandbox because the
-scripted test server cannot bind `127.0.0.1:0` (`Operation not permitted`). This is an environment
-limit, not a test assertion failure. Do not commit until `cargo test --workspace` runs outside that
-sandbox and passes. The owner requested no prompts before 09:00, so do not request elevated test
-permission before then.
+- The v0 board remains 46 of 55 checked. V0-43 through V0-48, V0-50, V0-52 and V0-53 remain open.
+- The Mac was locked during runtime verification. The native process launched and remained alive,
+  but that is not visible acceptance. No screenshot criterion is closed.
+- Live daemon-connected cursor replay, message states, `ui.event`, system appearance, pipeline
+  tabs, configuration changes, performance and approval-card evidence remain undone.
+- V0-53 still requires literal logout and login evidence.
+- UI-00 remains an owner decision. It asks the owner to approve the closed catalog, frozen grammar,
+  Vector defaults and the split between Matrix as the future source and the unchanged v0 tree as
+  the interim consumer contract. No Matrix compiler work is authorized yet.
 
 ## Exact next actions
 
-1. Review the Matrix Task 3 report and diff when `/root/matrix_ui` finishes. Dispatch an independent
-   task reviewer before accepting it. Preserve unrelated daemon changes while the subagent pushes.
-2. At or after 09:00 PDT, run `cargo test --workspace` with the permission needed for loopback test
-   servers. Re-run `cargo clippy --workspace -- -D warnings` and `git diff --check`.
-3. If green, commit the daemon seam and goal update as a small Conventional Commit, then push main.
-4. Continue Matrix Task 4 only after Task 3 review is clean. Task 4 is the minimal Mac-native
-   consumer runtime. Keep UI-00 unchecked.
+1. On an unlocked Mac, run the fixture preview in light and dark modes and save visible evidence.
+2. Connect the client to a live daemon. Verify cursor replay without duplicates, all message states,
+   typing, inline surfaces and a button action reaching the daemon as `ui.event`.
+3. Exercise the pipeline screen, configuration change, talk-lane benchmark and approval card.
+4. Perform the literal launchd logout and login check for V0-53.
+5. After owner approval of UI-00, move only the approved Matrix compiler slice into active scope.
 
 ## Rules that still bite
 
-- `models.local_only` stays true. Never start Claude or Codex. Pull no unapproved model.
+- `models.local_only` stays true. Pull only the three models named in `docs/rfcs/v0.md` section 0.
 - Every model call uses the ledger. Redaction runs before storage. Structured verdicts parse
   fail-closed. No API keys.
-- Use Conventional Commits with no AI attribution. Verify before every commit. Push accepted work.
+- Use Conventional Commits with no AI attribution. Run the full workspace tests and clippy before
+  every commit. Push accepted work to `main`.
