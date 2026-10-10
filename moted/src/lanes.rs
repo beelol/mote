@@ -136,9 +136,25 @@ pub fn build_talk_pack(inputs: &TalkInputs, budget: usize) -> (Pack, String, Str
 /// The result of a talk-lane run.
 #[derive(Debug)]
 pub enum TalkOutcome {
-    Done { ledger_id: i64, pack_id: i64 },
+    Done { ledger_id: i64, pack_id: i64, answer: String },
     Handoff,
     Unavailable(String),
+}
+
+/// Append one turn to a thread's working set so the next turn has continuity: the owner's message
+/// and the lane's answer become two lines the next pack carries. `ts` orders the pair; the answer
+/// sits just after the message. Kept small and pure so it is unit-tested without the daemon.
+pub fn record_turn(
+    store: &ContextStore,
+    thread_id: &str,
+    ts: i64,
+    message: &str,
+    answer: &str,
+) {
+    let _ = store.append_working_set(thread_id, ts, &format!("you: {message}"));
+    if !answer.trim().is_empty() {
+        let _ = store.append_working_set(thread_id, ts + 1, &format!("mote: {answer}"));
+    }
 }
 
 /// Run the talk lane. Emits `talk.delta` for each chunk and ends with `talk.done`, or
@@ -214,7 +230,7 @@ pub fn run_talk(
                         "talk.done",
                         &json!({ "ledger_id": ledger_id, "pack_id": pack_id }),
                     );
-                    TalkOutcome::Done { ledger_id, pack_id }
+                    TalkOutcome::Done { ledger_id, pack_id, answer }
                 }
                 Err(e) => {
                     let reason = format!("ledger write failed: {e}");
@@ -310,7 +326,7 @@ pub fn build_think_pack(inputs: &ThinkInputs, budget: usize) -> (Pack, String, S
 /// The result of a think-lane run.
 #[derive(Debug)]
 pub enum ThinkOutcome {
-    Done { ledger_id: i64, pack_id: i64 },
+    Done { ledger_id: i64, pack_id: i64, answer: String },
     Failed(String),
 }
 
@@ -370,7 +386,7 @@ pub fn emit_think(
                 "think.done",
                 &json!({ "ledger_id": ledger_id, "pack_id": pack_id, "ok": ok }),
             );
-            ThinkOutcome::Done { ledger_id, pack_id }
+            ThinkOutcome::Done { ledger_id, pack_id, answer }
         }
         Err(e) => {
             let reason = format!("ledger write failed: {e}");
@@ -601,6 +617,26 @@ mod tests {
     }
 
     #[test]
+    fn record_turn_gives_the_next_turn_continuity() {
+        let store = ContextStore::open_in_memory().unwrap();
+        // Empty to start: no prior turns.
+        assert_eq!(store.working_set_text("t1").unwrap(), "");
+        record_turn(&store, "t1", 1000, "what is my name", "You are the owner.");
+        record_turn(&store, "t1", 2000, "and my dog", "");
+        let ws = store.working_set_text("t1").unwrap();
+        // The owner's messages and the lane's answer are present, in order, for the next pack.
+        assert!(ws.contains("you: what is my name"));
+        assert!(ws.contains("mote: You are the owner."));
+        assert!(ws.contains("you: and my dog"));
+        let you1 = ws.find("what is my name").unwrap();
+        let answer1 = ws.find("You are the owner").unwrap();
+        let you2 = ws.find("and my dog").unwrap();
+        assert!(you1 < answer1 && answer1 < you2, "chronological order");
+        // An empty answer writes no mote line.
+        assert_eq!(ws.matches("mote:").count(), 1);
+    }
+
+    #[test]
     fn emit_think_writes_events_and_one_ledger_row() {
         let log = EventLog::open_in_memory().unwrap();
         let store = ContextStore::open_in_memory().unwrap();
@@ -633,7 +669,7 @@ mod tests {
         ];
         let out = emit_think(&log, &store, "t1", "qwen3-coder:30b-64k", &pack, &events, 420);
         let (ledger_id, pack_id) = match out {
-            ThinkOutcome::Done { ledger_id, pack_id } => (ledger_id, pack_id),
+            ThinkOutcome::Done { ledger_id, pack_id, .. } => (ledger_id, pack_id),
             other => panic!("expected done, got {other:?}"),
         };
         assert!(ledger_id > 0 && pack_id > 0);

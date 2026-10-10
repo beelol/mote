@@ -156,8 +156,10 @@ impl Daemon {
             &self.log, &store, &self.client, thread_id, &talk_model, TALK_CTX, &router_model,
             ROUTER_CTX, &inputs, budget,
         );
+        let turn_ts = now_ms();
         Ok(match outcome {
-            TalkOutcome::Done { ledger_id, pack_id } => {
+            TalkOutcome::Done { ledger_id, pack_id, answer } => {
+                lanes::record_turn(&store, thread_id, turn_ts, message, &answer);
                 json!({ "status": "done", "ledger_id": ledger_id, "pack_id": pack_id })
             }
             TalkOutcome::Unavailable(reason) => json!({ "status": "unavailable", "reason": reason }),
@@ -183,9 +185,13 @@ impl Daemon {
                         match emit_think(
                             &self.log, &store, thread_id, &think_model, &pack, &events, latency_ms,
                         ) {
-                            ThinkOutcome::Done { ledger_id, pack_id } => json!({
-                                "status": "think_done", "ledger_id": ledger_id, "pack_id": pack_id
-                            }),
+                            ThinkOutcome::Done { ledger_id, pack_id, answer } => {
+                                lanes::record_turn(&store, thread_id, turn_ts, message, &answer);
+                                json!({
+                                    "status": "think_done", "ledger_id": ledger_id,
+                                    "pack_id": pack_id
+                                })
+                            }
                             ThinkOutcome::Failed(reason) => {
                                 json!({ "status": "think_failed", "reason": reason })
                             }
@@ -434,6 +440,20 @@ fn run_status() -> Result<(), i32> {
 }
 
 /// Serve the MCP tool server over stdio (`moted mcp`).
+/// The base directory `moted mcp` resolves relative `file_read`/`file_list` paths against.
+/// `moted mcp` is spawned by OpenCode with its cwd set to the think server's scratch directory, so
+/// the cwd is useless as a file root. Prefer an explicit `MOTE_FILE_ROOT`, then the owner's `HOME`
+/// so a think turn can read the owner's own files, then fall back to the cwd and the data dir.
+/// This gives a think turn reach into the owner's files; it is the owner's personal agent on the
+/// owner's machine. A tighter sandbox or a configured workspace root is a later refinement.
+fn file_root() -> PathBuf {
+    std::env::var_os("MOTE_FILE_ROOT")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
+        .filter(|p| p.is_dir())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| mote_paths::data_dir()))
+}
+
 fn run_mcp() -> Result<(), i32> {
     // The MCP server may be spawned before the daemon ever ran, so ensure the data directory.
     mote_paths::ensure_data_dir().map_err(|e| {
@@ -444,8 +464,7 @@ fn run_mcp() -> Result<(), i32> {
         eprintln!("moted mcp: cannot open context store: {e}");
         1
     })?;
-    let root = std::env::current_dir().unwrap_or_else(|_| mote_paths::data_dir());
-    let server = mcp::McpServer::new(Arc::new(Mutex::new(store)), root);
+    let server = mcp::McpServer::new(Arc::new(Mutex::new(store)), file_root());
     let stdin = std::io::stdin();
     server.serve(stdin.lock(), std::io::stdout()).map_err(|e| {
         eprintln!("moted mcp: {e}");
