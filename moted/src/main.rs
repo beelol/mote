@@ -934,6 +934,61 @@ mod approval_dispatch_tests {
     }
 
     #[test]
+    fn matrix_retention_failure_preserves_display_contract_and_source() {
+        let (data, _) = dirs("retention-failure");
+        let mut daemon = daemon(&data);
+        let database = data.join("events.db");
+        daemon.log = EventLog::open(&database).unwrap();
+        let connection = rusqlite::Connection::open(&database).unwrap();
+        connection.execute_batch(
+            "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 4999)
+             INSERT INTO events(ts, scope_id, kind, payload) SELECT 0, 'main', 'seed', '{}' FROM n;",
+        ).unwrap();
+        daemon.call("matrix.render", json!({"source":MATRIX_DASHBOARD})).unwrap();
+        let before = daemon.log.max_seq().unwrap();
+        let displayed = daemon.log.get(before).unwrap();
+        let contracts = daemon.matrix_surfaces.lock().unwrap().clone();
+        let sources = daemon.matrix_sources.lock().unwrap().clone();
+        let mut subscriber = daemon.log.subscribe("main", before).unwrap();
+        connection.execute_batch("CREATE TRIGGER reject_retention BEFORE DELETE ON events BEGIN SELECT RAISE(FAIL, 'retention failed'); END;").unwrap();
+
+        assert!(daemon.call("matrix.render", json!({"source":"screen { button \"Replacement\" -> refresh }"})).is_err());
+        assert_eq!(daemon.log.max_seq().unwrap(), before, "failed surface must not enter replay");
+        assert!(subscriber.recv_timeout(Duration::from_millis(5)).is_none(), "failed surface reached the renderer");
+        assert_eq!(daemon.log.get(before).unwrap(), displayed);
+        assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), contracts);
+        assert_eq!(*daemon.matrix_sources.lock().unwrap(), sources);
+        connection.execute_batch("DROP TRIGGER reject_retention;").unwrap();
+        assert!(daemon.call("ui.event", json!({"event":"refresh","args":{},"surface_seq":before,"node_path":[4]})).is_ok());
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn restarted_daemon_rejects_prior_matrix_controls_until_a_fresh_commit() {
+        let (data, _) = dirs("restart-admission");
+        let database = data.join("events.db");
+        let old_sequence = {
+            let mut old = daemon(&data);
+            old.log = EventLog::open(&database).unwrap();
+            old.call("matrix.render", json!({"source":MATRIX_DASHBOARD})).unwrap();
+            old.log.max_seq().unwrap()
+        };
+        let mut restarted = daemon(&data);
+        restarted.log = EventLog::open(&database).unwrap();
+        let prior_event = json!({"event":"refresh","args":{},"surface_seq":old_sequence,"node_path":[4]});
+        assert!(restarted.call("ui.event", prior_event).is_err());
+        assert_eq!(restarted.log.max_seq().unwrap(), old_sequence);
+        assert!(restarted.matrix_sources.lock().unwrap().is_empty());
+        assert!(restarted.matrix_surfaces.lock().unwrap().is_empty());
+        restarted.call("matrix.render", json!({"source":MATRIX_DASHBOARD})).unwrap();
+        let fresh = restarted.log.max_seq().unwrap();
+        assert!(fresh > old_sequence);
+        assert!(restarted.call("ui.event", json!({"event":"refresh","args":{},"surface_seq":fresh,"node_path":[4]})).is_ok());
+        assert_eq!(restarted.store.lock().unwrap().count_ledger().unwrap(), 0);
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
     fn matrix_candidate_contract_accepts_all_four_typed_fields_and_expires_old_sequence() {
         let (data, _) = dirs("typed-fields");
         let daemon = daemon(&data);

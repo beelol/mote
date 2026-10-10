@@ -3,8 +3,8 @@
 Updated 2026-10-10. Replace this file, never append.
 
 Branch: `main`.
-Task 1 base: `2b1e97b`.
-Commit subject: `fix(matrix): validate committed surface events`.
+Task 1 commit: `7e64475`.
+Fix Round 1 subject: `fix(matrix): keep surface admission atomic`.
 Preserve untracked `.DS_Store` and `.superpowers/`.
 Do not push.
 
@@ -21,8 +21,18 @@ The real renderer, reducer and ordered worker carry the new context.
 The production surface payload, transport helpers and measurement outputs remain unchanged.
 Whole-source rendering, candidate commitment and Refresh share contract installation.
 The retained-source lock serializes admission with replacement.
+Event insertion and retention are now one transaction, with broadcasting after commit.
+Failed retention cannot expose a surface whose contract was not installed.
 
-Verification passed: 22 focused daemon tests, 63 client tests, 284 workspace tests and doc tests,
+Each connection reads `status.last_seq` before subscribing.
+The client removes existing Matrix surfaces and suppresses Matrix replay through that cutoff.
+Ordinary chat and non-Matrix cards retain their cursor and replay behavior.
+Fresh surfaces above the cutoff can display.
+Disconnected Matrix controls use an expired interaction namespace that cannot be reused.
+The `--matrix` initial source submission follows stream setup so its surface remains eligible.
+No source persistence was added.
+
+Verification passed: 7 eventlog tests, 24 focused daemon tests, 64 client tests, 288 workspace tests and doc tests,
 workspace clippy, deterministic Matrix measurements and diff whitespace checks.
 Socket tests ran with local socket access.
 No live model call or pull occurred.

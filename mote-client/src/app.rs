@@ -2,6 +2,7 @@
 
 use crate::pipeline::PipelineSnapshot;
 use crate::state::{ChatState, LocalMessageId};
+use crate::stream::StreamUpdate;
 use eframe::egui;
 use mote_eventlog::Event;
 use mote_ipc::Client;
@@ -99,11 +100,15 @@ fn save_cursor_to(path: &std::path::Path, seq: i64) {
 
 fn apply_next_event(
     chat: &mut ChatState,
-    rx: &Receiver<Event>,
+    rx: &Receiver<StreamUpdate>,
     cursor_path: Option<&std::path::Path>,
 ) -> Option<Event> {
-    let Ok(event) = rx.try_recv() else {
-        return None;
+    let event = loop {
+        match rx.try_recv().ok()? {
+            StreamUpdate::Event(event) => break event,
+            StreamUpdate::Connected { replay_through } => chat.connect_matrix(replay_through),
+            StreamUpdate::Disconnected => chat.invalidate_matrix(),
+        }
     };
     chat.reduce(&event);
     if let Some(path) = cursor_path {
@@ -135,7 +140,7 @@ const LIVE_EVENT_BUFFER_LIMIT: usize = 200;
 
 pub struct MoteApp {
     socket: PathBuf,
-    rx: Receiver<Event>,
+    rx: Receiver<StreamUpdate>,
     chat: ChatState,
     input: String,
     screen: Screen,
@@ -163,7 +168,7 @@ impl MoteApp {
     pub fn new(
         cc: &eframe::CreationContext<'_>,
         socket: PathBuf,
-        rx: Receiver<Event>,
+        rx: Receiver<StreamUpdate>,
         fixture: Option<Node>,
     ) -> Self {
         crate::theme::install(&cc.egui_ctx);
@@ -367,7 +372,13 @@ impl MoteApp {
                     });
                     if let Some(node) = &m.surface {
                         let first_event = clicked.len();
-                        ui.push_id(index, |ui| crate::surface::draw(ui, node, &mut clicked));
+                        if m.surface_id.as_deref() == Some("matrix") {
+                            ui.push_id(("matrix", self.chat.matrix_epoch, index), |ui| {
+                                crate::surface::draw(ui, node, &mut clicked)
+                            });
+                        } else {
+                            ui.push_id(index, |ui| crate::surface::draw(ui, node, &mut clicked));
+                        }
                         for event in &mut clicked[first_event..] {
                             event.set_surface_seq(m.surface_seq);
                         }
@@ -692,7 +703,7 @@ mod tests {
     use super::*;
     use crate::state::Status;
 
-    fn app() -> (MoteApp, std::sync::mpsc::Sender<Event>) {
+    fn app() -> (MoteApp, std::sync::mpsc::Sender<StreamUpdate>) {
         let (tx, rx) = std::sync::mpsc::channel();
         let (turn_tx, turn_rx) = std::sync::mpsc::channel();
         let (pipeline_tx, pipeline_rx) = std::sync::mpsc::channel();
@@ -729,14 +740,14 @@ mod tests {
         )
     }
 
-    fn send(tx: &std::sync::mpsc::Sender<Event>, kind: &str, payload: serde_json::Value) {
+    fn send(tx: &std::sync::mpsc::Sender<StreamUpdate>, kind: &str, payload: serde_json::Value) {
         tx.send(Event {
             seq: 1,
             ts: 0,
             scope_id: "main".into(),
             kind: kind.into(),
             payload,
-        })
+        }.into())
         .unwrap();
     }
 
@@ -822,6 +833,129 @@ mod tests {
     }
 
     #[test]
+    fn reconnect_removes_expired_matrix_controls_and_preserves_chat_and_cursor() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::time::{Duration, Instant};
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("mote-reconnect-{}-{unique}.sock", std::process::id()));
+        let cursor_path = path.with_extension("cursor");
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let (disconnect, disconnect_rx) = mpsc::channel();
+        let (fresh, fresh_rx) = mpsc::channel();
+        let (finish, finish_rx) = mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let accept = || {
+                let (socket, _) = listener.accept().unwrap();
+                let mut line = String::new();
+                BufReader::new(socket.try_clone().unwrap()).read_line(&mut line).unwrap();
+                let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+                (socket, request)
+            };
+            let status = |last_seq| {
+                let (mut socket, request) = accept();
+                assert_eq!(request["method"], "status", "a connection must establish its replay watermark before subscribing");
+                socket.write_all(&mote_ipc::encode_frame(&mote_ipc::success_envelope(request["id"].clone(), serde_json::json!({"last_seq":last_seq}))).unwrap()).unwrap();
+            };
+            let write = |socket: &mut std::os::unix::net::UnixStream, seq, kind: &str, payload| {
+                let event = Event { seq, ts:0, scope_id:"main".into(), kind:kind.into(), payload };
+                socket.write_all(&mote_ipc::encode_frame(&mote_ipc::event_envelope(&event)).unwrap()).unwrap();
+            };
+            let surface = serde_json::json!({"surface_id":"matrix", "surface":{"type":"stack","children":[
+                {"type":"toggle","label":"Local only","name":"models.local_only","value":true},
+                {"type":"action","label":"Expired Refresh","event":"refresh"}
+            ]}});
+            status(0);
+            let (mut first, request) = accept();
+            assert_eq!(request["method"], "events.subscribe");
+            assert_eq!(request["params"]["cursor"], 0);
+            let (mut submission, request) = accept();
+            assert_eq!(request["method"], "matrix.render");
+            assert_eq!(request["params"]["source"], "screen { button \"Refresh\" -> refresh }");
+            submission.write_all(&mote_ipc::encode_frame(&mote_ipc::success_envelope(request["id"].clone(), serde_json::json!({"ok":true,"valid":true}))).unwrap()).unwrap();
+            write(&mut first, 1, "turn.user", serde_json::json!({"text":"Keep this chat"}));
+            write(&mut first, 2, "ui.surface", serde_json::json!({"surface":{"type":"text","value":"Keep this card"}}));
+            write(&mut first, 3, "ui.surface", surface.clone());
+            disconnect_rx.recv().unwrap();
+            drop(first);
+            status(5);
+            let (mut second, request) = accept();
+            assert_eq!(request["params"]["cursor"], 3);
+            write(&mut second, 1, "turn.user", serde_json::json!({"text":"Keep this chat"}));
+            write(&mut second, 3, "ui.surface", surface.clone());
+            write(&mut second, 4, "ui.surface", surface.clone());
+            write(&mut second, 5, "ui.surface", surface.clone());
+            write(&mut second, 6, "talk.done", serde_json::json!({}));
+            fresh_rx.recv().unwrap();
+            write(&mut second, 7, "ui.surface", surface);
+            finish_rx.recv().unwrap();
+            write(&mut second, 8, "talk.done", serde_json::json!({}));
+        });
+        let (mut app, tx) = app();
+        app.cursor_path = Some(cursor_path.clone());
+        let (outgoing, events) = mpsc::channel();
+        app.ui_event_tx = outgoing;
+        let stream_path = path.clone();
+        let submission_path = path.clone();
+        let stream = std::thread::spawn(move || crate::stream::run_after_connect(&stream_path, "main", 0, tx, || {
+            crate::submit_matrix(&submission_path, "screen { button \"Refresh\" -> refresh }").unwrap();
+        }));
+        let receive_through = |app: &mut MoteApp, seq| {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while load_cursor_from(&cursor_path) < seq && Instant::now() < deadline {
+                app.drain_events();
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            assert_eq!(load_cursor_from(&cursor_path), seq);
+        };
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let render = |app: &mut MoteApp, input| ctx.run(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0))),
+            events: input, ..Default::default()
+        }, |ctx| { egui::CentralPanel::default().show(ctx, |ui| app.chat_view(ui)); });
+        let text_position = |output: &egui::FullOutput, label: &str| output.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.text() == label => Some(text.pos + text.galley.rect.center().to_vec2()),
+            _ => None,
+        });
+        let click = |position| vec![
+            egui::Event::PointerMoved(position),
+            egui::Event::PointerButton { pos:position, button:egui::PointerButton::Primary, pressed:true, modifiers:Default::default() },
+            egui::Event::PointerButton { pos:position, button:egui::PointerButton::Primary, pressed:false, modifiers:Default::default() },
+        ];
+        receive_through(&mut app, 3);
+        let displayed = render(&mut app, vec![]);
+        let old_button = text_position(&displayed, "Expired Refresh").unwrap();
+        let old_toggle = text_position(&displayed, "Local only").unwrap();
+        render(&mut app, click(old_toggle));
+        assert_eq!(events.try_recv().unwrap().args()["value"], false);
+
+        disconnect.send(()).unwrap();
+        receive_through(&mut app, 6);
+        let reconnected = render(&mut app, vec![]);
+        assert!(text_position(&reconnected, "Expired Refresh").is_none(), "expired Matrix control remains displayed after reconnect");
+        assert!(app.chat.messages.iter().all(|message| message.surface_seq.is_none()));
+        assert_eq!(app.chat.messages.iter().filter(|message| message.text == "Keep this chat").count(), 1);
+        assert!(text_position(&reconnected, "Keep this card").is_some());
+        render(&mut app, click(old_button));
+        assert!(events.try_recv().is_err(), "expired Matrix control emitted an event");
+        assert_eq!(load_cursor_from(&cursor_path), 6);
+
+        fresh.send(()).unwrap();
+        receive_through(&mut app, 7);
+        let restored = render(&mut app, vec![]);
+        render(&mut app, click(text_position(&restored, "Local only").unwrap()));
+        let event = events.try_recv().unwrap();
+        assert_eq!(event.args()["value"], false, "expired control edit returned with the fresh surface");
+        assert_eq!(event.context().surface_seq, Some(7));
+        drop(app);
+        finish.send(()).unwrap();
+        stream.join().unwrap();
+        server.join().unwrap();
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(cursor_path).unwrap();
+    }
+
+    #[test]
     fn matrix_click_uses_committed_sequence_and_structural_path_in_worker_params() {
         let (mut app, tx) = app();
         let (requests, request_rx) = mpsc::channel();
@@ -841,7 +975,7 @@ mod tests {
                         {"type":"action", "label":"Refresh", "event":"refresh"}
                     ]}]
                 }}),
-            }).unwrap();
+            }.into()).unwrap();
         }
         app.drain_events();
         let ctx = egui::Context::default();
@@ -1000,7 +1134,7 @@ mod tests {
                 "code":"E_PARSE_INCOMPLETE", "span":{"start":12,"end":12}, "message":"expected closing brace", "hint":"Close the block"
             }]})),
         ] {
-            tx.send(Event { seq, ts:0, scope_id:"main".into(), kind:kind.into(), payload }).unwrap();
+            tx.send(Event { seq, ts:0, scope_id:"main".into(), kind:kind.into(), payload }.into()).unwrap();
         }
         app.drain_events();
         assert_eq!(load_cursor_from(&cursor), 2);
@@ -1131,7 +1265,7 @@ mod tests {
             scope_id: "main".into(),
             kind: "turn.user".into(),
             payload: serde_json::json!({"text": "hello"}),
-        })
+        }.into())
         .unwrap();
         tx.send(Event {
             seq: 11,
@@ -1139,7 +1273,7 @@ mod tests {
             scope_id: "main".into(),
             kind: "talk.delta".into(),
             payload: serde_json::json!({"text": "reply"}),
-        })
+        }.into())
         .unwrap();
         let mut chat = ChatState::default();
 
@@ -1156,7 +1290,7 @@ mod tests {
                 scope_id: "main".into(),
                 kind: "talk.delta".into(),
                 payload: serde_json::json!({"text": "reply"}),
-            })
+            }.into())
             .unwrap();
         let mut restarted = ChatState::default();
         assert!(apply_next_event(
@@ -1318,7 +1452,7 @@ mod tests {
             scope_id: "main".into(),
             kind: "talk.delta".into(),
             payload: serde_json::json!({"text": "live"}),
-        })
+        }.into())
         .unwrap();
 
         app.drain_events();
@@ -1336,7 +1470,7 @@ mod tests {
             scope_id: "main".into(),
             kind: "talk.delta".into(),
             payload: serde_json::json!({"text": "newer than snapshot"}),
-        })
+        }.into())
         .unwrap();
 
         app.drain_events();
@@ -1356,7 +1490,7 @@ mod tests {
             scope_id: "main".into(),
             kind: "talk.done".into(),
             payload: serde_json::json!({"ledger_id": 9}),
-        })
+        }.into())
         .unwrap();
         app.drain_events();
 

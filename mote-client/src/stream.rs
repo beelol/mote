@@ -1,5 +1,5 @@
 use mote_eventlog::Event;
-use mote_ipc::EventStream;
+use mote_ipc::{Client, EventStream};
 use std::io;
 use std::path::Path;
 use std::sync::mpsc::Sender;
@@ -8,11 +8,45 @@ use std::time::Duration;
 const MIN_RETRY: Duration = Duration::from_millis(20);
 const MAX_RETRY: Duration = Duration::from_secs(1);
 
-pub fn run(path: &Path, scope_id: &str, cursor: i64, tx: Sender<Event>) {
+pub enum StreamUpdate {
+    Event(Event),
+    Connected { replay_through: i64 },
+    Disconnected,
+}
+
+impl From<Event> for StreamUpdate {
+    fn from(event: Event) -> Self {
+        Self::Event(event)
+    }
+}
+
+pub fn run(path: &Path, scope_id: &str, cursor: i64, tx: Sender<StreamUpdate>) {
+    run_after_connect(path, scope_id, cursor, tx, || {});
+}
+
+pub fn run_after_connect(
+    path: &Path,
+    scope_id: &str,
+    cursor: i64,
+    tx: Sender<StreamUpdate>,
+    on_connected: impl FnOnce(),
+) {
+    let mut on_connected = Some(on_connected);
     run_with(
         cursor,
-        |cursor| EventStream::connect(path, scope_id, cursor),
-        EventStream::read_event,
+        |cursor| {
+            let status = Client::connect(path)?.call("status", serde_json::json!({}))?
+                .map_err(|error| io::Error::other(error.message))?;
+            let replay_through = status["last_seq"].as_i64().filter(|seq| *seq >= 0)
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "status has no valid last_seq"))?;
+            Ok((EventStream::connect(path, scope_id, cursor)?, replay_through))
+        },
+        |stream| {
+            if let Some(on_connected) = on_connected.take() {
+                on_connected();
+            }
+            stream.read_event()
+        },
         |event| tx.send(event).is_ok(),
         std::thread::sleep,
     );
@@ -20,38 +54,49 @@ pub fn run(path: &Path, scope_id: &str, cursor: i64, tx: Sender<Event>) {
 
 fn run_with<S>(
     initial_cursor: i64,
-    mut connect: impl FnMut(i64) -> io::Result<S>,
+    mut connect: impl FnMut(i64) -> io::Result<(S, i64)>,
     mut read: impl FnMut(&mut S) -> io::Result<Option<Event>>,
-    mut deliver: impl FnMut(Event) -> bool,
+    mut deliver: impl FnMut(StreamUpdate) -> bool,
     mut wait: impl FnMut(Duration),
 ) {
     let mut cursor = initial_cursor;
     let mut retry = MIN_RETRY;
 
     loop {
-        let mut source = match connect(cursor) {
-            Ok(source) => source,
+        let (mut source, replay_through) = match connect(cursor) {
+            Ok(connection) => connection,
             Err(_) => {
                 wait(retry);
                 retry = (retry * 2).min(MAX_RETRY);
                 continue;
             }
         };
+        if !deliver(StreamUpdate::Connected { replay_through }) {
+            return;
+        }
 
         loop {
             match read(&mut source) {
                 Ok(None) => {}
-                Ok(Some(event)) if event.kind == "resync" => break,
+                Ok(Some(event)) if event.kind == "resync" => {
+                    if !deliver(StreamUpdate::Disconnected) {
+                        return;
+                    }
+                    break;
+                }
                 Ok(Some(event)) if event.seq <= cursor => {}
                 Ok(Some(event)) => {
                     let delivered_cursor = event.seq;
-                    if !deliver(event) {
+                    if !deliver(event.into()) {
                         return;
                     }
                     cursor = delivered_cursor;
                     retry = MIN_RETRY;
                 }
                 Err(_) => {
+                    if !deliver(StreamUpdate::Disconnected) {
+                        return;
+                    }
                     wait(retry);
                     retry = (retry * 2).min(MAX_RETRY);
                     break;
@@ -118,13 +163,24 @@ mod tests {
                 let cursors = cursors.clone();
                 move |cursor| {
                     cursors.lock().unwrap().push(cursor);
-                    plans.lock().unwrap().pop_front().unwrap()
+                    plans.lock().unwrap().pop_front().unwrap().map(|source| (source, 0))
                 }
             },
             |stream: &mut FakeSource| stream.reads.pop_front().unwrap(),
             {
                 let delivered = delivered.clone();
-                move |event| {
+                move |update| {
+                    let event = match update {
+                        StreamUpdate::Event(event) => event,
+                        StreamUpdate::Disconnected => {
+                            delivered.lock().unwrap().push(-1);
+                            return true;
+                        }
+                        StreamUpdate::Connected { .. } => {
+                            delivered.lock().unwrap().push(-2);
+                            return true;
+                        }
+                    };
                     if event.seq == 3 {
                         return false;
                     }
@@ -139,7 +195,7 @@ mod tests {
         );
 
         assert_eq!(*cursors.lock().unwrap(), vec![0, 0, 1, 1]);
-        assert_eq!(*delivered.lock().unwrap(), vec![1, 2]);
+        assert_eq!(*delivered.lock().unwrap(), vec![-2, 1, -1, -2, -1, -2, 2]);
         assert_eq!(
             *waits.lock().unwrap(),
             vec![Duration::from_millis(20), Duration::from_millis(20)]
@@ -161,7 +217,7 @@ mod tests {
                         *failures += 1;
                         Err(io::Error::new(io::ErrorKind::NotFound, "not ready"))
                     } else {
-                        Ok(source(vec![Ok(Some(event(1, "turn.user")))]))
+                        Ok((source(vec![Ok(Some(event(1, "turn.user")))]), 0))
                     }
                 }
             },

@@ -71,19 +71,23 @@ fn main() -> eframe::Result<()> {
         }
     };
     let socket = mote_paths::socket_path();
-    if let Some(source) = source {
-        if let Err(error) = submit_matrix(&socket, &source) {
-            eprintln!("{error}");
-            std::process::exit(2);
-        }
-    }
-    let (tx, rx) = mpsc::channel::<mote_eventlog::Event>();
+    let (tx, rx) = mpsc::channel();
 
     if fixture.is_none() {
         let cursor = app::load_cursor();
         let sock = socket.clone();
         std::thread::spawn(move || {
-            stream::run(&sock, "main", cursor, tx);
+            if let Some(source) = source {
+                let submission_socket = sock.clone();
+                stream::run_after_connect(&sock, "main", cursor, tx, move || {
+                    if let Err(error) = submit_matrix(&submission_socket, &source) {
+                        eprintln!("{error}");
+                        std::process::exit(2);
+                    }
+                });
+            } else {
+                stream::run(&sock, "main", cursor, tx);
+            }
         });
     }
 

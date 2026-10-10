@@ -88,9 +88,14 @@ impl EventLog {
     ) -> rusqlite::Result<Event> {
         let redacted_text = mote_redact::redact(&payload.to_string());
         let mut guard = self.inner.lock().unwrap();
-        let ev = guard.insert(scope_id, kind, &redacted_text)?;
+        let ev = {
+            let transaction = guard.conn.transaction()?;
+            let ev = Inner::insert(&transaction, scope_id, kind, &redacted_text)?;
+            Inner::enforce_retention(&transaction, scope_id)?;
+            transaction.commit()?;
+            ev
+        };
         guard.broadcast(&ev);
-        guard.enforce_retention(scope_id)?;
         Ok(ev)
     }
 
@@ -207,13 +212,13 @@ impl EventLog {
 }
 
 impl Inner {
-    fn insert(&mut self, scope_id: &str, kind: &str, payload_text: &str) -> rusqlite::Result<Event> {
+    fn insert(conn: &Connection, scope_id: &str, kind: &str, payload_text: &str) -> rusqlite::Result<Event> {
         let ts = now_millis();
-        self.conn.execute(
+        conn.execute(
             "INSERT INTO events(ts, scope_id, kind, payload) VALUES(?1, ?2, ?3, ?4)",
             rusqlite::params![ts, scope_id, kind, payload_text],
         )?;
-        let seq = self.conn.last_insert_rowid();
+        let seq = conn.last_insert_rowid();
         let payload = serde_json::from_str(payload_text)
             .unwrap_or_else(|_| serde_json::Value::String(payload_text.to_string()));
         Ok(Event { seq, ts, scope_id: scope_id.to_string(), kind: kind.to_string(), payload })
@@ -268,8 +273,8 @@ impl Inner {
         }
     }
 
-    fn enforce_retention(&mut self, scope_id: &str) -> rusqlite::Result<()> {
-        let real: i64 = self.conn.query_row(
+    fn enforce_retention(conn: &Connection, scope_id: &str) -> rusqlite::Result<()> {
+        let real: i64 = conn.query_row(
             "SELECT COUNT(*) FROM events WHERE scope_id=?1 AND kind!='retention'",
             [scope_id],
             |r| r.get(0),
@@ -279,21 +284,21 @@ impl Inner {
         }
         let excess = real - RETENTION_LIMIT;
         // Delete the oldest real events for this scope.
-        self.conn.execute(
+        conn.execute(
             "DELETE FROM events WHERE seq IN (
                  SELECT seq FROM events WHERE scope_id=?1 AND kind!='retention'
                  ORDER BY seq ASC LIMIT ?2)",
             rusqlite::params![scope_id, excess],
         )?;
         // Ensure exactly one retention marker exists for the scope, as the oldest row.
-        let markers: i64 = self.conn.query_row(
+        let markers: i64 = conn.query_row(
             "SELECT COUNT(*) FROM events WHERE scope_id=?1 AND kind='retention'",
             [scope_id],
             |r| r.get(0),
         )?;
         if markers == 0 {
             let ts = now_millis();
-            self.conn.execute(
+            conn.execute(
                 "INSERT INTO events(ts, scope_id, kind, payload) VALUES(?1, ?2, 'retention', ?3)",
                 rusqlite::params![ts, scope_id, "{\"pruned\":true}"],
             )?;
@@ -387,6 +392,38 @@ mod tests {
         assert_eq!(gb.seq, live.seq);
         // No duplicate delivery.
         assert!(a.recv_timeout(Duration::from_millis(50)).is_none());
+    }
+
+    #[test]
+    fn retention_failure_rolls_back_append_and_broadcast() {
+        for trigger in [
+            "CREATE TRIGGER reject_retention BEFORE DELETE ON events BEGIN SELECT RAISE(FAIL, 'retention delete failed'); END;",
+            "CREATE TRIGGER reject_retention BEFORE INSERT ON events WHEN NEW.kind = 'retention' BEGIN SELECT RAISE(FAIL, 'retention marker failed'); END;",
+        ] {
+            let log = EventLog::open_in_memory().unwrap();
+            log.inner.lock().unwrap().conn.execute_batch(
+                "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5000)
+                 INSERT INTO events(ts, scope_id, kind, payload) SELECT 0, 's', 'seed', '{}' FROM n;",
+            ).unwrap();
+            let before = log.max_seq().unwrap();
+            let first = log.get(1).unwrap();
+            let mut live = log.subscribe("s", before).unwrap();
+            log.inner.lock().unwrap().conn.execute_batch(trigger).unwrap();
+
+            assert!(log.append("s", "ui.surface", &val("replacement")).is_err());
+            assert_eq!(log.max_seq().unwrap(), before, "failed retention stored the replacement");
+            assert_eq!(log.get(1).unwrap(), first, "failed retention removed prior data");
+            assert_eq!(log.count("s").unwrap(), RETENTION_LIMIT);
+            assert!(log.get(before + 1).unwrap().is_none());
+            assert!(live.recv_timeout(Duration::from_millis(5)).is_none(), "failed append was broadcast");
+
+            log.inner.lock().unwrap().conn.execute_batch("DROP TRIGGER reject_retention;").unwrap();
+            let committed = log.append("s", "ui.surface", &val("committed")).unwrap();
+            assert_eq!(live.recv_timeout(Duration::from_millis(5)), Some(committed.clone()));
+            assert_eq!(log.get(committed.seq).unwrap(), Some(committed));
+            assert!(live.recv_timeout(Duration::from_millis(5)).is_none());
+            assert_eq!(log.count("s").unwrap(), RETENTION_LIMIT);
+        }
     }
 
     #[test]

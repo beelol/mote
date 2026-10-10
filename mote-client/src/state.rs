@@ -39,6 +39,8 @@ pub struct Message {
 pub struct ChatState {
     pub messages: Vec<Message>,
     pub typing: bool,
+    pub matrix_epoch: u64,
+    matrix_replay_through: i64,
     session_id: String,
     next_local_id: u64,
     diagnostic_cursor: i64,
@@ -54,6 +56,8 @@ impl Default for ChatState {
         Self {
             messages: Vec::new(),
             typing: false,
+            matrix_epoch: 0,
+            matrix_replay_through: 0,
             session_id: format!("{}-{nanos}-{counter}", std::process::id()),
             next_local_id: 0,
             diagnostic_cursor: 0,
@@ -95,6 +99,16 @@ impl ChatState {
                 && matches!(message.status, Status::Sending | Status::Sent)
         })?;
         Some(self.messages.remove(index).text)
+    }
+
+    pub fn invalidate_matrix(&mut self) {
+        self.messages.retain(|message| message.surface_id.as_deref() != Some("matrix"));
+        self.matrix_epoch = self.matrix_epoch.wrapping_add(1);
+    }
+
+    pub fn connect_matrix(&mut self, replay_through: i64) {
+        self.invalidate_matrix();
+        self.matrix_replay_through = replay_through;
     }
 
     pub fn reduce(&mut self, ev: &Event) {
@@ -210,6 +224,9 @@ impl ChatState {
                 if let Ok(bytes) = serde_json::to_vec(&ev.payload["surface"]) {
                     if let Ok(node) = mote_ui::validate(&bytes) {
                         let surface_id = ev.payload["surface_id"].as_str();
+                        if surface_id == Some("matrix") && ev.seq <= self.matrix_replay_through {
+                            return;
+                        }
                         if let Some(existing) = surface_id.and_then(|surface_id| {
                             self.messages.iter_mut().find(|message| {
                                 message.surface_id.as_deref() == Some(surface_id)
