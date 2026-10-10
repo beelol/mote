@@ -39,20 +39,20 @@ grid and no absolute position. See the layout document for wrap, alignment, and 
 
 | Element | What it is | Slice | Role |
 |---|---|---|---|
-| `title` | The name of a screen or section. | text: literal or `Value<str>` | heading |
-| `text` | Plain body text. Wraps. Never markup. | text: literal or `Value<str>` | text |
-| `caption` | Secondary, smaller, quieter text. | text: literal or `Value<str>` | text |
+| `title` | The name of a screen or section. | text: display operand | heading |
+| `text` | Plain body text. Wraps. Never markup. | text: display operand | text |
+| `caption` | Secondary, smaller, quieter text. | text: display operand | text |
 | `label` | The name of an adjacent control or value. | text: literal | label |
-| `code` | Monospace inline text for ids and snippets. | text: literal or `Value<str>` | code |
+| `code` | Monospace inline text for ids and snippets. | text: display operand | code |
 | `md` | A constrained Markdown subset. No raw HTML, no images. | text: `Value<str>` | document |
-| `link` | Text that opens a resource through the runtime. | text: literal; to: `Value<url>` | link |
-| `badge` | A short status word with a theme status tone. | text: `Value<str>` | status |
-| `tag` | A short neutral keyword chip. | text: `Value<str>` | text |
-| `stat` | A large number with a label and optional delta. | label: literal; value: `Value<str>`; delta: `Value<str>` optional | group |
-| `kv` | A label and its value on one line. | label: literal; value: `Value<str>` | group |
-| `icon` | A glyph from the theme icon set, by name. | name: literal from the icon set | img |
-| `image` | A picture the runtime fetches and caches. | src: `Value<asset>`; alt: literal, required | img |
-| `avatar` | A small round image for a person or repo. | src: `Value<asset>`; alt: literal, required | img |
+| `link` | Text that opens a resource through the runtime. | text: display operand; to: `Value<url>` | link |
+| `badge` | A short status word with a theme status tone. | text: display operand | status |
+| `tag` | A short neutral keyword chip. | text: display operand | text |
+| `stat` | A large number with a label and optional delta. | label: literal; value: `Value<str or number>`; delta: same type choices, optional | group |
+| `kv` | A label and its value on one line. | label: literal; value: typed string, number or closed enum read | group |
+| `icon` | A theme glyph for a fixed semantic name. | name: literal from the fixed grammar set | img |
+| `image` | A picture the runtime fetches and caches. | src: `Value<asset>`; alt: literal or `Value<str>`, required | img |
+| `avatar` | A small round image for a person or repo. | src: `Value<asset>`; alt: literal or `Value<str>`, required | img |
 | `timestamp` | A time, formatted and optionally relative. | value: `Value<datetime>`; `relative` | time |
 | `divider` | A thin rule between blocks. | none | separator |
 
@@ -80,8 +80,8 @@ comes from the theme.
 | `date` | A date picker. | label: literal; bind: `Field<date>`; min, max optional | date |
 | `time` | A time picker. | label: literal; bind: `Field<time>` | time |
 | `search` | A text field that filters a nearby collection. | placeholder: literal; bind: `Field<str>` | str |
-| `button` | A control that sends an action. | text: literal; `-> Action(args)`; `primary`, `confirm`, `disabled` optional | none |
-| `form` | A group of fields with one submit action. | title: literal optional; submit: `-> Action{fields}` | input fields and a button |
+| `button` | A control that sends an action. | text: literal; `-> Action{args}`; `primary` or `danger`, `confirm`, `disabled` optional | none |
+| `form` | A group of fields with one submit action. | title: literal optional; exactly one primary button names the submit action | input fields and buttons |
 
 A `select` is the pull down the owner asked for. A `slider` is the range control. `choice` and
 `segmented` are the same closed value idea at different sizes. The options of `select`, `choice`,
@@ -97,9 +97,9 @@ runtime repeats it per row. A model never unrolls a list by hand.
 |---|---|---|---|---|
 | `list` | A vertical list of items. Scrolls. | from: `Value<List<T>>`; `select one` or `select many` optional; key optional | one `item` | list |
 | `item` | The template for one list row. Projects fields with `.field`. | the row type T is in scope | any | listitem |
-| `table` | Rows and typed columns. Sortable by column type. | from: `Value<List<T>>`; `select one` or `select many` optional | `column` set | table |
+| `table` | Rows and typed columns. Sortable by column type. | from: `Value<List<T>>`; key and `select one` or `select many` optional | `column` set | table |
 | `column` | One typed column of a table. | label: literal; value: `.field`; kind: text, number, money, date, status optional | none | columnheader |
-| `grid` | A wrapping set of equal cards. For tiles and galleries. | from: `Value<List<T>>` | one `tile` | list |
+| `grid` | A wrapping set of equal cards. For tiles and galleries. | from: `Value<List<T>>`; key and selection optional | one `tile` | list |
 | `tile` | The template for one grid cell. | the row type T is in scope | any | listitem |
 
 `list` and `grid` differ only in flow. `list` stacks, `grid` wraps into even cells. A table is for
@@ -115,8 +115,8 @@ writing them, but the model may write an explicit one to override the default me
 |---|---|---|---|
 | `progress` | A determinate bar or an indeterminate spinner. | value: `Value<number>` optional; label: literal optional | progressbar |
 | `steps` | A sequence of stages with a current one. | stages: literal set; current: `Value<str>` | list |
-| `status` | A single inline status line, optionally live. | text: `Value<str>`; `live` optional | status |
-| `banner` | A prominent message with a tone and optional action. | text: `Value<str>`; tone: info, warn, error; `-> Action` optional | status |
+| `status` | A single inline status line, optionally live. | text: display operand; `live` optional | status |
+| `banner` | A prominent message with a tone and optional action. | text: display operand; tone: info, warn, error; `-> Action` optional | status |
 | `empty` | Shown by a collection with zero rows. Overrides the default. | text: literal | status |
 | `error` | Shown when a bound value or action fails. Overrides default. | text: literal; `-> Retry` optional | alert |
 | `typing` | A chat typing indicator. | none | status |
@@ -129,8 +129,8 @@ state exists.
 
 | Element | What it is | Slice | Children | Role |
 |---|---|---|---|---|
-| `chat` | A scrolling transcript of messages. | from: `Value<List<Message>>` | one `message` | log |
-| `message` | One message. Role sets alignment and tone. | role: me or them or system; body: `.field` or `md` | any | listitem |
+| `chat` | A scrolling transcript of messages. | from: `Value<List<Message>>`; key optional | one `message` | log |
+| `message` | One message. Role sets alignment and tone. | role: me, them, system or a typed value of that enum; body: `Value<str>` projection | any | listitem |
 | `compose` | A text entry and send action for a chat. | bind: `Field<str>`; send: `-> Action{text}` | none | none |
 
 ## Overlays
@@ -160,3 +160,16 @@ player, or a rich text editor. It has no grid with arbitrary track sizing. It ha
 only purpose is spacing or decoration. If a surface seems to need one of these, that is a signal to
 reconsider the surface, not to extend the catalog. The deferred list and the reasons are in
 [decisions.md](decisions.md).
+
+## Exact source contract
+
+[grammar.md](grammar.md) defines the closed signatures, child restrictions and scopes.
+Its display operands accept a literal or a typed string, number or closed enum value.
+This applies to `badge`, `tag`, `status`, `banner` and link text as well as ordinary text.
+Image and avatar alt text accepts a literal or a typed string value.
+Action payloads use `-> Action{name: reference}` with shorthand `-> Action{name}`.
+Buttons may carry `primary` or `danger` intent followed by `confirm` and `disabled`.
+Only collections accept `key` and selection.
+Only `timestamp` accepts `relative`.
+Collection empty and error overrides are children after the template or columns.
+No slice implies an expression, implicit row record or additional modifier.

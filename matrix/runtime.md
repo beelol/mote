@@ -112,6 +112,49 @@ design where mote-client connects to the socket, renders a surface through mote-
 back, and it is the path to replace the dead eframe client. The first milestone is a minimal runtime
 that reads one validated tree from the stream and draws it.
 
+## Interim v0 consumer contract
+
+The first milestone consumes `crates/mote-ui::Node` unchanged.
+The node variants, allowed keys and limits in `crates/mote-ui/src/lib.rs` are authoritative.
+The wire event remains `{"event": name, "args": {...}}` from v0 section 12.
+This grammar freeze changes no production code, schema, fixture or IPC method.
+A consumer can draw existing validated JSON before a Matrix parser is authorized.
+
+| Matrix subset | Existing v0 node | Lowering rule |
+|---|---|---|
+| `text` | `text` | Resolve the literal or Value into `value`. |
+| `col` | `stack` | Lower children in reading order. |
+| Default `row` | `row` | Lower children in reading order. |
+| `list` without keys, selection or overrides | `list` | Expand the item template against a bounded host snapshot. |
+| Plain `table` | `table` | Resolve labels into `columns` and scalar projections into string `rows`. |
+| Default text `field` | `field` | Resolve label, Field path and initial string value. |
+| `toggle` | `toggle` | Resolve label, Field path and initial boolean value. |
+| `select` | `select` | Resolve label, Field path, string options and initial value. |
+| Plain zero argument `button` | `action` | Copy its label and published Action name into `event`. |
+| Determinate unlabeled `progress` | `progress` | Resolve its number into `value`. |
+
+An untitled screen lowers to a stack of its children.
+A singleton untitled screen wrapper and a singleton item template wrapper are elided.
+An explicit `col` always retains its stack wrapper.
+All references resolve on the host before the JSON is validated and committed.
+The consumer never receives source paths masquerading as text content.
+Bounds apply after collection expansion as well as during source validation.
+
+The remaining catalog has no lossless v0 representation.
+Named layout roles, headers, footers, semantic text roles, keys, selection, overlays, message roles,
+asset media, nondefault field kinds and action arguments cannot be added as arbitrary JSON keys.
+The `chat` v0 node accepts arbitrary children but does not encode Matrix message roles or bodies.
+The existing chat fixture is therefore not an exact Matrix chat equivalent.
+No unsupported node is silently flattened into text or a stack.
+The host rejects unsupported lowering with `E_LOWER_UNSUPPORTED` before committing the candidate.
+Existing JSON consumers continue to use the v0 rejection diagnostic behavior.
+
+The first runtime task renders all eleven existing node variants and existing fixtures.
+It does not implement the entire Matrix catalog through an invented wire extension.
+After `UI-00`, broader Matrix lowering needs a separately approved consumer contract revision.
+That revision must carry keys, selection and typed interaction metadata before claiming those behaviors.
+The owner confirmation list records this boundary.
+
 ## Status
 
 This is a recommended architecture from owner direction ("inferred and animated ui on immediate gui

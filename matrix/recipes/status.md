@@ -24,10 +24,10 @@ status "Syncing" live
 
 ## Slice
 
-- `badge` takes a `Value<str>`. If the value already names a state, such as a pull request `open`,
+- `badge` takes a literal or a typed display value. If the value names a state, such as a pull request `open`,
   the runtime maps it to a tone on its own.
-- `banner` takes a `Value<str>` and a `tone` of info, warn, or error, and an optional `-> Action`.
-- `status` takes a `Value<str>` and an optional `live`.
+- `banner` takes a display operand and a `tone` of info, warn, or error, and an optional `-> Action`.
+- `status` takes a display operand and an optional `live`.
 
 ## The tones
 

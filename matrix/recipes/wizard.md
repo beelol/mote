@@ -7,7 +7,7 @@ The model emits the surface for the step the person is on; it does not script th
 
 ```
 screen "Set up" {
-  steps stages ["Account", "Profile", "Done"] current .step
+  steps stages ["Account", "Profile", "Done"] current setup.step
   form "Profile" {
     field "Display name" display_name kind text min 2
     area "Bio" bio
@@ -22,6 +22,7 @@ screen "Set up" {
 ## Slice
 
 - `steps` takes the literal stage set and a `Value<str>` current stage.
+- `setup.step` is the host published current stage.
 - Each step is a `form` whose submit action carries that step's fields. `Back` is built in.
 
 ## Free

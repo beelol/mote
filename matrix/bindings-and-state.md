@@ -17,8 +17,8 @@ value. The runtime resolves it, keeps it current, and shows a loading state unti
 error state if it fails. The model never fetches and never caches.
 
 ```
-text name.of(github.viewer)      # a Value<str>
-list from github.my_pull_requests # a Value<List<PullRequest>>
+text github.viewer.name
+list from github.my_pull_requests { item { text .title } }
 ```
 
 ### Field<T>
@@ -29,26 +29,25 @@ decides the control and the keyboard. A field's value lives as long as the node 
 reconciliation, so a streamed update does not discard a half typed entry.
 
 ```
-toggle "Notify me" on: settings.notify   # a Field<bool>
-slider "Volume" vol min 0 max 100         # a Field<number>
-select "Repo" repo options repos          # a Field<enum> over a closed set
+toggle "Notify me" settings.notify
+slider "Volume" vol min 0 max 100
+select "Repo" repo options repos
 ```
 
 ### Action
 
 `Action` is an event the runtime accepts, written with `->`. An action gathers the typed fields in
-its scope into its input. The runtime derives the input contract from those fields, validates an
-incoming event against it, and only then hands it on. The model does not declare the contract
-separately. It falls out of the fields the action gathers.
+its scope into its input. The host derives argument types from those references and checks them
+against its published Action contract. It validates an incoming event before handing it on.
+The model does not declare a separate contract.
 
 ```
 button "Create" -> CreateReminder{title, when, repeat}
-# contract: { title: str, when: datetime, repeat: none | daily | weekly }
 ```
 
 Some actions are built in. The runtime handles them and the model never sees their events: `Open`,
-`Back`, `Dismiss`, `Copy`, `Retry`, `Cancel`. Everything else after `->` is a model action. The
-runtime records its contract and forwards a validated event to whatever drives the surface.
+`Back`, `Dismiss`, `Copy`, `Retry`, `Cancel`. Every other action must be published by the host.
+Unknown actions fail closed. The exact argument contracts are in [grammar.md](grammar.md).
 
 ## Selection yields a value
 
@@ -56,11 +55,15 @@ A `list`, `table`, or `grid` with `select one` or `select many` exposes a `selec
 An action reads it the same way it reads a field.
 
 ```
-table from github.my_pull_requests select one { ... }
-button "Open" -> Open(url.of(selected))
+table from github.my_pull_requests select one { column "Title" .title }
+button "Open" -> Open{url: selected.url}
 ```
 
-`selected` is typed as the row type for `select one` and as a list of the row type for `select many`.
+`selected` is optional row data for `select one` and a list of rows for `select many`.
+It is published in the collection's immediate parent block.
+That block can contain only one selectable collection.
+Template selections do not escape their template instance.
+An action needing a single selected row is disabled while no row is selected.
 An action that reads a field off `selected` is checked against the row type at compile time.
 
 ## Who owns which state
@@ -82,14 +85,15 @@ There is no declared store in matrix source. There are no routes. There are no e
 timers, or network calls in matrix. A surface is a value, and the model is the thing that produces
 the next value.
 
-In mote, the host is the daemon. matrix does not assume that. The host is whatever runtime reads the
-tree and runs the underlying behavior, and that technology is not chosen yet.
+In mote, the host is the daemon and the runtime is a separate consumer.
+The host publishes row types, bindings and action contracts before source validation.
+Source does not declare record types.
 
 ## Events
 
 1. A person acts on an interactive node.
-2. The runtime forms an event: the action name, the node identity, the surface revision, and the
-   gathered field values.
+2. The runtime forms the v0 event with `event` and `args`.
+   Node identity and surface revision are host validation context.
 3. The host validates the event against the action's derived contract and the surface revision. A
    mismatch is rejected with a typed diagnostic and never reaches the model.
 4. A valid event goes to the model as the input to produce the next surface.
@@ -103,9 +107,9 @@ or a failure node per surface. The runtime renders those states from the action'
 
 A surface arrives as a stream. The rules keep a partial surface safe to show.
 
-- The host parses incrementally and commits only complete, valid nodes to the renderer.
-- Text content may extend while it streams, because its layout and accessibility survive growth.
-- An incomplete interactive node stays inert. A half streamed button cannot be pressed.
+- The host buffers each candidate until its whole source, bindings and lowering validate.
+- A validated bound text value may extend while it streams.
+- An incomplete candidate is never an interactive surface.
 - The system fails closed. An unknown element, property, binding, action, or type is rejected.
 - If the final stream is invalid, the last valid committed surface stays on screen.
 - Repair is syntactic and bounded. The host never guesses missing meaning.
@@ -119,8 +123,11 @@ the row type so the runtime can match rows across updates and animate a move rat
 Key is the only identity concept a model writes, and only when path and type are not enough.
 
 ```
-list from github.my_pull_requests key number { ... }
+list from github.my_pull_requests key number { item { text .title } }
 ```
 
 Matching nodes keep focus, scroll, and in progress edits across a re render. This is why a streamed
 update does not disturb what the person is doing.
+Key values must be stable strings or integers and unique within one collection snapshot.
+Duplicate keys reject the update.
+Only keys and state transitions drive animation.

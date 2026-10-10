@@ -9,7 +9,7 @@ a box to add one. Replies are a nested list, not an indent the model controls.
 screen "Comments" {
   list from thread.comments key id {
     item {
-      row { avatar .author.avatar alt .author.login text .author.login caption .at relative }
+      row { avatar .author.avatar alt .author.login text .author.login timestamp .at relative }
       md .body
       list from .replies key id {
         item {
@@ -26,7 +26,7 @@ screen "Comments" {
 
 ## Slice
 
-- `thread.comments` is a `Value<List<Comment>>`. A comment has `author: { login, avatar }`,
+- `thread.comments` is a `Value<List<Comment>>`. A comment has `id: str`, `author: { login, avatar }`,
   `at: datetime`, `body: str`, and `replies: List<Comment>`.
 - `draft` is a `Field<str>`; `AddComment{text}` posts it.
 

@@ -38,11 +38,11 @@ screen "Pull requests" {
           row { badge .review badge .checks }
         }
       }
-      caption .updated relative
+      timestamp .updated relative
     }
     empty "No open pull requests"
   }
-  footer { button "Open" primary -> Open(url.of(selected)) }
+  footer { button "Open" primary -> Open{url: selected.url} }
 }
 ```
 
@@ -55,6 +55,9 @@ neutral, a passing check is success, a failing check is danger, and a draft or a
 pending. No color was written. On a reorder, `key number` lets each row tween to its new slot.
 
 ## The data the host supplies
+
+The host publishes this row type in its manifest.
+This record notation is documentation rather than Matrix source.
 
 ```
 PullRequest {

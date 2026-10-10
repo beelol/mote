@@ -1,0 +1,1 @@
+select "Talk model" models.talk options ["qwen3:4b", "qwen3:0.6b"]

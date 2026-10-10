@@ -16,7 +16,7 @@ A small round image for a person or repo:
 avatar .author.avatar alt .author.login
 ```
 
-A glyph from the theme icon set:
+A theme glyph for a fixed semantic name:
 
 ```
 icon "check"
@@ -38,7 +38,8 @@ divider
 
 - `image` and `avatar` take a `Value<asset>` as the source and a required `alt`. The runtime fetches
   the asset. The model never fetches.
-- `icon` takes a name from the theme icon set. An unknown name fails before render.
+- `icon` takes a fixed name from [../grammar.md](../grammar.md).
+- The theme draws that name and an unknown name fails before render.
 - `timestamp` takes a `Value<datetime>` and an optional `relative`.
 - `divider` takes nothing.
 

@@ -28,9 +28,10 @@ a number.
 | `nowrap` | `row` | Keep on one line and let the row scroll sideways. |
 | `start`, `center`, `end` | `row` or `col` | Align children on the cross axis. Default is `start`. |
 | `between`, `around` | `row` or `col` | Distribute space between children. Default is packed. |
-| `secondary` | any block | Render in the quieter secondary density, for sub text. |
 
 A model reaches for a role only when the default is wrong. Most surfaces write none of these.
+Roles appear in the order defined in [grammar.md](grammar.md).
+Use `caption` for secondary text rather than a per element presentation modifier.
 
 ## Scrolling is automatic
 
@@ -62,7 +63,7 @@ A surface inherits exactly one theme. The theme is a token set. It defines:
 - The corner radius and the one elevation used for cards and overlays.
 - The color roles for light and dark: surface, text, muted text, line, and the accent.
 - The status tones: `neutral`, `info`, `success`, `warning`, `danger`, `pending`.
-- The icon set the `icon` element draws from.
+- The glyphs for the fixed semantic icon names in [grammar.md](grammar.md).
 
 The theme is chosen by the runtime, not by the model. A child node cannot select a theme and cannot
 override a token. There are no per element colors, no per element fonts, and no per element

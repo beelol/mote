@@ -12,7 +12,7 @@ dialog "Delete 3 invoices" {
   text "This cannot be undone."
   row end {
     button "Cancel" -> Dismiss
-    button "Delete" danger confirm -> DeleteInvoices(ids: selected)
+    button "Delete" danger confirm -> DeleteInvoices{rows: invoices.pending_delete}
   }
 }
 ```
@@ -44,6 +44,7 @@ tooltip "Copied to clipboard" { icon "check" }
 ## Slice
 
 - `dialog` and `sheet` take a title literal and any children, usually a `form` or buttons.
+- `invoices.pending_delete` is a host supplied `Value<List<Invoice>>`.
 - `menu` takes a `trigger`, a literal or an `icon`, and `button` children.
 - `tooltip` takes a text literal and exactly one child.
 

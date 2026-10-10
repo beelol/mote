@@ -5,8 +5,10 @@ reads it and draws a working interface. The point of matrix is that a model spen
 and almost no attention describing a screen, because matrix infers everything a normal interface
 needs.
 
-This folder is the design home for matrix. It is isolated on purpose. It does not depend on the
-rest of mote, and it does not decide its own interpreter technology yet.
+This folder is the design home for matrix.
+It keeps the language design separate from production code.
+The interim consumer contract uses the existing v0 tree.
+The recommended Rust runtime is described in [runtime.md](runtime.md).
 
 ## What matrix is, and what it is not
 
@@ -70,13 +72,14 @@ shape, and name the actions. matrix is the vocabulary for exactly that and nothi
    source. Includes the GitHub pull request surface.
 7. [decisions.md](decisions.md). The decisions an owner must confirm, and where this design departs
    from the earlier UI language RFC.
+   [grammar.md](grammar.md) freezes the exact declaration and binding forms.
 8. [GOAL.md](GOAL.md). A resumable goal for continuing to iterate on matrix design coverage.
 9. [CLOSEOUT.md](CLOSEOUT.md). A single goal that drives the whole UI plan to a state the owner can
    approve, through `UI-00`.
 
 ## Status
 
-Design only. Date 2026-10-09. No interpreter exists. No matrix parser exists. The catalog, the
-bindings, and the examples are proposals open to owner revision. Nothing here changes the v0 build
+Design only. Date 2026-10-10. No interpreter exists. No matrix parser exists. The grammar is frozen
+for owner confirmation. The catalog, bindings and examples remain open to owner revision. Nothing here changes the v0 build
 contract or the v0 surface tree. The formal acceptance gate is `UI-00` in `docs/backlog.md`, which
 only the owner closes.

@@ -21,10 +21,12 @@ button "Archive all" -> ArchiveAll
 
 ## Slice
 
-- Each field inside the form contributes its `Field<T>` to the action input.
+- Each explicitly referenced field contributes its `Field<T>` to the action input.
 - `-> Action{fields}` names the action and the fields it gathers. The runtime derives the input
   contract from those fields. Here it is `{ title: str, when: date, repeat: none | daily | weekly }`.
 - `primary` marks the main button. `confirm` requires a second tap. `disabled` keeps it inert.
+- Exactly one primary button inside the form is its submit.
+- Only explicitly named Action arguments are gathered.
 
 ## Free
 

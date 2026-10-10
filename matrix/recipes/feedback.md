@@ -14,7 +14,7 @@ progress value job.percent label "Indexing"
 A sequence of stages with a current one:
 
 ```
-steps stages ["Draft", "Review", "Merged"] current .state
+steps stages ["Draft", "Review", "Merged"] current workflow.stage
 ```
 
 A chat typing indicator:
@@ -37,6 +37,7 @@ list from mail.unread {
 
 - `progress` takes an optional `Value<number>` and an optional label. No value means a spinner.
 - `steps` takes a literal set of stages and a `Value<str>` current stage.
+- `workflow.stage` is the host published stage name.
 - `typing` takes nothing.
 - `empty` and `error` take a literal message. `error` takes an optional `-> Retry`.
 

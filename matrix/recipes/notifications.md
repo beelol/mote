@@ -21,7 +21,7 @@ screen "Notifications" {
           badge .state
         }
       }
-      -> Open(.url)
+      button "Open" -> Open{url: .url}
     }
     empty "You are all caught up"
   }
@@ -31,7 +31,7 @@ screen "Notifications" {
 ## Slice
 
 - `notifications.recent` is a `Value<List<Notice>>`. A notice has `title: str`, `body: str`,
-  `at: datetime`, `state: unread | read`, `source: { name, icon }`, `url: url`.
+  `id: str`, `at: datetime`, `state: unread | read`, `source: { name, icon }`, `url: url`.
 
 ## Free
 

@@ -66,8 +66,9 @@ no fill.
 
 ### Icons
 
-The icon set is a thin single weight vector line set. `icon` draws from it by name. An unknown name
-fails before render.
+Vector draws the fixed semantic names in [../grammar.md](../grammar.md) as thin single weight lines.
+Themes provide glyphs for that exact set and cannot extend it.
+An unknown name fails before render.
 
 ### Motion
 

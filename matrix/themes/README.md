@@ -16,7 +16,7 @@ A theme is a base theme, not a style for one screen. Each theme renders every el
 - The corner radius and the one elevation for cards and overlays.
 - The color roles for light and dark: surface, text, muted text, line, and the one accent.
 - The six status tones: `neutral`, `info`, `success`, `warning`, `danger`, `pending`.
-- The icon set the `icon` element draws from.
+- Glyphs for the fixed semantic icon names in [../grammar.md](../grammar.md).
 - The one motion duration and curve the runtime uses for every state transition.
 
 Because every element reads these from the theme, swapping the theme re spaces, re colors, and re

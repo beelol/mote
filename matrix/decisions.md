@@ -24,7 +24,8 @@ reverses them.
    Recommended stack: Taffy for flexbox layout, egui for the immediate mode shell, wgpu for GPU
    draw, rayon for parallel per node measurement, AccessKit for roles. Each piece measures
    independently, a flexbox pass fits them, and they draw in parallel. See [runtime.md](runtime.md).
-9. matrix lives in its own isolated folder and does not depend on the rest of mote.
+9. matrix design lives in its own folder and changes no production code.
+   Its interim lowering target is the existing Mote v0 tree.
 10. The default theme is Vector: thin retro red, Atari vector line. Dark base, one red accent, thin
     vector strokes instead of fills, sharp corners, no shadows, a mono type scale, tight but
     comfortable spacing, status tones as thin colored strokes, and a materialize line on reveal
@@ -39,24 +40,19 @@ reverses them.
     contract, so a second native immediate mode consumer such as SwiftUI is allowed on iOS only if
     the Rust path is impractical, with no change to the language or the tree.
 
-## Decisions the owner must confirm for UI-00
+## Owner confirmation list for UI-00
 
-Each has a recommended answer. Confirm or change each one.
+Confirm or name explicit changes to these four defaults.
+Nothing here closes `UI-00` or moves work into v0.
 
-1. Catalog coverage. Is the catalog in [catalog.md](catalog.md) the right closed set? Recommended:
-   yes, with the explicit deferrals below. Changing it means adding or removing a word now, before a
-   parser exists.
-2. One theme per surface, no per element style. Recommended: keep. This is the owner constraint from
-   2026-10-08.
-3. Three bindings only: `Value`, `Field`, `Action`. Recommended: keep.
-4. Whole surface replacement, host computes the diff, model never patches. Recommended: keep.
-5. Selection exposes a typed `selected` value. Recommended: keep.
-6. Status tones are a closed set of six meanings, colored by the theme. Recommended: keep.
-7. matrix source is the model's output format, and the temporary JSON tree is internal. Recommended:
-   confirm. This is the main departure from the earlier RFC, which recommended JSON as the model's
-   output for v0 and matrix only later. See the departures section.
-8. The syntax sketch in the examples. Recommended: treat as a proposal, not frozen. The next
-   iteration refines the exact grammar against a token measurement.
+1. Keep the closed [catalog](catalog.md), its coverage recipes and the explicit deferrals below.
+2. Confirm [grammar.md](grammar.md), host owned types and actions, scoped optional selection,
+   keys without animation hints and the fixed semantic icon names.
+3. Keep Vector, one theme per surface, six status meanings, no per element style, strict layout,
+   three bindings and whole surface replacement.
+4. Confirm Matrix as the future source format and the unchanged v0 tree as the interim consumer
+   contract. Accept explicit rejection of unsupported lowering and approve a separate contract
+   revision before the full Matrix catalog can render.
 
 ## Departures from the earlier UI language RFC
 
@@ -69,7 +65,7 @@ and departs in these places. None is a silent deletion. Each is a recorded decis
 | Name is `Mote UI`, file ending `.mote`. | Name is `matrix`. No `.mote`. | The old name collides with the `mote` product and the `moted` daemon. |
 | Catalog words in section 7.4 include `page`, `screen`, `card`, `grid`, `dialog`, `sheet`, `chart`, `series`, and more. | Catalog is reorganized and completed in [catalog.md](catalog.md). `chart` and `series` are deferred. `grid` is a collection, not a layout primitive. | Favor a catalog organized by the slice each element needs, and defer charting until a real surface needs it. |
 | Semantic color roles `primary`, `danger`, `secondary` and size roles `large`, `small` are modifiers. | Color is never written. `primary`, `confirm`, and `danger` survive only as intent on buttons and actions. Size is never written. | The owner constraint is no style options beyond the theme. |
-| Renderer targets named Tauri 2 and Slint, with a license open decision. | No renderer technology is named. matrix assumes a host and a runtime only. | Owner direction on 2026-10-09 that the interpreter is not chosen. The renderer RFC decides targets. |
+| Renderer targets named Tauri 2 and Slint, with a license open decision. | Rust runtime with the recommended stack in [runtime.md](runtime.md). | Owner direction on 2026-10-09 chooses Rust and an immediate mode consumer. Crate choices remain recommendations. |
 
 ## Deferred elements and why
 
@@ -78,8 +74,8 @@ reconsidering.
 
 - `chart` and `series`. Charting is a large sub language of its own. Defer until a generated surface
   needs a chart that a `table` or a `stat` cannot carry.
-- A free `grid` with custom track sizes. Rejected. The wrapping `grid` collection covers tiles. Add a
-  tracked grid only if a required surface cannot be expressed with nested `row` and `col`.
+- A free `grid` with custom track sizes. Rejected. The wrapping `grid` collection covers tiles.
+  Any request to reconsider tracked layout goes to the owner before a catalog change.
 - A rich text editor. Rejected. `area` and `compose` cover text entry. A full editor is an
   application, not a generated surface.
 - A web view or embedded script. Rejected permanently. This reopens the validation hole matrix
@@ -90,15 +86,48 @@ reconsidering.
   Proportional placement needs pixels, which matrix forbids. The agenda list in `recipes/calendar.md`
   is the accepted representation. Reconsider only if a required surface cannot be read as an agenda.
 
-## Open questions for the next iteration
+## Resolved defaults from the grammar iteration
 
-1. The exact grammar. The examples sketch it. The next pass freezes it against a token measurement
-   on the conformance suite, comparing matrix source to the temporary JSON tree.
-2. The exact row type notation a surface relies on, shown in the pull request example as a small
-   record. Decide whether the surface declares it or the host publishes it.
-3. Whether `key` alone is enough for reordering and animation, or whether a surface ever needs an
-   animation intent hint. Prefer `key` alone.
-4. Whether `header` and `footer` are enough anchors, or whether a floating action affordance is a
-   distinct need.
-5. The icon set the `icon` element draws from, and whether it is part of the theme or a separate
-   fixed set.
+Date 2026-10-10.
+These recommendations resolve the five prior open questions.
+They remain subject to the owner confirmation list.
+
+1. Exact grammar is frozen in [grammar.md](grammar.md).
+   Braces group children and named Action arguments.
+   Direct paths replace helper calls and parentheses.
+   No comments or expressions are accepted.
+   [measurement.md](measurement.md) records bytes and tokens without claiming parser validity.
+2. The host owns row records and publishes the versioned binding manifest.
+   Source only references those types.
+   The PullRequest record examples document that host contract.
+3. Stable collection keys alone drive reorder identity and motion.
+   Duplicate keys reject the update.
+   Keys are local to one collection.
+   Cross collection moves use leave and enter motion.
+   No animation intent hint is added.
+4. Header and footer remain the only anchors.
+   Primary actions use a footer or a normal button.
+   No floating action affordance is added.
+5. Icon names are a separate fixed semantic set listed in the grammar.
+   Themes draw those names and cannot extend them.
+   Unknown names fail closed.
+
+The iteration makes no catalog addition.
+Literal display text and typed alt text are reconciled with existing examples.
+Only timestamp accepts relative formatting.
+Calendar weeks and kanban columns use the existing grid collection rather than repeated col syntax.
+Kanban moves use an explicit target field and Action.
+Drag to move is deferred until a declared drop target contract exists.
+The secondary presentation modifier is removed because per element style is forbidden.
+Search and row opening use existing buttons rather than undeclared event clauses.
+Selection is local to the collection's parent and cannot leak out of a repeated template.
+The host checks derived argument types against known Action contracts.
+An unknown Action never creates a new untyped event contract.
+
+## Runtime follow-up boundary
+
+The v0 tree cannot carry the full catalog, keys, selection or typed Action argument metadata.
+The exact available lowering subset is in [runtime.md](runtime.md).
+The next milestone draws validated v0 trees without changing that schema.
+A future consumer contract revision requires explicit owner approval.
+This boundary does not defer a grammar decision and does not approve UI-00.

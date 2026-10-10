@@ -16,7 +16,7 @@ screen "Today" {
           text .title
           caption .location
         }
-        badge .status fill end
+        col end fill { badge .status }
       }
     }
     empty "Nothing scheduled"
@@ -26,12 +26,13 @@ screen "Today" {
 
 ## Week
 
-Seven day columns, each an agenda. A `row` of `col`, one per day.
+Seven day tiles, each an agenda.
+The existing grid collection repeats one tile per day.
 
 ```
 screen "This week" {
-  row {
-    col from calendar.week {
+  grid from calendar.week key date {
+    tile {
       text .weekday
       list from .events {
         item { timestamp .start text .title }
@@ -46,7 +47,7 @@ screen "This week" {
 
 - `calendar.today` is a `Value<List<Event>>`. An event has `start: datetime`, `title: str`,
   `location: str`, `status: confirmed | tentative | canceled`.
-- `calendar.week` is a `Value<List<Day>>`, each with `weekday: str` and `events: List<Event>`.
+- `calendar.week` is a `Value<List<Day>>` with `date: str`, `weekday: str` and `events: List<Event>`.
 
 ## Free
 

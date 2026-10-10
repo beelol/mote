@@ -45,7 +45,7 @@ row {
 
 - `col` and `row` take no data. They only group children.
 - Roles are words, never numbers: `fill`, `nowrap`, `start`, `center`, `end`, `between`, `around`,
-  `secondary`.
+  `wrap`.
 
 ## Free
 

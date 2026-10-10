@@ -7,13 +7,18 @@ enough to recognize it and open it.
 
 ```
 screen "Search" {
-  header { search "Search" query send -> Search{query} }
+  header {
+    row {
+      search "Search" query fill
+      button "Search" -> Search{query}
+    }
+  }
   list from search.results key id {
     item {
       text .title
       caption .snippet
       row { tag .source timestamp .updated relative }
-      -> Open(.url)
+      button "Open" -> Open{url: .url}
     }
     empty "No matches"
   }
@@ -23,7 +28,7 @@ screen "Search" {
 ## Slice
 
 - `query` is a `Field<str>` bound to the search box. `Search{query}` runs the search.
-- `search.results` is a `Value<List<Result>>` with `title: str`, `snippet: str`, `source: str`,
+- `search.results` is a `Value<List<Result>>` with `id: str`, `title: str`, `snippet: str`, `source: str`,
   `updated: datetime`, `url: url`.
 
 ## Free

@@ -2,6 +2,9 @@
 
 Every example is matrix source. Read these to see how short a real surface is. The catalog and the
 bindings documents define every word used here.
+[grammar.md](grammar.md) defines the exact forms.
+Cases without `screen` are fragments inserted into an untitled screen for rendering.
+Host record descriptions and event JSON below are not Matrix source.
 
 ## Conformance suite
 
@@ -58,7 +61,7 @@ form "New reminder" {
 The event the runtime sends on submit:
 
 ```
-{ "action": "CreateReminder",
+{ "event": "CreateReminder",
   "args": { "title": "Call Ana", "when": "2026-10-10", "repeat": "none" } }
 ```
 
@@ -94,7 +97,7 @@ Inline, inside another surface:
 ```
 card "Assistant" {
   chat from thread.messages {
-    message role: .role body: .body
+    message role .role body .body
   }
   compose draft send -> Send{text: draft}
 }
@@ -131,7 +134,7 @@ The header and footer stay in place within the safe area while the list scrolls 
 ### 10. A malformed binding fails before render
 
 ```
-button "Open" -> Open(url.of(selected))
+button "Open" -> Open{url: selected.url}
 ```
 
 Written without a `select one` collection in scope, `selected` is not defined. The binding fails type
@@ -139,7 +142,7 @@ checking and the surface never renders. The diagnostic returned to the model:
 
 ```
 { "code": "E011", "message": "symbol not in scope: selected",
-  "span": { "line": 1, "col": 23 }, "path": "button[0]" }
+  "span": { "line": 1, "col": 28 }, "path": "button[0]" }
 ```
 
 ## Real world: what are my pull requests
@@ -188,11 +191,11 @@ screen "Pull requests" {
           }
         }
       }
-      caption .updated relative
+      timestamp .updated relative
     }
     empty "No open pull requests"
   }
-  footer { button "Open" primary -> Open(url.of(selected)) }
+  footer { button "Open" primary -> Open{url: selected.url} }
 }
 ```
 
@@ -205,7 +208,9 @@ draft or a running check is pending. No color was written.
 ### The data the host must supply
 
 matrix names `github.my_pull_requests` as a `Value<List<PullRequest>>`. The host owns the fetch. The
-row type the surface relies on is small:
+row type the surface relies on is small.
+The host publishes this record in its manifest.
+This notation documents that record and is not a source declaration.
 
 ```
 PullRequest {
@@ -249,10 +254,20 @@ dialog "Delete 3 invoices" {
   text "This cannot be undone."
   row end {
     button "Cancel" -> Dismiss
-    button "Delete" danger confirm -> DeleteInvoices(ids: selected)
+    button "Delete" danger confirm -> DeleteInvoices{rows: invoices.pending_delete}
   }
 }
 ```
 
 `Dismiss` is a built in action the runtime handles. `DeleteInvoices` is a model action with a derived
-contract of a list of invoice ids.
+contract accepting the host's list of invoices pending deletion.
+
+## Measurement and rejection coverage
+
+[measurement.md](measurement.md) records source bytes and approved local tokenizer counts.
+It distinguishes exact v0 equivalents from unsupported design cases.
+There is no Matrix parser yet, so the snippets are grammar fixtures rather than execution evidence.
+An implementation must reject unknown words, modifiers, bindings and key fields.
+It must also reject malformed strings, unbalanced braces, invalid child placement, duplicate keys,
+multiple selectable collections in one scope, helper calls and unknown Action arguments.
+Rejection must preserve the last valid surface.

@@ -1,0 +1,4 @@
+table from fixture.models {
+  column "name" .name
+  column "value" .value
+}

@@ -7,7 +7,7 @@ A big number with a label, and a label with its value on one line.
 A stat, for a dashboard number:
 
 ```
-stat "Open PRs" count.of(github.my_pull_requests)
+stat "Open PRs" github.pull_request_count
 ```
 
 With a change indicator:
@@ -25,8 +25,9 @@ kv "Author" .author.login
 
 ## Slice
 
-- `stat` takes a label literal and a `Value<str>`, and an optional `delta` as a `Value<str>`.
-- `kv` takes a label literal and a `Value<str>`.
+- `stat` takes a label literal and a typed string or number value.
+- Its optional delta accepts the same type choices.
+- `kv` takes a label literal and a typed string, number or closed enum value.
 
 ## Free
 

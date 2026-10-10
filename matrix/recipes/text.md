@@ -14,7 +14,7 @@ code "qwen3:4b"
 Bound text reads a value:
 
 ```
-text name.of(github.viewer)
+text github.viewer.name
 ```
 
 A constrained Markdown subset, for model prose:

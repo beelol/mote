@@ -12,13 +12,14 @@ time "Start" start
 Bound with constraints:
 
 ```
-date "Due" due min today
+date "Due" due min calendar.today_date
 ```
 
 ## Slice
 
 - `when` is a `Field<date>`. `start` is a `Field<time>`.
 - `min` and `max` are optional bounds for a date.
+- `calendar.today_date` is a host published `Value<date>`.
 - A label literal names the picker.
 
 ## Free

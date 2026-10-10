@@ -13,7 +13,7 @@ screen "Photos" {
       caption .caption
     }
   }
-  footer { button "Open" primary -> Open(url.of(selected)) }
+  footer { button "Open" primary -> Open{url: selected.url} }
 }
 ```
 

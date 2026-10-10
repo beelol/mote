@@ -13,7 +13,7 @@ things that need attention. Nothing else earns a place above the fold.
 ```
 screen "Overview" {
   row {
-    stat "Open PRs" count.of(github.my_pull_requests)
+    stat "Open PRs" github.pull_request_count
     stat "Failing checks" fails delta fails_trend
     stat "Latency p50" latency delta latency_trend
   }

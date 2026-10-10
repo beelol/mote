@@ -7,11 +7,15 @@ of entries they can open.
 
 ```
 screen "Files" {
-  header { row { link .crumb to .path } }
+  header {
+    list from files.breadcrumbs {
+      item { link .label to .url }
+    }
+  }
   list from files.here key path select one {
     item {
       row {
-        icon .kind
+        text .kind
         text .name fill
         caption .size
         timestamp .modified relative
@@ -19,19 +23,20 @@ screen "Files" {
     }
     empty "Empty folder"
   }
-  footer { button "Open" primary -> Open(path.of(selected)) }
+  footer { button "Open" primary -> Open{url: selected.url} }
 }
 ```
 
 ## Slice
 
 - `files.here` is a `Value<List<Entry>>`. An entry has `name: str`, `kind: folder | file | image`,
-  `size: str`, `modified: datetime`, `path: str`.
-- The header reads a `Value<List<Crumb>>` of `label` and `path` for the breadcrumb.
+  `size: str`, `modified: datetime`, `path: str`, `url: url`.
+- The header reads `files.breadcrumbs`, a `Value<List<Crumb>>` of `label: str` and `url: url`.
+- The host validates resource URLs for `Open` rather than passing raw paths.
 
 ## Free
 
-- Scroll, selection, icons per kind, relative time, empty state.
+- Scroll, selection, relative time, empty state.
 
 ## Animates
 

@@ -4,6 +4,10 @@ One concept per file. Each file shows how you would make that thing in matrix, t
 gives you for free and what it animates. Read a recipe when you want to build one thing. Read
 [../catalog.md](../catalog.md) for the whole closed catalog, and [../runtime.md](../runtime.md) for
 why these affordances are free and animated.
+All source uses [../grammar.md](../grammar.md).
+Snippets without a screen are fragments inserted into a screen by the host.
+Relative `.field` references require the row scope named in the recipe's slice.
+Root data uses a host published path rather than an implicit row.
 
 ## The recipe shape
 

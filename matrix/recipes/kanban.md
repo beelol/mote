@@ -1,14 +1,14 @@
 # kanban board
 
 What a person needs when they ask "show the board." Columns by state, each a list of cards. A move
-is an action, not a drag the model authors; the runtime owns the drag gesture.
+is an explicit action on a selected card and a target column.
 
 ## Make it
 
 ```
 screen "Board" {
-  row nowrap {
-    col from board.columns {
+  grid from board.columns key id {
+    tile {
       row between { text .name badge .count }
       list from .cards key id select one {
         item {
@@ -17,24 +17,29 @@ screen "Board" {
         }
         empty "Empty"
       }
+      select "Move to" target options board.column_names
+      button "Move" -> MoveCard{id: selected.id, to: target}
     }
   }
-  footer { button "Move" -> MoveCard(id: selected, to: next) }
 }
 ```
 
 ## Slice
 
-- `board.columns` is a `Value<List<Column>>` with `name: str`, `count: str`, and
-  `cards: List<Card>`. A card has `id`, `title: str`, `label: str`, `assignee: { name, avatar }`.
+- `board.columns` is a `Value<List<Column>>` with `id: str`, `name: str`, `count: str` and
+  `cards: List<Card>`. A card has `id: str`, `title: str`, `label: str`, `assignee: { name, avatar }`.
+- `board.column_names` supplies the target column enum options.
+- `target` is a `Field<ColumnName>` instantiated separately in each keyed tile.
 - `MoveCard` takes the selected card id and a target column.
 
 ## Free
 
-- Each column scrolls, the row of columns scrolls sideways with `nowrap`, selection and empty states
-  come from the runtime. The drag gesture to move a card is a runtime affordance; the model only
-  defines the `MoveCard` action.
+- Each column scrolls and the grid wraps columns on a narrow surface.
+- Selection and empty states come from the runtime.
+- Selection stays within its tile and the action disables until a card is selected.
+- Drag to move is deferred because the current Action contract declares no drop target.
 
 ## Animates
 
-- A moved card tweens from its old column to its new one through `key id`.
+- Reordered cards within a column tween through `key id`.
+- A move between collections leaves one column and enters another.
