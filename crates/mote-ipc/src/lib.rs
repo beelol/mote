@@ -327,6 +327,7 @@ impl Client {
             cursor,
             reader: self.reader,
             stream: self.writer,
+            decoder: EventDecoder::default(),
         })
     }
 }
@@ -339,6 +340,40 @@ pub struct EventStream {
     cursor: i64,
     reader: BufReader<UnixStream>,
     stream: UnixStream,
+    decoder: EventDecoder,
+}
+
+/// Retains incomplete newline-delimited event bytes across read timeouts.
+#[derive(Default)]
+pub struct EventDecoder {
+    pending: Vec<u8>,
+}
+
+impl EventDecoder {
+    pub fn read(&mut self, reader: &mut impl BufRead) -> io::Result<Option<Event>> {
+        match reader.read_until(b'\n', &mut self.pending) {
+            Ok(0) => {
+                self.pending.clear();
+                Err(io::Error::new(io::ErrorKind::UnexpectedEof, "subscription closed"))
+            }
+            Ok(_) if self.pending.last() != Some(&b'\n') => {
+                self.pending.clear();
+                Err(io::Error::new(io::ErrorKind::UnexpectedEof, "incomplete subscription frame"))
+            }
+            Ok(_) => {
+                let line = std::mem::take(&mut self.pending);
+                let frame: Value = serde_json::from_slice(&line)
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+                let value = frame.get("event").ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "subscription frame has no event")
+                })?;
+                serde_json::from_value(value.clone()).map(Some)
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+            }
+            Err(error) if matches!(error.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
 }
 
 impl EventStream {
@@ -350,6 +385,7 @@ impl EventStream {
             cursor,
             reader,
             stream,
+            decoder: EventDecoder::default(),
         })
     }
 
@@ -373,6 +409,7 @@ impl EventStream {
                 Ok((r, s)) => {
                     self.reader = r;
                     self.stream = s;
+                    self.decoder = EventDecoder::default();
                     return;
                 }
                 Err(_) => {
@@ -392,34 +429,11 @@ impl EventStream {
     /// Read once from this subscription. A timeout returns `Ok(None)`. A dropped connection is
     /// returned to the caller so a higher-level worker can reconnect from its delivered cursor.
     pub fn read_event(&mut self) -> io::Result<Option<Event>> {
-        let mut line = String::new();
-        match self.reader.read_line(&mut line) {
-            Ok(0) => Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                "subscription closed",
-            )),
-            Ok(_) => {
-                let frame: Value = serde_json::from_str(line.trim_end())
-                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-                let value = frame.get("event").ok_or_else(|| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "subscription frame has no event",
-                    )
-                })?;
-                let event: Event = serde_json::from_value(value.clone())
-                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-                self.cursor = event.seq;
-                Ok(Some(event))
-            }
-            Err(error)
-                if error.kind() == io::ErrorKind::WouldBlock
-                    || error.kind() == io::ErrorKind::TimedOut =>
-            {
-                Ok(None)
-            }
-            Err(error) => Err(error),
+        let event = self.decoder.read(&mut self.reader)?;
+        if let Some(event) = &event {
+            self.cursor = event.seq;
         }
+        Ok(event)
     }
 
     /// Pull the next event, reconnecting from the cursor on a hard disconnect. Returns None on a
@@ -445,6 +459,50 @@ impl EventStream {
 mod tests {
     use super::*;
     use mote_eventlog::EventLog;
+
+    #[test]
+    fn fragmented_event_survives_timeouts_at_every_byte_and_requires_newline() {
+        let event = Event { seq: 7, ts: 0, scope_id: "main".into(), kind: "ui.surface".into(),
+            payload: json!({"surface":{"type":"text","value":"é"}}) };
+        let frame = encode_frame(&event_envelope(&event)).unwrap();
+        for cut in 0..frame.len() {
+            let (reader, mut writer) = UnixStream::pair().unwrap();
+            reader.set_read_timeout(Some(Duration::from_millis(1))).unwrap();
+            let mut stream = EventStream {
+                path: PathBuf::new(), scope_id: "main".into(), cursor: 0,
+                reader: BufReader::new(reader.try_clone().unwrap()), stream: reader,
+                decoder: EventDecoder::default(),
+            };
+            writer.write_all(&frame[..cut]).unwrap();
+            assert!(stream.read_event().unwrap().is_none(), "cut {cut}");
+            assert_eq!(stream.cursor(), 0);
+            writer.write_all(&frame[cut..]).unwrap();
+            let delivered = stream.read_event().unwrap().unwrap();
+            assert_eq!(delivered.payload, event.payload, "cut {cut}");
+            assert_eq!(stream.cursor(), 7);
+        }
+    }
+
+    #[test]
+    fn event_decoder_rejects_eof_before_newline_and_recovers_after_bad_frames() {
+        let event = Event { seq: 9, ts: 0, scope_id: "main".into(), kind: "ui.surface".into(),
+            payload: json!({"surface":{"type":"text","value":"complete"}}) };
+        let frame = encode_frame(&event_envelope(&event)).unwrap();
+        let mut decoder = EventDecoder::default();
+        let error = decoder.read(&mut &frame[..frame.len() - 1]).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
+        let mut coalesced = b"{bad}\n{\"event\":{}}\n".to_vec();
+        coalesced.extend(&frame);
+        coalesced.extend(&frame);
+        let mut reader = coalesced.as_slice();
+        for _ in 0..2 {
+            assert_eq!(decoder.read(&mut reader).unwrap_err().kind(), io::ErrorKind::InvalidData);
+        }
+        for _ in 0..2 {
+            assert_eq!(decoder.read(&mut reader).unwrap().unwrap().seq, 9);
+        }
+        assert_eq!(decoder.read(&mut reader).unwrap_err().kind(), io::ErrorKind::UnexpectedEof);
+    }
 
     struct TestDispatch {
         log: EventLog,

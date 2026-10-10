@@ -25,3 +25,4 @@ model2vec-rs = "0.3"
 
 [dev-dependencies]
 mote-testkit.workspace = true
+mote-client = { path = "../mote-client", features = ["test-observation"] }

@@ -2446,6 +2446,7 @@ dependencies = [
  "cron",
  "matrix-lang",
  "model2vec-rs",
+ "mote-client",
  "mote-context",
  "mote-eventlog",
  "mote-harness",

@@ -1053,6 +1053,105 @@ mod approval_dispatch_tests {
             .unwrap()
     }
 
+    #[test]
+    fn matrix_candidate_prefixes_preserve_real_client_display_and_event_contracts() {
+        use mote_client::{assert_v0_payload, ObservationHarness};
+        let (data, _) = dirs("candidate-client-isolation");
+        let prior_source = format!("screen {{ {} button \"Prior Refresh\" -> refresh }}", "text \"Committed spacer\" ".repeat(8));
+        let action = "screen { button \"Candidate action\" -> refresh }";
+        let form = "screen { form \"Candidate form\" { toggle \"Candidate field\" models.local_only button \"Candidate submit\" primary -> refresh } }";
+        matrix_lang::parse_surface(form).unwrap();
+        let mut prefixes = 0;
+        let mut rejected = 0;
+        let mut committed = 0;
+        for source in [action, form] {
+            for cut in 0..=source.len() {
+                let daemon = daemon(&data);
+                daemon.call("matrix.render", json!({"thread":"main", "source":prior_source})).unwrap();
+                let prior = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().unwrap();
+                let mut harness = ObservationHarness::default();
+                harness.event(&prior);
+                let display = harness.frame(vec![]);
+                let event = json!({"thread":"main", "event":"refresh", "args":{}, "surface_seq":prior.seq, "node_path":[8]});
+                let contracts = daemon.matrix_surfaces.lock().unwrap().clone();
+                let retained = daemon.matrix_sources.lock().unwrap().clone();
+                let config = std::fs::read(data.join("config.toml")).unwrap();
+
+                let probe_source = if source == action { action } else {
+                    "screen { toggle \"Candidate field\" models.local_only button \"Candidate submit\" -> refresh }"
+                };
+                let probe_surface = daemon.compile_matrix(probe_source).unwrap();
+                let mut probe = ObservationHarness::default();
+                probe.event(&mote_eventlog::Event { seq: prior.seq + 1, ts: 0, scope_id: "main".into(), kind: "ui.surface".into(),
+                    payload: json!({"surface_id":"matrix", "surface":probe_surface}) });
+                let positions: Vec<_> = probe.frame(vec![]).iter().filter(|node| {
+                    matches!(node.node, mote_ui::Node::Action { .. } | mote_ui::Node::Toggle { .. })
+                }).map(|node| node.rect.center()).collect();
+                assert!(!positions.is_empty());
+                let old_action = display.iter().find(|node| matches!(node.node, mote_ui::Node::Action { .. })).unwrap();
+                assert!(positions.iter().all(|position| !old_action.rect.contains(*position)));
+
+                candidate(&daemon, "main", "truncated", &source.as_bytes()[..cut], false);
+                assert_eq!(daemon.log.max_seq().unwrap(), prior.seq);
+                harness.assert_isolated(&display, &positions, &event);
+                prefixes += 1;
+                if cut < source.len() || source == form {
+                    let response = candidate(&daemon, "main", "truncated", b"", true);
+                    assert_eq!(response["status"], "rejected", "cut {cut}: {source}");
+                    if cut == source.len() {
+                        assert_eq!(response["diagnostics"][0]["code"], "E_LOWER_UNSUPPORTED");
+                    }
+                    let diagnostic = daemon.log.get(prior.seq + 1).unwrap().unwrap();
+                    assert_eq!(diagnostic.kind, "ui.diagnostic");
+                    harness.event(&diagnostic);
+                    harness.assert_isolated(&display, &positions, &event);
+                    assert_eq!(harness.switches, 1);
+                    rejected += 1;
+                }
+                assert_eq!(*daemon.matrix_sources.lock().unwrap(), retained);
+                assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), contracts);
+                assert_eq!(std::fs::read(data.join("config.toml")).unwrap(), config);
+
+                candidate(&daemon, "main", "finish", &source.as_bytes()[..cut], false);
+                let before = daemon.log.max_seq().unwrap();
+                candidate(&daemon, "main", "finish", &source.as_bytes()[cut..], false);
+                assert_eq!(daemon.log.max_seq().unwrap(), before);
+                harness.assert_isolated(&display, &positions, &event);
+                let result = candidate(&daemon, "main", "finish", b"", true);
+                assert_eq!(daemon.log.max_seq().unwrap(), before + 1);
+                let finalized = daemon.log.get(before + 1).unwrap().unwrap();
+                harness.event(&finalized);
+                if source == action {
+                    assert_eq!(result["status"], "committed");
+                    assert_eq!(finalized.kind, "ui.surface");
+                    assert_v0_payload(&finalized.payload["surface"]);
+                    assert_eq!(harness.switches, 2);
+                    let replaced = harness.frame(vec![]);
+                    assert_ne!(replaced, display);
+                    assert_eq!(harness.frame(vec![]), replaced);
+                    let action = replaced.iter().find(|node| matches!(node.node, mote_ui::Node::Action { .. })).unwrap();
+                    harness.click(action.rect.center());
+                    assert_eq!(harness.queued(), vec![json!({"thread":"main", "event":"refresh", "args":{}, "surface_seq":finalized.seq, "node_path":[]})]);
+                    assert!(daemon.call("ui.event", event).is_err());
+                    committed += 1;
+                } else {
+                    assert_eq!(result["status"], "rejected");
+                    assert_eq!(result["diagnostics"][0]["code"], "E_LOWER_UNSUPPORTED");
+                    harness.assert_isolated(&display, &positions, &event);
+                    assert_eq!(harness.switches, 1);
+                    assert_eq!(*daemon.matrix_sources.lock().unwrap(), retained);
+                    assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), contracts);
+                    assert!(daemon.call("ui.event", event).is_ok());
+                    rejected += 1;
+                }
+                assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), 0);
+                assert_eq!(daemon.store.lock().unwrap().count_packs().unwrap(), 0);
+            }
+        }
+        eprintln!("{prefixes} Matrix byte prefixes, {rejected} rejected finalizations, {committed} complete switches");
+        std::fs::remove_dir_all(data.parent().unwrap()).unwrap();
+    }
+
     fn positive_matrix_sources() -> Vec<String> {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../matrix");
         let mut sources = vec![

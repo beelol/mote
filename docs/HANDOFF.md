@@ -1,58 +1,56 @@
-# Handoff: Matrix committed event admission
+# Handoff: Matrix candidate display isolation
 
 Updated 2026-10-10. Replace this file, never append.
 
 Branch: `main`.
-Task 1 commit: `7e64475`.
-Fix Round 1 commit: `bd9d8c5`.
-Fix Round 2 subject: `fix(ipc): bind replay watermark to subscription`.
+Task 2 base: `77b58ef`.
+Task 2 commit subject: `test(client): verify committed candidate isolation`.
 Preserve untracked `.DS_Store` and `.superpowers/`.
 Do not push.
 
-Task 1 adds per-thread Matrix contracts installed after successful `ui.surface` storage.
-Their revision is the stored event sequence.
-The client sends `surface_seq` and a zero-based structural `node_path` outside consumer JSON.
-Root controls use an empty path.
-Controls must be exposed by the current committed surface and match trusted types and exact args.
-Refresh must be exposed and takes empty args.
-Legacy approval cards use their explicit approve/deny route with existing approval checks.
-Arbitrary non-Matrix action names are rejected.
+Task 2 adds a reusable test-only observation harness around the real IPC decoder,
+application reducer, chat view, `surface::draw` and outbound event queue.
+The `test-observation` feature exposes it only for the daemon's development dependency.
+Passive draw hooks observe structural paths, egui namespaces, nodes and painted rectangles.
+They do not add controls or change layout.
 
-The real renderer, reducer and ordered worker carry the new context.
-The production surface payload, transport helpers and measurement outputs remain unchanged.
-Whole-source rendering, candidate commitment and Refresh share contract installation.
-The retained-source lock serializes admission with replacement.
-Event insertion and retention are now one transaction, with broadcasting after commit.
-Failed retention cannot expose a surface whose contract was not installed.
+The ten unchanged JSON fixtures cover 1,963 framed byte splits, 1,963 malformed frames
+and 20 malformed complete payloads.
+The daemon action/form regression covers 173 byte prefixes, 297 rejected finalizations
+and 48 single whole-surface switches.
+Candidate-only positions emit nothing on taps or Enter.
+Prior controls retain their sequence, path and exact args.
+The form parses but remains unsupported by v0 lowering.
+No form approximation or consumer metadata was added.
 
-Each connection reads `status.last_seq` before subscribing on that same Unix socket.
-The consuming IPC transition preserves the connection and its buffered reader.
-A daemon death between the requests cannot transfer the cutoff to a replacement daemon.
-The reconnect worker starts again with the replacement daemon's status.
-The client removes existing Matrix surfaces and suppresses Matrix replay through that cutoff.
-Ordinary chat and non-Matrix cards retain their cursor and replay behavior.
-Fresh surfaces above the cutoff can display.
-Disconnected Matrix controls use an expired interaction namespace that cannot be reused.
-The `--matrix` initial source submission follows stream setup so its surface remains eligible.
-No source persistence was added.
+Tests exposed two framing defects.
+`EventDecoder` now retains bytes across timeouts, including splits inside UTF-8.
+Malformed complete frames are skipped without invalidating the committed display.
+EOF before a newline is rejected.
+Hard disconnect and resync behavior remain unchanged.
+Each reconnect still reads status and subscribes on the same socket.
+The replay cutoff still suppresses historical Matrix surfaces and clears expired interaction state.
 
-Verification passed: 7 IPC tests, 24 focused daemon tests, 65 client tests, 291 workspace tests and doc tests,
-workspace clippy, deterministic Matrix measurements and diff whitespace checks.
-Socket tests ran with local socket access.
-No live model call or pull occurred.
-Evidence is in `docs/verification/UI-29-v0.md`.
-Exact RED/GREEN output is in `.superpowers/sdd/2026-10-10-matrix-host-runtime-v0/task-1-report.md`.
+Task 1 admission contracts, event retention atomicity, diagnostics and source ownership remain intact.
+The sequence and zero-based path still travel outside the v0 Node payload.
+Schema, fixtures and deterministic measurement outputs are unchanged.
+No live model call, model pull, source persistence, remote write or push occurred.
 
-Next: independently review Task 1, then continue Task 2 of
+Verification passed: 9 IPC tests, 67 client tests, 25 focused daemon tests,
+296 workspace tests and all doc tests, workspace clippy, deterministic measurements and diff checks.
+Socket-dependent suites ran with local socket access after sandbox permission failures.
+Evidence: `docs/verification/UI-31.md`, `UI-33.md` and `UI-34.md`.
+The full report is `.superpowers/sdd/2026-10-10-matrix-host-runtime-v0/task-2-report.md`.
+
+Next: independently review Task 2, then continue Task 3 in
 `docs/superpowers/plans/2026-10-10-matrix-host-runtime-v0.md`.
-Task 2 must drive the real reducer, renderer and outbound queue with the new sequence/path envelope.
-Keep incomplete candidate controls inert and preserve the previous committed contract.
+Task 3 pins literal text rendering and forbidden Matrix source semantics.
 
-UI-29 remains partial for full-catalog action arguments and activation context.
-The older native diagnostic capture remains pending in `docs/verification/UI-35.md`.
+UI-29 remains partial for full-catalog actions and activation context.
+UI-35 native capture remains pending in `docs/verification/UI-35.md`.
 Its isolated fixture is `/private/tmp/mote-ui35.XJxtru`.
 The Mac was locked during that capture attempt.
-No native, Pi or iPad evidence is claimed.
+Headless observations do not replace native captures or claim Pi or iPad acceptance.
 The client still persists only its cursor, not chat history.
 
 `docs/rfcs/v0.md` remains authoritative.

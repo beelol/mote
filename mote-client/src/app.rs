@@ -698,6 +698,10 @@ impl eframe::App for MoteApp {
     }
 }
 
+#[cfg(any(test, feature = "test-observation"))]
+#[path = "observation.rs"]
+pub mod observation;
+
 #[cfg(test)]
 mod tests {
     use super::*;

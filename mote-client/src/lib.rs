@@ -1,0 +1,11 @@
+#![cfg(feature = "test-observation")]
+#![allow(dead_code)]
+
+mod app;
+mod pipeline;
+mod state;
+mod stream;
+mod surface;
+mod theme;
+
+pub use app::observation::*;

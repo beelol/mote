@@ -66,6 +66,8 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
 }
 
 fn draw_at(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>, path: &mut Vec<usize>) {
+    #[cfg(any(test, feature = "test-observation"))]
+    let first_shape = observation::shape_count(ui);
     match node {
         Node::Text { value } => {
             ui.label(value);
@@ -214,6 +216,54 @@ fn draw_at(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>, path:
             );
             crate::theme::caption(ui, &format!("{:.0}%", value * 100.0));
         }
+    }
+    #[cfg(any(test, feature = "test-observation"))]
+    observation::record(ui, node, path, first_shape);
+}
+
+#[cfg(any(test, feature = "test-observation"))]
+pub(crate) mod observation {
+    use super::*;
+    use std::cell::RefCell;
+
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct DisplayedNode {
+        pub namespace: egui::Id,
+        pub path: Vec<usize>,
+        pub node: Node,
+        pub rect: egui::Rect,
+    }
+
+    thread_local! {
+        static DISPLAYED: RefCell<Vec<DisplayedNode>> = const { RefCell::new(Vec::new()) };
+    }
+
+    pub fn take() -> Vec<DisplayedNode> {
+        DISPLAYED.with(|nodes| std::mem::take(&mut *nodes.borrow_mut()))
+    }
+
+    pub fn shape_count(ui: &egui::Ui) -> usize {
+        let mut count = 0;
+        ui.painter().for_each_shape(|_| count += 1);
+        count
+    }
+
+    pub fn record(ui: &egui::Ui, node: &Node, path: &[usize], start: usize) {
+        let mut index = 0;
+        let mut rect = egui::Rect::NOTHING;
+        ui.painter().for_each_shape(|shape| {
+            if index >= start {
+                rect = rect.union(match &shape.shape {
+                    egui::Shape::Rect(shape) => shape.rect,
+                    egui::Shape::Text(shape) => shape.galley.rect.translate(shape.pos.to_vec2()),
+                    shape => shape.visual_bounding_rect(),
+                });
+            }
+            index += 1;
+        });
+        DISPLAYED.with(|nodes| nodes.borrow_mut().push(DisplayedNode {
+            namespace: ui.id(), path: path.to_vec(), node: node.clone(), rect,
+        }));
     }
 }
 

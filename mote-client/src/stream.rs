@@ -94,6 +94,7 @@ fn run_with<S>(
                     cursor = delivered_cursor;
                     retry = MIN_RETRY;
                 }
+                Err(error) if error.kind() == io::ErrorKind::InvalidData => {}
                 Err(_) => {
                     if !deliver(StreamUpdate::Disconnected) {
                         return;
@@ -201,6 +202,25 @@ mod tests {
             *waits.lock().unwrap(),
             vec![Duration::from_millis(20), Duration::from_millis(20)]
         );
+    }
+
+    #[test]
+    fn malformed_frame_keeps_the_connection_and_committed_surface() {
+        let mut reads = VecDeque::from([
+            Ok(Some(event(1, "ui.surface"))),
+            Err(io::Error::new(io::ErrorKind::InvalidData, "malformed frame")),
+            Ok(Some(event(2, "ui.surface"))),
+        ]);
+        let mut connected = 0;
+        let mut delivered = Vec::new();
+        run_with(0, |_| { connected += 1; Ok(((), 0)) }, |_| reads.pop_front().unwrap(),
+            |update| match update {
+                StreamUpdate::Connected { .. } => true,
+                StreamUpdate::Disconnected => panic!("malformed candidate invalidated committed display"),
+                StreamUpdate::Event(event) => { delivered.push(event.seq); event.seq != 2 }
+            }, |_| {});
+        assert_eq!(connected, 1);
+        assert_eq!(delivered, [1, 2]);
     }
 
     #[test]

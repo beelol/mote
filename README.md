@@ -95,6 +95,9 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
   **Verify:** complete every criterion's full Verify clause in `docs/backlog.md`; do not let unavailable
   hardware block independent code and headless evidence. [catalog](matrix/catalog.md)
   [runtime](matrix/runtime.md)
+  Complete validated streaming, inert candidates and stable committed layout are verified in
+  [UI-31](docs/verification/UI-31.md), [UI-33](docs/verification/UI-33.md) and
+  [UI-34](docs/verification/UI-34.md).
 
 - [x] **V0-01** The Cargo workspace builds the `moted` and `mote-client` binaries and the nine crates named in the table, and both `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` pass on the empty project. **Verify:** Run both commands. [§1](docs/rfcs/v0.md#1-workspace) [evidence](docs/verification/V0-01.md)
 - [x] **V0-02** `mote-redact` replaces the same secret patterns and secret keys as Overseer's `redact.rs`, with Overseer's tests carried over. **Verify:** `cargo test -p mote-redact`. [§1](docs/rfcs/v0.md#1-workspace) [evidence](docs/verification/V0-02.md)
