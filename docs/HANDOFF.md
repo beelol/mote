@@ -55,6 +55,9 @@ percentiles.
 - Fresh 20-run benchmarks at `3bd4eec` measured talk p50 at 27.0 ms and router p50 at 56.8 ms.
   Both existing lane gates remain green. V0-50 now has the closed-view baseline, but still needs
   the matching run while the Pipeline view is visibly open.
+- An isolated live `config.set` changed `models.talk` from `qwen3:4b` to `qwen3:0.6b`. The next
+  turn's ledger row used `qwen3:0.6b`, with the prior `qwen3:4b` row retained as before evidence.
+  V0-48 contains the excerpt and remains open only for the visible Config-control action.
 - Ollama 0.35.0 received `think: false`, but the installed `qwen3:4b` template still returned its
   reasoning in `message.content` before `</think>`. The raw first-token benchmark passes. Do not
   add an output-stripping workaround or refresh the installed model without an owner decision.
