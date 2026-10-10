@@ -1,5 +1,12 @@
 # RFC: a generative UI language for mote
 
+> Superseded in part on 2026-10-09 by the `matrix/` folder. The owner renamed the language to
+> `matrix`, made the text syntax the language, and made the JSON tree a temporary intermediate
+> rather than the long-term model output. Read `matrix/README.md` and `matrix/decisions.md` for the
+> current direction and the recorded departures from this RFC. This RFC is kept for its research,
+> its measurements, and its affordance and streaming rules, which `matrix` reuses. Where the two
+> disagree, `matrix/` wins. `UI-00` still gates both.
+
 ## 1. Status
 
 | Field | Value |
