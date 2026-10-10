@@ -1,9 +1,11 @@
 use crate::ast::*;
 
+const MAX_SOURCE_BYTES: usize = 256 * 1024;
+
 pub fn format_surface(surface: &Surface) -> String {
     let mut output = String::new();
     write_declaration(&surface.screen, 0, &mut output);
-    output
+    finish_format(output)
 }
 
 pub fn format_fragment(declarations: &[Declaration]) -> String {
@@ -11,7 +13,53 @@ pub fn format_fragment(declarations: &[Declaration]) -> String {
     for declaration in declarations {
         write_declaration(declaration, 0, &mut output);
     }
+    finish_format(output)
+}
+
+fn finish_format(pretty: String) -> String {
+    if pretty.len() <= MAX_SOURCE_BYTES {
+        pretty
+    } else {
+        compact(&pretty)
+    }
+}
+
+fn compact(pretty: &str) -> String {
+    let mut output = String::with_capacity(pretty.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut pending_space = false;
+    let mut previous = None;
+    for character in pretty.chars() {
+        if in_string {
+            output.push(character);
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '"' {
+                in_string = false;
+            }
+        } else if character.is_ascii_whitespace() {
+            pending_space = true;
+            continue;
+        } else {
+            if pending_space && previous.is_some_and(word_character) && word_character(character) {
+                output.push(' ');
+            }
+            output.push(character);
+            pending_space = false;
+            if character == '"' {
+                in_string = true;
+            }
+        }
+        previous = Some(character);
+    }
     output
+}
+
+fn word_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || character == '_'
 }
 
 fn string(value: &StringLiteral) -> String {

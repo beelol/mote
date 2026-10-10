@@ -119,3 +119,47 @@ fn round_trips_one_thousand_deterministic_bounded_asts() {
         round_trip(&source);
     }
 }
+
+#[test]
+fn maximum_size_surface_formats_to_reparsable_canonical_source() {
+    let source = format!("screen{{text \"{}\"}}", "a".repeat(262_129));
+    assert_eq!(source.len(), 256 * 1024);
+    let surface = parse_surface(&source).unwrap();
+    let formatted = format_surface(&surface);
+    assert!(formatted.len() <= 256 * 1024, "{}", formatted.len());
+    let reparsed = parse_surface(&formatted).unwrap();
+    assert_eq!(without_spans(&surface), without_spans(&reparsed));
+    assert_eq!(format_surface(&reparsed), formatted);
+}
+
+#[test]
+fn maximum_size_fragment_formats_to_reparsable_canonical_source() {
+    let source = format!("text \"{}\"", "a".repeat(262_137));
+    assert_eq!(source.len(), 256 * 1024);
+    let fragment = parse_fragment(&source).unwrap();
+    let formatted = format_fragment(&fragment);
+    assert!(formatted.len() <= 256 * 1024, "{}", formatted.len());
+    let reparsed = parse_fragment(&formatted).unwrap();
+    assert_eq!(without_spans(&fragment), without_spans(&reparsed));
+    assert_eq!(format_fragment(&reparsed), formatted);
+}
+
+#[test]
+fn round_trips_near_depth_and_node_limits() {
+    let mut deep = String::from("screen {");
+    for _ in 0..10 {
+        deep.push_str(" section {");
+    }
+    deep.push_str(" text value");
+    for _ in 0..11 {
+        deep.push('}');
+    }
+    round_trip(&deep);
+
+    let mut wide = String::from("screen {");
+    for _ in 0..1999 {
+        wide.push_str(" text value");
+    }
+    wide.push_str(" }");
+    round_trip(&wide);
+}
