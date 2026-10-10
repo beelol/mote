@@ -930,6 +930,39 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_renders_in_chat_with_prior_surface_and_advances_cursor() {
+        let (mut app, tx) = app();
+        let cursor = std::env::temp_dir().join(format!("mote-diagnostic-cursor-{}", std::process::id()));
+        app.cursor_path = Some(cursor.clone());
+        for (seq, kind, payload) in [
+            (1, "ui.surface", serde_json::json!({"surface_id":"matrix", "surface":{"type":"text", "value":"Prior dashboard"}})),
+            (2, "ui.diagnostic", serde_json::json!({"diagnostics":[{
+                "code":"E_PARSE_INCOMPLETE", "span":{"start":12,"end":12}, "message":"expected closing brace", "hint":"Close the block"
+            }]})),
+        ] {
+            tx.send(Event { seq, ts:0, scope_id:"main".into(), kind:kind.into(), payload }).unwrap();
+        }
+        app.drain_events();
+        assert_eq!(load_cursor_from(&cursor), 2);
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let output = ctx.run(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 800.0))),
+            ..Default::default()
+        }, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| app.chat_view(ui));
+        });
+        let text = output.shapes.iter().filter_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) => Some(text.galley.text()),
+            _ => None,
+        }).collect::<Vec<_>>().join("\n");
+        for part in ["Prior dashboard", "E_PARSE_INCOMPLETE", "12..12", "expected closing brace", "Close the block"] {
+            assert!(text.contains(part), "not rendered: {part}; {text}");
+        }
+        std::fs::remove_file(cursor).ok();
+    }
+
+    #[test]
     fn valid_surface_becomes_a_displayed_typed_surface() {
         let (mut app, tx) = app();
         send(

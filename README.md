@@ -88,6 +88,8 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
   [UI-11](docs/verification/UI-11.md),
   [UI-12](docs/verification/UI-12.md), [UI-32](docs/verification/UI-32.md)
   and [UI-45](docs/verification/UI-45.md).
+  [UI-35](docs/verification/UI-35.md) has passing production and client rendering tests.
+  Its native screenshot remains blocked by the locked desktop.
 - [ ] **Matrix host and runtime** Implement UI-13 through UI-31, UI-33 through UI-44 and UI-46
   through UI-48 after the toolchain, including a versioned full-catalog consumer contract.
   **Verify:** complete every criterion's full Verify clause in `docs/backlog.md`; do not let unavailable

@@ -41,7 +41,9 @@ fn submit_matrix(socket: &std::path::Path, source: &str) -> Result<(), String> {
         )
         .map_err(|error| format!("cannot submit matrix source: {error}"))?
         .map_err(|error| format!("{}: {}", error.code, error.message))?;
-    if response["ok"].as_bool() == Some(true) {
+    if response["ok"].as_bool() == Some(true)
+        || (response["ok"].as_bool() == Some(false) && response["diagnostics"].is_array())
+    {
         Ok(())
     } else {
         Err(format!("matrix source rejected: {}", response["diagnostics"]))
@@ -97,6 +99,26 @@ fn main() -> eframe::Result<()> {
 mod tests {
     use super::*;
     use std::ffi::OsString;
+
+    #[test]
+    fn rejected_matrix_submission_still_opens_chat_for_logged_diagnostic() {
+        use std::io::{BufRead, BufReader, Write};
+        let path = std::env::temp_dir().join(format!("mote-rejected-matrix-{}.sock", std::process::id()));
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
+            let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+            writeln!(stream, "{}", serde_json::json!({"id":request["id"], "result":{
+                "ok":false,"diagnostics":[{"code":"E_PARSE_INCOMPLETE"}]
+            }})).unwrap();
+        });
+        let result = submit_matrix(&path, "screen {");
+        server.join().unwrap();
+        std::fs::remove_file(path).ok();
+        assert!(result.is_ok(), "structured rejection must reach the chat: {result:?}");
+    }
 
     #[test]
     fn matrix_flag_loads_utf8_source() {

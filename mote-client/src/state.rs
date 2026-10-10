@@ -40,6 +40,7 @@ pub struct ChatState {
     pub typing: bool,
     session_id: String,
     next_local_id: u64,
+    diagnostic_cursor: i64,
 }
 
 impl Default for ChatState {
@@ -54,6 +55,7 @@ impl Default for ChatState {
             typing: false,
             session_id: format!("{}-{nanos}-{counter}", std::process::id()),
             next_local_id: 0,
+            diagnostic_cursor: 0,
         }
     }
 }
@@ -157,6 +159,42 @@ impl ChatState {
                     local_id: None,
                     role: "system".into(),
                     text: format!("talk unavailable: {reason}"),
+                    status: Status::Read,
+                    surface: None,
+                    surface_id: None,
+                });
+            }
+            "ui.diagnostic" => {
+                if ev.seq <= self.diagnostic_cursor {
+                    return;
+                }
+                self.diagnostic_cursor = ev.seq;
+                let Some(diagnostics) = ev.payload["diagnostics"].as_array() else {
+                    return;
+                };
+                let mut text = String::from("Matrix source rejected");
+                if let Some(candidate) = ev.payload["candidate"].as_str() {
+                    text.push_str(&format!(" (candidate: {candidate})"));
+                }
+                for diagnostic in diagnostics {
+                    let code = diagnostic["code"].as_str().unwrap_or("E_HOST");
+                    let message = diagnostic["message"].as_str().unwrap_or("Source rejected");
+                    text.push_str(&format!("\n{code}"));
+                    if let (Some(start), Some(end)) = (
+                        diagnostic["span"]["start"].as_u64(),
+                        diagnostic["span"]["end"].as_u64(),
+                    ) {
+                        text.push_str(&format!(" at bytes {start}..{end}"));
+                    }
+                    text.push_str(&format!(": {message}"));
+                    if let Some(hint) = diagnostic["hint"].as_str() {
+                        text.push_str(&format!("\nHint: {hint}"));
+                    }
+                }
+                self.messages.push(Message {
+                    local_id: None,
+                    role: "system".into(),
+                    text,
                     status: Status::Read,
                     surface: None,
                     surface_id: None,
@@ -307,6 +345,41 @@ mod tests {
         assert_eq!(chat.messages[0].local_id.as_deref(), Some(pending.as_str()));
         assert!(chat.messages[1].status == Status::Delivered);
         assert!(chat.messages[1].local_id.is_none());
+    }
+
+    #[test]
+    fn diagnostic_replay_is_visible_deduplicated_and_preserves_surface() {
+        let surface = event(20, "ui.surface", serde_json::json!({
+            "surface_id":"matrix", "surface":{"type":"text", "value":"Prior dashboard"}
+        }));
+        let diagnostic = event(21, "ui.diagnostic", serde_json::json!({
+            "candidate":"draft", "diagnostics":[{
+                "code":"E_PARSE_INCOMPLETE", "severity":"error", "span":{"start":7,"end":9},
+                "declaration_path":["screen"], "message":"expected closing brace", "hint":"Close the block"
+            }]
+        }));
+        let mut live = ChatState::default();
+        live.reduce(&surface);
+        live.reduce(&diagnostic);
+        assert_eq!(live.messages.len(), 2);
+        assert_eq!(live.messages[1].role, "system");
+        for part in ["draft", "E_PARSE_INCOMPLETE", "7..9", "expected closing brace", "Close the block"] {
+            assert!(live.messages[1].text.contains(part), "missing {part}");
+        }
+        assert!(live.messages[1].surface.is_none());
+        live.reduce(&diagnostic);
+        assert_eq!(live.messages.len(), 2);
+        let mut replay = ChatState::default();
+        replay.reduce(&surface);
+        replay.reduce(&diagnostic);
+        assert_eq!(replay.messages[1].text, live.messages[1].text);
+        assert_eq!(live.messages[0].surface, Some(Node::Text { value:"Prior dashboard".into() }));
+        let without_hint = event(22, "ui.diagnostic", serde_json::json!({"diagnostics":[{
+            "code":"E_PARSE_TOKEN", "span":{"start":1,"end":2}, "message":"unexpected token", "hint":null
+        }]}));
+        live.reduce(&without_hint);
+        assert_eq!(live.messages.len(), 3);
+        assert!(!live.messages[2].text.contains("Hint:"));
     }
 
     #[test]

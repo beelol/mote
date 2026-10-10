@@ -141,8 +141,27 @@ impl Daemon {
     ) -> Result<Value, RpcError> {
         match self.compile_matrix(source) {
             Ok(surface) => self.commit_matrix(sources, thread, &surface, retain.then_some(source)),
-            Err(diagnostics) => Ok(json!({"ok": false, "diagnostics": diagnostics})),
+            Err(diagnostics) => {
+                self.emit_matrix_diagnostic(thread, None, &diagnostics)?;
+                Ok(json!({"ok": false, "diagnostics": diagnostics}))
+            }
         }
+    }
+
+    fn emit_matrix_diagnostic(
+        &self,
+        thread: &str,
+        candidate: Option<&str>,
+        diagnostics: &Value,
+    ) -> Result<(), RpcError> {
+        let mut payload = json!({"diagnostics": diagnostics});
+        if let Some(candidate) = candidate {
+            payload["candidate"] = json!(candidate);
+        }
+        self.log
+            .append(thread, "ui.diagnostic", &payload)
+            .map_err(|error| RpcError::internal(format!("commit diagnostic: {error}")))?;
+        Ok(())
     }
 
     fn commit_matrix(
@@ -206,7 +225,9 @@ impl Daemon {
         let parsed = match candidates.remove(&key).unwrap().finalize() {
             Ok(parsed) => parsed,
             Err(errors) => {
-                return Ok(json!({"status":"rejected", "diagnostics":matrix::diagnostics(&errors)}));
+                let diagnostics = matrix::diagnostics(&errors);
+                self.emit_matrix_diagnostic(thread, Some(candidate), &diagnostics)?;
+                return Ok(json!({"status":"rejected", "diagnostics":diagnostics}));
             }
         };
         let mut sources = self.matrix_sources.lock().unwrap();
@@ -221,7 +242,9 @@ impl Daemon {
                 Ok(response)
             }
             Err(errors) => {
-                Ok(json!({"status":"rejected", "diagnostics":matrix::diagnostics(&errors)}))
+                let diagnostics = matrix::diagnostics(&errors);
+                self.emit_matrix_diagnostic(thread, Some(candidate), &diagnostics)?;
+                Ok(json!({"status":"rejected", "diagnostics":diagnostics}))
             }
         }
     }
@@ -840,8 +863,8 @@ mod approval_dispatch_tests {
     #[test]
     fn matrix_candidate_every_positive_fixture_byte_split_defers_commit_until_finish() {
         let (data, _) = dirs("candidate-prefixes");
-        let daemon = daemon(&data);
         for source in positive_matrix_sources() {
+            let daemon = daemon(&data);
             let parsed = matrix_lang::parse_surface(&source).unwrap();
             let expected = daemon.compile_matrix(&source);
             daemon
@@ -899,7 +922,10 @@ mod approval_dispatch_tests {
                     Err(diagnostics) => {
                         assert_eq!(response["status"], "rejected");
                         assert_eq!(response["diagnostics"], *diagnostics);
-                        assert_eq!(daemon.log.max_seq().unwrap(), before);
+                        assert_eq!(daemon.log.max_seq().unwrap(), before + 1);
+                        let event = daemon.log.get(before + 1).unwrap().unwrap();
+                        assert_eq!(event.kind, "ui.diagnostic");
+                        assert_eq!(event.payload["diagnostics"], *diagnostics);
                         assert_eq!(*daemon.matrix_sources.lock().unwrap(), retained);
                     }
                 }
@@ -964,7 +990,10 @@ mod approval_dispatch_tests {
             if let Some(errors) = rejection {
                 assert_eq!(response["diagnostics"], errors);
             }
-            assert_eq!(daemon.log.max_seq().unwrap(), before);
+            assert_eq!(daemon.log.max_seq().unwrap(), before + 1);
+            let event = daemon.log.get(before + 1).unwrap().unwrap();
+            assert_eq!(event.kind, "ui.diagnostic");
+            assert_eq!(event.payload["diagnostics"], response["diagnostics"]);
             assert_eq!(daemon.matrix_sources.lock().unwrap()["thread-7"], prior);
             daemon
                 .call(
@@ -1097,6 +1126,70 @@ mod approval_dispatch_tests {
     }
 
     #[test]
+    fn matrix_terminal_rejections_emit_one_diagnostic_and_preserve_dashboard() {
+        let (data, _) = dirs("matrix-visible-rejections");
+        let daemon = daemon(&data);
+        daemon.call("matrix.render", json!({"thread":"main", "source":MATRIX_DASHBOARD})).unwrap();
+        let prior = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().unwrap().payload;
+        assert!(matrix_lang::parse_surface("screen { row wrap {} }").is_ok());
+        for (name, source, code) in [
+            ("truncated string", "screen { text \"unfinished", "E_LEX_INCOMPLETE_STRING"),
+            ("truncated brace", "screen { text \"unfinished\"", "E_PARSE_INCOMPLETE"),
+            ("stray brace", "screen { text \"bad\" }}", "E_PARSE_TOKEN"),
+            ("quoted modifier", "screen { row \"wrap\" {} }", "E_PARSE_TOKEN"),
+            ("invalid suffix", "screen { text \"bad\" }\ngarbage", "E_PARSE_TOKEN"),
+        ] {
+            for streamed in [false, true] {
+                let before = daemon.log.max_seq().unwrap();
+                let mut events = daemon.log.subscribe("main", before).unwrap();
+                let response = if streamed {
+                    for chunk in source.as_bytes().chunks(1) {
+                        candidate(&daemon, "main", name, chunk, false);
+                        assert_eq!(daemon.log.max_seq().unwrap(), before);
+                    }
+                    candidate(&daemon, "main", name, b"", true)
+                } else {
+                    daemon.call("matrix.render", json!({"thread":"main", "source":source})).unwrap()
+                };
+                assert_eq!(response["diagnostics"][0]["code"], code, "{name}: {response}");
+                let diagnostic = events.recv_timeout(Duration::from_millis(10)).expect("visible diagnostic event");
+                assert_eq!(diagnostic.kind, "ui.diagnostic");
+                assert_eq!(diagnostic.payload["diagnostics"], response["diagnostics"]);
+                assert_eq!(diagnostic.payload["candidate"], if streamed { json!(name) } else { Value::Null });
+                assert!(diagnostic.payload.get("source").is_none());
+                assert_eq!(daemon.log.max_seq().unwrap(), before + 1);
+                assert!(events.recv_timeout(Duration::from_millis(2)).is_none());
+                assert_eq!(daemon.matrix_sources.lock().unwrap()["main"], MATRIX_DASHBOARD);
+                daemon.call("ui.event", json!({"thread":"main", "event":"refresh", "args":{}})).unwrap();
+                assert_eq!(events.recv_timeout(Duration::from_millis(10)).unwrap().kind, "ui.event");
+                let refreshed = events.recv_timeout(Duration::from_millis(10)).unwrap();
+                assert_eq!(refreshed.kind, "ui.surface");
+                assert_eq!(refreshed.payload, prior);
+                assert!(events.recv_timeout(Duration::from_millis(2)).is_none());
+                println!("{name}, streamed={streamed}: one diagnostic, prior dashboard and source retained");
+            }
+        }
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn matrix_diagnostic_event_redacts_candidate_and_diagnostic_fields() {
+        let (data, _) = dirs("matrix-diagnostic-redaction");
+        let daemon = daemon(&data);
+        let secret = "ghp_0123456789abcdefghijklmnopqrstuvwx";
+        let source = format!("screen {{ {secret} }}");
+        let response = candidate(&daemon, "main", secret, source.as_bytes(), true);
+        assert_eq!(response["status"], "rejected");
+        assert!(response["diagnostics"].to_string().contains(secret));
+        let event = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().expect("stored diagnostic");
+        assert_eq!(event.kind, "ui.diagnostic");
+        assert_eq!(event.payload["candidate"], "[redacted]");
+        assert!(!event.payload.to_string().contains(secret));
+        assert!(event.payload["diagnostics"].to_string().contains("[redacted]"));
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
     fn invalid_matrix_source_returns_diagnostics_without_replacing_the_surface() {
         let (data, _) = dirs("matrix-invalid");
         let daemon = daemon(&data);
@@ -1120,6 +1213,7 @@ mod approval_dispatch_tests {
         assert!(response["diagnostics"][0]["code"]
             .as_str()
             .is_some_and(|code| code.starts_with("E_")));
+        assert_eq!(events.recv_timeout(Duration::from_millis(10)).unwrap().kind, "ui.diagnostic");
         assert!(events.recv_timeout(Duration::from_millis(10)).is_none());
         std::fs::remove_dir_all(data.parent().unwrap()).ok();
     }
@@ -1163,6 +1257,7 @@ mod approval_dispatch_tests {
                 response["diagnostics"].as_array().is_some_and(|items| !items.is_empty()),
                 "missing diagnostics for {category}"
             );
+            assert_eq!(events.recv_timeout(Duration::from_millis(10)).unwrap().kind, "ui.diagnostic");
             assert!(
                 events.recv_timeout(Duration::from_millis(2)).is_none(),
                 "replaced the committed surface for {category}"
@@ -1261,6 +1356,7 @@ mod approval_dispatch_tests {
                 }]}),
                 "{category}"
             );
+            assert_eq!(events.recv_timeout(Duration::from_millis(10)).unwrap().kind, "ui.diagnostic");
             assert!(
                 events.recv_timeout(Duration::from_millis(2)).is_none(),
                 "{category} replaced the committed surface"
