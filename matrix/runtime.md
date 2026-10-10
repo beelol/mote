@@ -86,6 +86,32 @@ This stack is not a new bet. Taffy, egui, AccessKit, and wgpu are the exact tool
 research already evaluated, and eframe is already in the mote client. Choosing Rust here keeps the
 runtime consistent with the rest of mote while giving the fastest frame loop available.
 
+## Targets and a second consumer
+
+The runtime must run on the Mac, on a Raspberry Pi touchscreen, and on an iPad. The Rust stack
+covers all three. wgpu renders through Metal on the Mac and the iPad and through Vulkan on the Pi,
+and egui with winit builds as an iOS app, so one Rust runtime is the Mac client, the Pi renderer,
+and the iPad app. Keep going with Rust.
+
+A consumer is anything that renders a validated surface. The temporary tree is the consumer
+contract, which is exactly why a single wire format matters: it lets more than one consumer exist
+without changing matrix. The primary consumer is the Rust runtime. A second consumer is sanctioned
+if the Rust path is ever impractical on iOS: a native immediate mode consumer, such as SwiftUI,
+that renders the same validated tree and sends the same events back. Any second consumer must be
+hyper fast and immediate mode, must render every element in the catalog, and must not change the
+language or the tree. matrix and the daemon stay identical across consumers.
+
+## How the host runs it
+
+The runtime is a consumer process, not code inside the daemon. In mote, moted stays headless under
+launchd and owns data, binding subscriptions, validation, and surface history. It streams validated
+surface tree commits and binding values over the existing IPC event stream and receives ui.event
+back. The runtime is the client on the Mac and the iPad and runs standalone on the Pi. It holds only
+interaction state and redraws from the newest committed surface each frame. This matches the v0
+design where mote-client connects to the socket, renders a surface through mote-ui, and sends events
+back, and it is the path to replace the dead eframe client. The first milestone is a minimal runtime
+that reads one validated tree from the stream and draws it.
+
 ## Status
 
 This is a recommended architecture from owner direction ("inferred and animated ui on immediate gui

@@ -36,19 +36,32 @@ Do the work in this order, committing and pushing after each step.
    appears in at least one example. If a surface needs a word the catalog lacks, record one proposed
    catalog change in matrix/decisions.md with its reason; never silently add a word.
 
-2. Resolve the open questions. Work through every item under open questions in matrix/decisions.md.
+2. Materialize the default theme. Write matrix/themes/vector.md as the full token set for the Vector
+   theme: thin retro red, Atari vector line. Dark base surface, one red accent, thin vector strokes
+   instead of fills, sharp corners, no shadows, a mono type scale, tight but comfortable spacing.
+   Define the six status tones as thin colored strokes, and the one materialize motion, a line on
+   reveal, with one duration and curve the runtime uses for every state transition. Show how it
+   draws every element group in the catalog. It is a general base theme, not a one off, and it needs
+   no new matrix syntax; it fills the theme hook in layout-and-theme.md. Keep layout-and-theme.md
+   and themes pointed at it.
+
+3. Resolve the open questions. Work through every item under open questions in matrix/decisions.md.
    Give each a decision or a recommended default with a reason. Freeze the exact matrix grammar
    against the conformance suite: the declaration shape, the binding notation, the event and
    selection notation, and whether a surface declares its row types or the host publishes them. Move
    anything that still needs the owner into a short, explicit list the owner can answer quickly.
 
-3. Reconcile with the renderer. Make matrix/runtime.md consistent with docs/rfcs/renderer.md if it
-   exists: the display list boundary, node identity and keys, the animation hints the runtime needs,
-   and the Mac and Pi target constraints. If the renderer RFC does not exist yet, state the
-   assumptions matrix depends on and flag them for the renderer work. Do not name a renderer that
-   contradicts the Rust immediate mode decision without recording why.
+4. Reconcile with the renderer. The runtime is decided in matrix/runtime.md: a consumer process,
+   not daemon code; one Rust immediate mode runtime (Taffy, egui, wgpu, rayon, AccessKit) that is
+   the Mac client and the iPad app and runs standalone on the Pi; the daemon stays headless and
+   streams the validated tree over IPC. Keep matrix/runtime.md consistent with docs/rfcs/renderer.md
+   if it exists: the display list boundary, node identity and keys, animation hints, and the Mac,
+   Pi, and iPad target constraints. Keep the tree as the consumer contract so a second native
+   immediate mode consumer, such as SwiftUI on iOS, stays possible without changing the language.
+   Build the first milestone: a minimal runtime that reads one validated tree from the stream and
+   draws it, then tell the daemon session it can swap it in as the client.
 
-4. Rebuild the acceptance gate. Rewrite the UI-00 through UI-48 block in docs/backlog.md so it
+5. Rebuild the acceptance gate. Rewrite the UI-00 through UI-48 block in docs/backlog.md so it
    matches the matrix architecture: text syntax is the language, the tree is a temporary compile
    target, the runtime is immediate mode Rust, the catalog is closed, bindings are typed, streaming
    fails closed. Keep stable ids where the meaning survives, and record every replaced or removed
@@ -58,12 +71,12 @@ Do the work in this order, committing and pushing after each step.
    theme, and model validity and token measurements. Do not move any criterion into the v0 list. Do
    not check UI-00.
 
-5. Prepare the implementation handoff. Write docs/handoff/ui-language/implementation.md for work
+6. Prepare the implementation handoff. Write docs/handoff/ui-language/implementation.md for work
    that starts only after the owner approves UI-00. Name the criteria to move into the active build
    list, their order, the owned files, the test fixtures, the commands, and the stop conditions. It
    must not claim approval has happened.
 
-6. Present the decision summary. Update matrix/decisions.md so its decisions and open questions are
+7. Present the decision summary. Update matrix/decisions.md so its decisions and open questions are
    the exact set the owner confirms to approve UI-00. Keep it short enough to read in one sitting.
 
 Measurement, only when the owner asks. Build a throwaway probe under spikes/ui-language that
@@ -74,7 +87,10 @@ not keep the probe as an implementation. Do not build a compiler until the owner
 Boundaries that do not move. One theme per surface, no per element style, no pixels. Three bindings
 only: Value, Field, Action. Whole surface replacement; the host diffs; the model never patches.
 Fail closed on anything unknown. No expressions, control flow, scripts, or timers in matrix. The
-catalog is closed; a model never extends it.
+catalog is closed; a model never extends it. The layout model is locked and strict: two containers
+col and row, two anchors header and footer, the fill role, the align roles, and automatic
+scrolling. No grid tracks, no absolute, no z-index. Take any new layout primitive to the owner
+first.
 
 Do not touch these. docs/rfcs/v0.md, the v0 list in README.md, the v0 fixtures and schema under
 crates/mote-ui, and any production code. Do not collide with matter (Next Gen Lang, a separate

@@ -25,6 +25,19 @@ reverses them.
    draw, rayon for parallel per node measurement, AccessKit for roles. Each piece measures
    independently, a flexbox pass fits them, and they draw in parallel. See [runtime.md](runtime.md).
 9. matrix lives in its own isolated folder and does not depend on the rest of mote.
+10. The default theme is Vector: thin retro red, Atari vector line. Dark base, one red accent, thin
+    vector strokes instead of fills, sharp corners, no shadows, a mono type scale, tight but
+    comfortable spacing, status tones as thin colored strokes, and a materialize line on reveal
+    motion with one duration and curve. It is a general base theme that renders every element.
+11. The layout model is locked and strict: two containers `col` and `row`, two anchors `header` and
+    `footer`, the `fill` role (the owner's word is "stretch"), the align roles, and automatic
+    scrolling. No grid tracks, no absolute, no z-index, no pixels. Anchors plus `fill` plus the
+    closed catalog are the whole connection model. Any new layout primitive goes to the owner first.
+12. The runtime is a consumer process, not daemon code. The daemon stays headless and streams the
+    validated tree over IPC; the runtime renders and sends events back, and replaces the dead eframe
+    client. One Rust runtime targets Mac, Pi, and iPad through wgpu. The tree is the consumer
+    contract, so a second native immediate mode consumer such as SwiftUI is allowed on iOS only if
+    the Rust path is impractical, with no change to the language or the tree.
 
 ## Decisions the owner must confirm for UI-00
 
