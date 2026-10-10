@@ -49,13 +49,6 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Vec<Diagnostic>> {
                 while cursor < bytes.len() && is_identifier_continue(bytes[cursor]) {
                     cursor += 1;
                 }
-                if matches!(&source[start..cursor], "NaN" | "Infinity") {
-                    return Err(vec![diagnostic(
-                        DiagnosticCode::InvalidNumber,
-                        Span::new(start, cursor),
-                        "nonfinite numbers are not valid Matrix literals",
-                    )]);
-                }
                 TokenKind::Identifier
             }
             b'"' => {

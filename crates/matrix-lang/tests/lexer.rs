@@ -109,12 +109,15 @@ fn lexer_rejects_malformed_json_numbers() {
 }
 
 #[test]
-fn lexer_rejects_nonfinite_spellings() {
-    for source in ["NaN", "Infinity"] {
-        let diagnostics = lex(source).unwrap_err();
-        assert_eq!(diagnostics.len(), 1, "{source:?}");
-        assert_eq!(diagnostics[0].code, DiagnosticCode::InvalidNumber);
-    }
+fn lexer_keeps_nonfinite_spellings_as_identifiers() {
+    assert_eq!(
+        shapes("NaN Infinity"),
+        vec![
+            (TokenKind::Identifier, Span::new(0, 3)),
+            (TokenKind::Identifier, Span::new(4, 12)),
+            (TokenKind::Eof, Span::new(12, 12)),
+        ]
+    );
 }
 
 #[test]
