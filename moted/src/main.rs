@@ -108,6 +108,7 @@ struct Daemon {
     matrix_snapshots: Mutex<HashMap<String, matrix::HostSnapshot>>,
     matrix_surfaces: Mutex<HashMap<String, matrix::CommittedMatrixSurface>>,
     matrix_candidates: Mutex<HashMap<(String, String), matrix_lang::CandidateStream>>,
+    inferred_retry_budget: Mutex<inferred_ui::RetryBudget>,
     data_dir: PathBuf,
     started: std::time::Instant,
 }
@@ -120,6 +121,11 @@ struct MatrixCommit<'a> {
     source: Option<&'a str>,
     bindings: &'a matrix::HostBindings,
     host: matrix::HostSnapshot,
+}
+
+enum MatrixCandidateFinalization {
+    Committed(Value),
+    Rejected(Value),
 }
 
 impl Daemon {
@@ -266,12 +272,26 @@ impl Daemon {
                 }
             });
         }
-        let parsed = match candidates.remove(&key).unwrap().finalize() {
+        let stream = candidates.remove(&key).unwrap();
+        drop(candidates);
+        match self.finalize_matrix_candidate(thread, stream)? {
+            MatrixCandidateFinalization::Committed(response) => Ok(response),
+            MatrixCandidateFinalization::Rejected(diagnostics) => {
+                self.emit_matrix_diagnostic(thread, Some(candidate), &diagnostics)?;
+                Ok(json!({"status":"rejected", "diagnostics":diagnostics}))
+            }
+        }
+    }
+
+    fn finalize_matrix_candidate(
+        &self,
+        thread: &str,
+        stream: matrix_lang::CandidateStream,
+    ) -> Result<MatrixCandidateFinalization, RpcError> {
+        let parsed = match stream.finalize() {
             Ok(parsed) => parsed,
             Err(errors) => {
-                let diagnostics = matrix::diagnostics(&errors);
-                self.emit_matrix_diagnostic(thread, Some(candidate), &diagnostics)?;
-                return Ok(json!({"status":"rejected", "diagnostics":diagnostics}));
+                return Ok(MatrixCandidateFinalization::Rejected(matrix::diagnostics(&errors)));
             }
         };
         let mut sources = self.matrix_sources.lock().unwrap();
@@ -281,9 +301,7 @@ impl Daemon {
         let bindings = match matrix::host_bindings(&snapshot.config, &snapshot, &host) {
             Ok(bindings) => bindings,
             Err(errors) => {
-                let diagnostics = matrix::diagnostics(&errors);
-                self.emit_matrix_diagnostic(thread, Some(candidate), &diagnostics)?;
-                return Ok(json!({"status":"rejected", "diagnostics":diagnostics}));
+                return Ok(MatrixCandidateFinalization::Rejected(matrix::diagnostics(&errors)));
             }
         };
         match matrix::compile_surface(&parsed, &bindings) {
@@ -299,10 +317,111 @@ impl Daemon {
                     host,
                 })?;
                 response["status"] = json!("committed");
-                Ok(response)
+                Ok(MatrixCandidateFinalization::Committed(response))
             }
-            Err(errors) => {
-                let diagnostics = matrix::diagnostics(&errors);
+            Err(errors) => Ok(MatrixCandidateFinalization::Rejected(matrix::diagnostics(&errors))),
+        }
+    }
+
+    fn finalize_inferred_source(
+        &self,
+        thread: &str,
+        source: &str,
+    ) -> Result<MatrixCandidateFinalization, RpcError> {
+        let mut stream = matrix_lang::CandidateStream::new();
+        stream.push(source.as_bytes());
+        self.finalize_matrix_candidate(thread, stream)
+    }
+
+    #[allow(dead_code)]
+    fn infer_surface_candidate(
+        &self,
+        thread: &str,
+        candidate: &str,
+        request: &str,
+        prose: &str,
+    ) -> Result<Value, RpcError> {
+        self.infer_surface_with(
+            thread,
+            candidate,
+            request,
+            prose,
+            std::time::Instant::now(),
+            |inputs| {
+                let store = self.store.lock().unwrap();
+                inferred_ui::generate_surface(&self.log, &store, &self.client, inputs)
+            },
+        )
+    }
+
+    fn infer_surface_with<F>(
+        &self,
+        thread: &str,
+        candidate: &str,
+        request: &str,
+        prose: &str,
+        now: std::time::Instant,
+        mut generate: F,
+    ) -> Result<Value, RpcError>
+    where
+        F: FnMut(&inferred_ui::SurfaceInputs<'_>) -> Result<inferred_ui::SurfaceDecision, String>,
+    {
+        let prior_source = self
+            .matrix_sources
+            .lock()
+            .unwrap()
+            .get(thread)
+            .cloned()
+            .unwrap_or_default();
+        let surface_seq = self
+            .matrix_surfaces
+            .lock()
+            .unwrap()
+            .get(thread)
+            .map_or(0, |surface| surface.seq);
+        let safe_prior = mote_redact::redact(&prior_source);
+        let first = inferred_ui::SurfaceInputs {
+            request,
+            prose,
+            previous_source: &safe_prior,
+            diagnostics: "",
+        };
+        let inferred_ui::SurfaceDecision::Matrix { source } = (match generate(&first) {
+            Ok(decision) => decision,
+            Err(_) => return Ok(json!({"status":"none"})),
+        }) else {
+            return Ok(json!({"status":"none"}));
+        };
+        let diagnostics = match self.finalize_inferred_source(thread, &source)? {
+            MatrixCandidateFinalization::Committed(response) => return Ok(response),
+            MatrixCandidateFinalization::Rejected(diagnostics) => diagnostics,
+        };
+        let may_retry = self
+            .inferred_retry_budget
+            .lock()
+            .unwrap()
+            .acquire(thread, surface_seq, now);
+        if !may_retry {
+            self.emit_matrix_diagnostic(thread, Some(candidate), &diagnostics)?;
+            return Ok(json!({"status":"rejected", "diagnostics":diagnostics}));
+        }
+
+        let safe_diagnostics = mote_redact::redact(&diagnostics.to_string());
+        let retry = inferred_ui::SurfaceInputs {
+            request,
+            prose,
+            previous_source: &safe_prior,
+            diagnostics: &safe_diagnostics,
+        };
+        let inferred_ui::SurfaceDecision::Matrix { source } = (match generate(&retry) {
+            Ok(decision) => decision,
+            Err(_) => return Ok(json!({"status":"none"})),
+        }) else {
+            return Ok(json!({"status":"none"}));
+        };
+        match self.finalize_inferred_source(thread, &source)? {
+            MatrixCandidateFinalization::Committed(response) => Ok(response),
+            MatrixCandidateFinalization::Rejected(diagnostics) => {
                 self.emit_matrix_diagnostic(thread, Some(candidate), &diagnostics)?;
                 Ok(json!({"status":"rejected", "diagnostics":diagnostics}))
             }
@@ -888,6 +1007,7 @@ mod approval_dispatch_tests {
             matrix_snapshots: Mutex::new(HashMap::new()),
             matrix_surfaces: Mutex::new(HashMap::new()),
             matrix_candidates: Mutex::new(HashMap::new()),
+            inferred_retry_budget: Mutex::new(inferred_ui::RetryBudget::default()),
             data_dir: data_dir.to_path_buf(),
             started: std::time::Instant::now(),
         }
@@ -927,13 +1047,302 @@ mod approval_dispatch_tests {
   }
 }"#;
 
+    fn decisions(
+        values: impl IntoIterator<Item = Result<inferred_ui::SurfaceDecision, String>>,
+    ) -> impl FnMut(&inferred_ui::SurfaceInputs<'_>) -> Result<inferred_ui::SurfaceDecision, String>
+    {
+        let mut values = values.into_iter();
+        move |_| values.next().expect("one scripted decision per attempt")
+    }
+
+    #[test]
+    fn inferred_surface_retries_one_rejection_and_commits_only_the_valid_candidate() {
+        let (data, _) = dirs("inferred-valid-retry");
+        let daemon = daemon(&data);
+        daemon.render_matrix("main", "screen { text \"Prior\" }", true).unwrap();
+        let before = daemon.log.max_seq().unwrap();
+        let prior = daemon.matrix_sources.lock().unwrap()["main"].clone();
+        let mut seen = Vec::new();
+        let mut scripted = decisions([
+            Ok(inferred_ui::SurfaceDecision::Matrix {
+                source: "screen { text secret-literal }".into(),
+            }),
+            Ok(inferred_ui::SurfaceDecision::Matrix {
+                source: "screen { text \"Ready\" }".into(),
+            }),
+        ]);
+
+        let result = daemon
+            .infer_surface_with(
+                "main",
+                "candidate-a",
+                "show a dashboard",
+                "The prose stays visible.",
+                std::time::Instant::now(),
+                |inputs| {
+                    seen.push((inputs.previous_source.to_string(), inputs.diagnostics.to_string()));
+                    scripted(inputs)
+                },
+            )
+            .unwrap();
+
+        assert_eq!(result["status"], "committed");
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[1].0, prior);
+        assert!(!seen[1].1.contains("secret-literal"));
+        assert!(seen[1].1.contains("E_"));
+        assert_eq!(
+            daemon
+                .log
+                .recent_kind_since("ui.surface", i64::MIN, 10)
+                .unwrap()
+                .into_iter()
+                .filter(|event| event.seq > before)
+                .count(),
+            1
+        );
+        assert!(daemon
+            .log
+            .recent_kind_since("ui.diagnostic", i64::MIN, 10)
+            .unwrap()
+            .into_iter()
+            .all(|event| event.seq <= before));
+        assert_eq!(daemon.matrix_sources.lock().unwrap()["main"], "screen {\n  text \"Ready\"\n}\n");
+    }
+
+    #[test]
+    fn inferred_surface_second_rejection_emits_one_redacted_diagnostic_and_preserves_state() {
+        let (data, _) = dirs("inferred-double-rejection");
+        let daemon = daemon(&data);
+        daemon.render_matrix("main", "screen { text \"Prior\" }", true).unwrap();
+        let before = daemon.log.max_seq().unwrap();
+        let prior_source = daemon.matrix_sources.lock().unwrap().clone();
+        let prior_surface = daemon.matrix_surfaces.lock().unwrap().clone();
+        let secret = "sk-abcdefghijklmnopqrstuvwxyz";
+
+        let result = daemon
+            .infer_surface_with(
+                "main",
+                secret,
+                "show controls",
+                "The prose stays visible.",
+                std::time::Instant::now(),
+                decisions([
+                    Ok(inferred_ui::SurfaceDecision::Matrix {
+                        source: format!("screen {{ text {secret} }}"),
+                    }),
+                    Ok(inferred_ui::SurfaceDecision::Matrix {
+                        source: format!("screen {{ button {secret} }}"),
+                    }),
+                ]),
+            )
+            .unwrap();
+
+        assert_eq!(result["status"], "rejected");
+        assert_eq!(*daemon.matrix_sources.lock().unwrap(), prior_source);
+        assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), prior_surface);
+        assert!(daemon
+            .log
+            .recent_kind_since("ui.surface", i64::MIN, 10)
+            .unwrap()
+            .into_iter()
+            .all(|event| event.seq <= before));
+        let diagnostics: Vec<_> = daemon
+            .log
+            .recent_kind_since("ui.diagnostic", i64::MIN, 10)
+            .unwrap()
+            .into_iter()
+            .filter(|event| event.seq > before)
+            .collect();
+        assert_eq!(diagnostics.len(), 1);
+        assert!(!diagnostics[0].payload.to_string().contains(secret));
+        assert_eq!(diagnostics[0].payload["candidate"], "[redacted]");
+    }
+
+    #[test]
+    fn inferred_retry_budget_is_three_per_minute_and_resets_for_a_new_surface() {
+        let (data, _) = dirs("inferred-retry-budget");
+        let daemon = daemon(&data);
+        daemon.render_matrix("main", "screen { text \"Prior\" }", true).unwrap();
+        let now = std::time::Instant::now();
+        let mut attempts = 0;
+
+        for turn in 0..4 {
+            let result = daemon
+                .infer_surface_with(
+                    "main",
+                    &format!("candidate-{turn}"),
+                    "show controls",
+                    "answer",
+                    now + Duration::from_secs(turn),
+                    |_| {
+                        attempts += 1;
+                        Ok(inferred_ui::SurfaceDecision::Matrix {
+                            source: "screen { text missing_binding }".into(),
+                        })
+                    },
+                )
+                .unwrap();
+            assert_eq!(result["status"], "rejected");
+        }
+        assert_eq!(attempts, 7, "four first attempts plus only three retries");
+
+        daemon.render_matrix("main", "screen { text \"New revision\" }", true).unwrap();
+        daemon
+            .infer_surface_with(
+                "main",
+                "candidate-fresh",
+                "show controls",
+                "answer",
+                now + Duration::from_secs(5),
+                |_| {
+                    attempts += 1;
+                    Ok(inferred_ui::SurfaceDecision::Matrix {
+                        source: "screen { text missing_binding }".into(),
+                    })
+                },
+            )
+            .unwrap();
+        assert_eq!(attempts, 9, "the new committed sequence owns a fresh budget");
+    }
+
+    #[test]
+    fn inferred_none_malformed_and_transport_failures_are_candidate_neutral() {
+        let (data, _) = dirs("inferred-neutral");
+        let daemon = daemon(&data);
+        daemon.render_matrix("main", "screen { text \"Prior\" }", true).unwrap();
+        let before = daemon.log.max_seq().unwrap();
+        let prior_source = daemon.matrix_sources.lock().unwrap().clone();
+        let prior_surface = daemon.matrix_surfaces.lock().unwrap().clone();
+
+        for (name, decision) in [
+            ("none", Ok(inferred_ui::SurfaceDecision::None)),
+            ("malformed", Err("malformed structured reply".into())),
+            ("transport", Err("transport unavailable".into())),
+        ] {
+            let mut calls = 0;
+            let result = daemon
+                .infer_surface_with(
+                    "main",
+                    name,
+                    "ordinary request",
+                    "prose remains",
+                    std::time::Instant::now(),
+                    |_| {
+                        calls += 1;
+                        decision.clone()
+                    },
+                )
+                .unwrap();
+            assert_eq!(calls, 1, "{name} retried");
+            assert_eq!(result["status"], "none");
+        }
+
+        assert_eq!(*daemon.matrix_sources.lock().unwrap(), prior_source);
+        assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), prior_surface);
+        assert!(daemon
+            .log
+            .recent_kind_since("ui.surface", i64::MIN, 10)
+            .unwrap()
+            .into_iter()
+            .all(|event| event.seq <= before));
+        assert!(daemon
+            .log
+            .recent_kind_since("ui.diagnostic", i64::MIN, 10)
+            .unwrap()
+            .into_iter()
+            .all(|event| event.seq <= before));
+    }
+
+    #[test]
+    fn inferred_attempts_each_own_accounting_and_never_store_rejected_source_secrets() {
+        let server = mote_testkit::ScriptedServer::start().unwrap();
+        let secret = "sk-abcdefghijklmnopqrstuvwxyz";
+        server.set_chat_chunks(vec![json!({
+            "message": {
+                "role": "assistant",
+                "content": format!(r#"{{"kind":"matrix","source":"screen {{ text {secret} }}"}}"#)
+            },
+            "done": true
+        })
+        .to_string()]);
+        let (data, _) = dirs("inferred-accounting");
+        let mut daemon = daemon(&data);
+        daemon.client = Ollama::new(server.base_url());
+        daemon.render_matrix("main", "screen { text \"Prior\" }", true).unwrap();
+
+        let result = daemon
+            .infer_surface_candidate(
+                "main",
+                "candidate-secret",
+                "show a dashboard",
+                "The prose stays visible.",
+            )
+            .unwrap();
+
+        assert_eq!(result["status"], "rejected");
+        assert_eq!(daemon.store.lock().unwrap().count_packs().unwrap(), 2);
+        assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), 2);
+        assert_eq!(daemon.log.recent_kind_since("model.request", i64::MIN, 10).unwrap().len(), 2);
+        assert_eq!(daemon.log.recent_kind_since("model.response", i64::MIN, 10).unwrap().len(), 2);
+        let requests: Vec<_> = server
+            .recorded()
+            .into_iter()
+            .filter(|request| request.path == "/api/chat")
+            .collect();
+        assert_eq!(requests.len(), 2);
+        assert!(!requests[1].body.to_string().contains(secret));
+        assert!(requests[1].body.to_string().contains("diagnostics"));
+        let stored = daemon
+            .log
+            .recent_kind_since("model.request", i64::MIN, 10)
+            .unwrap()
+            .into_iter()
+            .chain(daemon.log.recent_kind_since("model.response", i64::MIN, 10).unwrap())
+            .chain(daemon.log.recent_kind_since("ui.diagnostic", i64::MIN, 10).unwrap())
+            .map(|event| event.payload.to_string())
+            .collect::<String>();
+        assert!(!stored.contains(secret));
+    }
+
+    #[test]
+    fn inferred_retry_budgets_keep_threads_isolated_at_the_same_surface_sequence() {
+        let (data, _) = dirs("inferred-thread-isolation");
+        let daemon = daemon(&data);
+        daemon.render_matrix("left", "screen { text \"Left\" }", true).unwrap();
+        daemon.render_matrix("right", "screen { text \"Right\" }", true).unwrap();
+        let now = std::time::Instant::now();
+
+        for thread in ["left", "right"] {
+            let mut calls = 0;
+            daemon
+                .infer_surface_with(
+                    thread,
+                    "shared-candidate",
+                    "show controls",
+                    "answer",
+                    now,
+                    |_| {
+                        calls += 1;
+                        Ok(inferred_ui::SurfaceDecision::Matrix {
+                            source: "screen { text missing_binding }".into(),
+                        })
+                    },
+                )
+                .unwrap();
+            assert_eq!(calls, 2, "{thread} did not receive its own retry");
+        }
+        assert_eq!(daemon.matrix_sources.lock().unwrap()["left"], "screen { text \"Left\" }");
+        assert_eq!(daemon.matrix_sources.lock().unwrap()["right"], "screen { text \"Right\" }");
+    }
+
     #[test]
     fn validated_host_snapshot_refreshes_progress_and_list_once_without_model_traffic() {
         use mote_client::ObservationHarness;
         let server = mote_testkit::ScriptedServer::start().unwrap();
         let (data, _) = dirs("matrix-host-snapshot");
         let mut daemon = daemon(&data);
-        daemon.client = Ollama::new(&server.base_url());
+        daemon.client = Ollama::new(server.base_url());
         daemon.matrix_snapshots.lock().unwrap().insert(
             "main".into(),
             matrix::HostSnapshot::ready(0.25, ["Inspect"]),
@@ -2655,6 +3064,7 @@ mod turn_event_tests {
             matrix_snapshots: Mutex::new(HashMap::new()),
             matrix_surfaces: Mutex::new(HashMap::new()),
             matrix_candidates: Mutex::new(HashMap::new()),
+            inferred_retry_budget: Mutex::new(inferred_ui::RetryBudget::default()),
             data_dir: data_dir.clone(),
             started: std::time::Instant::now(),
         });
@@ -2885,6 +3295,7 @@ fn run() -> Result<(), i32> {
         matrix_snapshots: Mutex::new(HashMap::new()),
         matrix_surfaces: Mutex::new(HashMap::new()),
         matrix_candidates: Mutex::new(HashMap::new()),
+        inferred_retry_budget: Mutex::new(inferred_ui::RetryBudget::default()),
         data_dir: data.clone(),
         started: std::time::Instant::now(),
     });

@@ -8,11 +8,15 @@ use mote_redact::redact;
 use serde::de::{MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use serde_json::json;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
+use std::time::{Duration, Instant};
 
 pub(crate) const SURFACE_MODEL: &str = "qwen3:4b";
 pub(crate) const SURFACE_CONTEXT: u32 = 32_768;
 pub(crate) const MAX_SOURCE_BYTES: usize = 262_144;
+const RETRY_WINDOW: Duration = Duration::from_secs(60);
+const RETRIES_PER_WINDOW: usize = 3;
 
 const SURFACE_PROMPT: &str = "\
 Decide whether a compact Matrix surface materially helps the user's completed request. Return \
@@ -120,6 +124,28 @@ pub(crate) struct SurfaceInputs<'a> {
     pub(crate) prose: &'a str,
     pub(crate) previous_source: &'a str,
     pub(crate) diagnostics: &'a str,
+}
+
+#[derive(Default)]
+pub(crate) struct RetryBudget {
+    attempts: HashMap<(String, i64), VecDeque<Instant>>,
+}
+
+impl RetryBudget {
+    pub(crate) fn acquire(&mut self, thread: &str, surface_seq: i64, now: Instant) -> bool {
+        let attempts = self.attempts.entry((thread.to_owned(), surface_seq)).or_default();
+        while attempts
+            .front()
+            .is_some_and(|attempt| now.saturating_duration_since(*attempt) >= RETRY_WINDOW)
+        {
+            attempts.pop_front();
+        }
+        if attempts.len() >= RETRIES_PER_WINDOW {
+            return false;
+        }
+        attempts.push_back(now);
+        true
+    }
 }
 
 fn labeled_content(label: &str, value: &str) -> String {
@@ -266,6 +292,17 @@ mod tests {
             previous_source: "Text(\"xoxb-1234567890-abcdefghij\")",
             diagnostics: "Bearer abcdefghijklmnopqrstuvwxyz",
         }
+    }
+
+    #[test]
+    fn retry_budget_expires_attempts_at_the_rolling_minute_boundary() {
+        let mut budget = RetryBudget::default();
+        let start = Instant::now();
+        assert!(budget.acquire("main", 7, start));
+        assert!(budget.acquire("main", 7, start + Duration::from_secs(1)));
+        assert!(budget.acquire("main", 7, start + Duration::from_secs(2)));
+        assert!(!budget.acquire("main", 7, start + Duration::from_secs(59)));
+        assert!(budget.acquire("main", 7, start + Duration::from_secs(60)));
     }
 
     fn reply(content: &str) -> Vec<String> {

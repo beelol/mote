@@ -1,40 +1,41 @@
-# Handoff: Inferred Matrix surface call boundary
+# Handoff: Bounded inferred Matrix retry
 
 Updated 2026-10-10. Replace this file, never append.
 
-Branch: `main`. Base: `092a2cb`.
-Requested subject: `fix(models): redact and account for surface calls`.
-Fix Round 1 subject: `fix(models): preserve strict surface accounting`.
+Branch: `main`. Base: `266f4d3`.
+Requested subject: `feat(matrix): retry rejected inferred surfaces`.
 Preserve untracked `.DS_Store` and `.superpowers/`. Do not push.
 
-Task 1 of the inferred Matrix surfaces plan is implemented. It is not connected to ordinary talk
-or think turns. It does not finalize Matrix candidates and does not retry rejected surfaces.
+Task 2 of the inferred Matrix surfaces plan is implemented. It remains disconnected from ordinary
+talk and think turns. No production turn calls the inferred surface controller.
 
-`mote-localmodel` now has a structured reply helper that returns the parsed value and the exact raw
-assistant content. The prior structured helper delegates through it and keeps its existing API.
+The public `matrix.candidate` path and inferred generation now use one candidate finalizer. The
+inferred path pushes the complete generated source into a real `CandidateStream` and finalizes it
+through the shared parser, host resolver, v0 lowerer and atomic commit path. It has no parallel
+parser or compiler.
 
-The inactive surface lane accepts only `none` or `matrix` with a bounded source. It uses only local
-`qwen3:4b` with a 32,768 context, thinking disabled, temperature zero and an Ollama JSON schema.
-The prompt names only the current host bindings and the lossless v0 Matrix subset. It defaults to
-no surface unless a surface materially helps or the request asks for a dashboard, form, list,
-table or controls.
+The first rejected source stays quiet while the controller retries once. The retry receives
+redacted structured diagnostics and the redacted last committed canonical source. A valid retry
+commits one `ui.surface`. A second rejected source emits one redacted `ui.diagnostic` and preserves
+the prior source, surface and control contract. Prose is not changed by this controller.
 
-Request text, delivered prose, prior canonical source and diagnostics are redacted before pack
-construction and before the HTTP request. Each of the five stored pack parts is now the exact
-content of one outbound message. Dynamic values are JSON serialized with their labels before token
-accounting, so quotes, backslashes and fixed prompt text are included. Oversized redacted values
-are reduced before serialization until the complete message content fits within 32,768 tokens.
+The retry budget is keyed by thread and committed surface sequence. It allows at most one retry in
+one controller invocation and three retries in a rolling minute. Attempts expire at the minute
+boundary. Threads are independent. A newly committed surface sequence receives a fresh budget.
 
-Malformed structured replies retain their raw assistant content. A failed surface call records its
-real completion-token count instead of zero. The strict decision visitor rejects duplicate `kind`
-and `source` fields before JSON values can collapse them. Every invoked surface call records one
-five-part pack, one `surface` ledger row, one redacted `model.request` event and one
-`model.response` event on both success and failure.
+`none`, malformed envelopes and transport failures stay candidate-neutral and do not retry. Each
+real model attempt owns one five-part pack, one `surface` ledger row, one `model.request` event and
+one `model.response` event. Tests plant a malformed source literal and a secret. Neither reaches
+the retry request or stored events.
 
-Shared request timing and ledger construction now live in `moted/src/model_call.rs`. Existing talk,
-router and think behavior remains unchanged. Tests inspect the real scripted HTTP bodies for talk
-and router, and the exact instrumented system and turn payload for think.
+Focused shared-finalizer tests pass 7 public candidate cases. Focused inferred tests pass 13 cases
+after the rolling-window test. The full workspace passes 357 tests. Workspace clippy, deterministic
+Matrix measurement check and `git diff --check` pass.
 
-Task 2 remains next. It must share normal Matrix candidate finalization and add the bounded retry.
-Production activation remains disabled until the fixed 200-prompt UI-24 gate passes. No v0
-criterion closes from this task alone. No remote write or push occurred.
+UI-36 has partial evidence in `docs/verification/UI-36.md`. It remains open because Task 3 must
+connect the controller after completed prose and verify ordinary-turn rendering and event order.
+Task 4 still controls production activation through the fixed 200-prompt validity gate.
+
+The exact next action is Task 3 from
+`docs/superpowers/plans/2026-10-10-inferred-matrix-surfaces.md` after review accepts this commit.
+No remote write or push occurred.
