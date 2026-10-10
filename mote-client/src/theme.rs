@@ -50,7 +50,7 @@ pub fn style(dark: bool) -> egui::Style {
     v.menu_corner_radius = egui::CornerRadius::ZERO;
     v.window_shadow = egui::epaint::Shadow::NONE;
     v.popup_shadow = egui::epaint::Shadow::NONE;
-    v.selection.bg_fill = surface;
+    v.selection.bg_fill = accent.lerp_to_gamma(surface, 0.25);
     v.selection.stroke = egui::Stroke::new(1.0, accent);
     v.text_cursor.stroke = egui::Stroke::new(1.0, accent);
     v.hyperlink_color = accent;
@@ -97,7 +97,13 @@ pub fn caption(ui: &mut egui::Ui, text: &str) {
 }
 
 pub fn selectable_label(ui: &mut egui::Ui, selected: bool, text: &str) -> egui::Response {
-    let response = ui.selectable_label(selected, text);
+    let response = ui
+        .scope(|ui| {
+            let surface = ui.visuals().panel_fill;
+            ui.visuals_mut().selection.bg_fill = surface;
+            ui.selectable_label(selected, text)
+        })
+        .inner;
     if selected && ui.is_rect_visible(response.rect) {
         ui.painter().rect_stroke(
             response.rect,
@@ -118,6 +124,79 @@ pub fn install(ctx: &egui::Context) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn contrast(a: egui::Color32, b: egui::Color32) -> f32 {
+        let luminance = |color: egui::Color32| {
+            let linear = |channel: u8| {
+                let value = f32::from(channel) / 255.0;
+                if value <= 0.04045 {
+                    value / 12.92
+                } else {
+                    ((value + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.2126 * linear(color.r()) + 0.7152 * linear(color.g()) + 0.0722 * linear(color.b())
+        };
+        let (a, b) = (luminance(a), luminance(b));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    #[test]
+    fn selected_text_ranges_stay_visible_and_readable_in_both_themes() {
+        for dark in [true, false] {
+            for multiline in [false, true] {
+                let ctx = egui::Context::default();
+                ctx.set_style(style(dark));
+                let mut text = String::from("Selected text");
+                for initialize in [true, false] {
+                    let _ =
+                        ctx.run(egui::RawInput::default(), |ctx| {
+                            egui::CentralPanel::default().show(ctx, |ui| {
+                                let _ = selectable_label(ui, true, "Navigation");
+                                let edit = if multiline {
+                                    egui::TextEdit::multiline(&mut text)
+                                } else {
+                                    egui::TextEdit::singleline(&mut text)
+                                };
+                                let mut output = edit.id(egui::Id::new("selection")).show(ui);
+                                if initialize {
+                                    output.response.request_focus();
+                                    output.state.cursor.set_char_range(Some(
+                                        egui::text::CCursorRange::two(
+                                            egui::text::CCursor::new(0),
+                                            egui::text::CCursor::new(text.len()),
+                                        ),
+                                    ));
+                                    output.state.store(ctx, output.response.id);
+                                } else {
+                                    assert!(!output.cursor_range.unwrap().is_empty());
+                                    let fill = ui.visuals().selection.bg_fill;
+                                    let painted = output.galley.rows.iter().any(|row| {
+                                        row.visuals
+                                            .mesh
+                                            .vertices
+                                            .iter()
+                                            .filter(|vertex| {
+                                                vertex.uv == egui::epaint::WHITE_UV
+                                                    && vertex.color == fill
+                                            })
+                                            .count()
+                                            >= 4
+                                    });
+                                    assert!(painted, "selected text range was not painted");
+                                    assert!(contrast(fill, ui.visuals().extreme_bg_color) >= 3.0,
+                                    "selected text cue is invisible: dark={dark}, fill={fill:?}");
+                                    assert!(
+                                        contrast(fill, ui.visuals().text_color()) >= 4.5,
+                                        "selected text is unreadable: dark={dark}, fill={fill:?}"
+                                    );
+                                }
+                            });
+                        });
+                }
+            }
+        }
+    }
 
     #[test]
     fn selected_controls_keep_the_surface_fill_in_both_themes() {
