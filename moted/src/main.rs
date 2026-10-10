@@ -114,6 +114,21 @@ impl Daemon {
             .get("message")
             .and_then(|m| m.as_str())
             .ok_or_else(|| RpcError::invalid_params("turn needs a message"))?;
+        let client_message_id = params
+            .get("client_message_id")
+            .map(|value| {
+                value.as_str().ok_or_else(|| {
+                    RpcError::invalid_params("turn client_message_id must be a string")
+                })
+            })
+            .transpose()?;
+        let mut user_payload = json!({ "text": message });
+        if let Some(client_message_id) = client_message_id {
+            user_payload["client_message_id"] = json!(client_message_id);
+        }
+        self.log
+            .append(thread_id, "turn.user", &user_payload)
+            .map_err(|error| RpcError::internal(format!("record turn: {error}")))?;
 
         let (talk_model, router_model, think_model, budget, think_budget, charter_prose) = {
             let cfg = self.config.lock().unwrap();
@@ -684,6 +699,100 @@ mod approval_dispatch_tests {
         assert!(!expired_target.exists());
 
         std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+}
+
+#[cfg(test)]
+mod turn_event_tests {
+    use super::*;
+    use charter::FrontMatter;
+    use config::AllowAll;
+    use mote_ipc::{Client, EventStream};
+    use mote_testkit::ScriptedServer;
+
+    fn collect(stream: &mut EventStream) -> Vec<mote_eventlog::Event> {
+        let mut events = Vec::new();
+        while let Some(event) = stream.next_event() {
+            events.push(event);
+        }
+        events
+    }
+
+    #[test]
+    fn ordinary_turn_emits_one_redacted_user_event_before_lane_events() {
+        let scripted = ScriptedServer::start().unwrap();
+        scripted.set_chat_chunks(vec![
+            json!({"message":{"role":"assistant","content":"{\"route\":\"talk\",\"reason\":\"greeting\"}"},"done":true}).to_string(),
+        ]);
+        let data_dir = std::env::temp_dir().join(format!(
+            "mote-turn-event-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        std::fs::create_dir_all(&data_dir).unwrap();
+        let log = EventLog::open_in_memory().unwrap();
+        let config = ConfigStore::load(
+            &data_dir.join("config.toml"),
+            log.clone(),
+            Arc::new(AllowAll),
+        )
+        .unwrap();
+        let daemon = Arc::new(Daemon {
+            log: log.clone(),
+            config: Mutex::new(config),
+            character: Arc::new(Mutex::new(Charter {
+                front: FrontMatter {
+                    name: "mote".into(),
+                    tools: Vec::new(),
+                    realms: vec!["personal".into()],
+                },
+                prose: String::new(),
+            })),
+            store: Mutex::new(ContextStore::open_in_memory().unwrap()),
+            client: Ollama::new(scripted.base_url()),
+            watchers: Mutex::new(Watchers::open_in_memory().unwrap()),
+            think: Mutex::new(ThinkServers::new(data_dir.clone())),
+            data_dir: data_dir.clone(),
+            started: std::time::Instant::now(),
+        });
+        let socket = data_dir.join("moted.sock");
+        let server = Server::bind(&socket, daemon).unwrap();
+        let mut live = EventStream::connect(&socket, "thread-7", 0).unwrap();
+        let mut client = Client::connect(&socket).unwrap();
+
+        let response = client
+            .call(
+                "turn",
+                json!({
+                "thread": "thread-7",
+                "message": "my key is sk-abcdefghijklmnopqrstuvwxyz",
+                "client_message_id": "session-1"
+            }),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(response["status"], "done");
+
+        let events = collect(&mut live);
+        assert!(!events.is_empty());
+        assert_eq!(events[0].kind, "turn.user");
+        assert_eq!(events[0].payload["text"], "my key is [redacted]");
+        assert_eq!(events[0].payload["client_message_id"], "session-1");
+        assert_eq!(
+            events.iter().filter(|event| event.kind == "turn.user").count(),
+            1
+        );
+
+        let mut replay = EventStream::connect(&socket, "thread-7", 0).unwrap();
+        let replayed = collect(&mut replay);
+        assert_eq!(
+            replayed.iter().map(|event| event.seq).collect::<Vec<_>>(),
+            events.iter().map(|event| event.seq).collect::<Vec<_>>()
+        );
+        assert_eq!(replayed[0].kind, "turn.user");
+
+        drop(server);
+        std::fs::remove_dir_all(data_dir).ok();
     }
 }
 

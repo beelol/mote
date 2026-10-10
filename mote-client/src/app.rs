@@ -1,6 +1,6 @@
 //! The egui application: chat view and pipeline view.
 
-use crate::state::ChatState;
+use crate::state::{ChatState, LocalMessageId};
 use eframe::egui;
 use mote_eventlog::Event;
 use mote_ipc::Client;
@@ -8,7 +8,7 @@ use mote_ui::Node;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 
-type TurnResult = (usize, Result<(), String>);
+type TurnResult = (LocalMessageId, Result<(), String>);
 
 fn cursor_path() -> PathBuf {
     mote_paths::data_dir().join("client_cursor")
@@ -16,15 +16,33 @@ fn cursor_path() -> PathBuf {
 
 /// Load the saved cursor, or 0.
 pub fn load_cursor() -> i64 {
-    std::fs::read_to_string(cursor_path())
+    load_cursor_from(&cursor_path())
+}
+
+fn load_cursor_from(path: &std::path::Path) -> i64 {
+    std::fs::read_to_string(path)
         .ok()
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0)
 }
 
-/// Persist the cursor so reopening resumes with nothing shown twice.
-pub fn save_cursor(seq: i64) {
-    let _ = std::fs::write(cursor_path(), seq.to_string());
+fn save_cursor_to(path: &std::path::Path, seq: i64) {
+    let _ = std::fs::write(path, seq.to_string());
+}
+
+fn apply_next_event(
+    chat: &mut ChatState,
+    rx: &Receiver<Event>,
+    cursor_path: Option<&std::path::Path>,
+) -> bool {
+    let Ok(event) = rx.try_recv() else {
+        return false;
+    };
+    chat.reduce(&event);
+    if let Some(path) = cursor_path {
+        save_cursor_to(path, event.seq);
+    }
+    true
 }
 
 #[derive(PartialEq)]
@@ -35,7 +53,7 @@ enum Screen {
 
 const STAGES: [&str; 5] = ["talk", "router", "think", "memory", "ledger"];
 const TABS: [&str; 4] = ["Now", "Config", "Numbers", "Requests"];
-const CONFIG_KEYS: [&str; 8] = [
+const CONFIG_KEYS: [&str; 9] = [
     "models.local_only",
     "models.talk",
     "models.router",
@@ -44,6 +62,7 @@ const CONFIG_KEYS: [&str; 8] = [
     "budgets.router",
     "budgets.think_first_token",
     "packs.talk",
+    "packs.think",
 ];
 
 pub struct MoteApp {
@@ -59,6 +78,7 @@ pub struct MoteApp {
     fixture: Option<Node>,
     turn_tx: Sender<TurnResult>,
     turn_rx: Receiver<TurnResult>,
+    cursor_path: Option<PathBuf>,
 }
 
 impl MoteApp {
@@ -83,6 +103,7 @@ impl MoteApp {
             fixture,
             turn_tx,
             turn_rx,
+            cursor_path: Some(cursor_path()),
         }
     }
 
@@ -91,18 +112,21 @@ impl MoteApp {
     }
 
     fn drain_events(&mut self) {
-        while let Ok(ev) = self.rx.try_recv() {
-            self.chat.reduce(&ev);
-        }
+        while apply_next_event(&mut self.chat, &self.rx, self.cursor_path.as_deref()) {}
         while let Ok((pending, result)) = self.turn_rx.try_recv() {
             self.record_turn_result(pending, result);
         }
     }
 
-    fn record_turn_result(&mut self, pending: usize, result: Result<(), String>) {
+    fn record_turn_result(&mut self, pending: LocalMessageId, result: Result<(), String>) {
         match result {
-            Ok(()) => self.chat.mark_sent(pending),
-            Err(error) => self.status_line = error,
+            Ok(()) => self.chat.mark_sent(&pending),
+            Err(error) => {
+                if let Some(text) = self.chat.remove_failed(&pending) {
+                    self.input = text;
+                }
+                self.status_line = error;
+            }
         }
     }
 
@@ -113,13 +137,18 @@ impl MoteApp {
         }
         self.input.clear();
         let pending = self.chat.push_optimistic_user(msg.clone());
+        let request_id = pending.clone();
         let socket = self.socket.clone();
         let result_tx = self.turn_tx.clone();
         std::thread::spawn(move || {
             let result = match Client::connect(&socket) {
                 Ok(mut client) => match client.call(
                     "turn",
-                    serde_json::json!({ "thread": "main", "message": msg }),
+                    serde_json::json!({
+                        "thread": "main",
+                        "message": msg,
+                        "client_message_id": request_id
+                    }),
                 ) {
                     Ok(Ok(_)) => Ok(()),
                     Ok(Err(error)) => Err(format!("{}: {}", error.code, error.message)),
@@ -345,6 +374,7 @@ mod tests {
                 fixture: None,
                 turn_tx,
                 turn_rx,
+                cursor_path: None,
             },
             tx,
         )
@@ -440,12 +470,133 @@ mod tests {
         let (mut app, _tx) = app();
         let pending = app.chat.push_optimistic_user("hello".into());
 
-        app.record_turn_result(pending, Ok(()));
-        assert!(app.chat.messages[pending].status == Status::Sent);
+        app.record_turn_result(pending.clone(), Ok(()));
+        assert!(app.chat.messages[0].status == Status::Sent);
 
-        send(&_tx, "turn.user", serde_json::json!({"text": "hello"}));
+        send(
+            &_tx,
+            "turn.user",
+            serde_json::json!({"text": "hello", "client_message_id": pending.clone()}),
+        );
         app.drain_events();
         app.record_turn_result(pending, Ok(()));
-        assert!(app.chat.messages[pending].status == Status::Delivered);
+        assert!(app.chat.messages[0].status == Status::Delivered);
+    }
+
+    #[test]
+    fn cursor_advances_only_after_each_event_is_reduced() {
+        let cursor = std::env::temp_dir().join(format!(
+            "mote-client-cursor-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let (tx, rx) = std::sync::mpsc::channel();
+        tx.send(Event {
+            seq: 10,
+            ts: 0,
+            scope_id: "main".into(),
+            kind: "turn.user".into(),
+            payload: serde_json::json!({"text": "hello"}),
+        })
+        .unwrap();
+        tx.send(Event {
+            seq: 11,
+            ts: 0,
+            scope_id: "main".into(),
+            kind: "talk.delta".into(),
+            payload: serde_json::json!({"text": "reply"}),
+        })
+        .unwrap();
+        let mut chat = ChatState::default();
+
+        assert!(apply_next_event(&mut chat, &rx, Some(&cursor)));
+        assert_eq!(load_cursor_from(&cursor), 10);
+        assert_eq!(chat.messages.len(), 1);
+        drop(rx);
+
+        let (replay_tx, replay_rx) = std::sync::mpsc::channel();
+        replay_tx
+            .send(Event {
+                seq: 11,
+                ts: 0,
+                scope_id: "main".into(),
+                kind: "talk.delta".into(),
+                payload: serde_json::json!({"text": "reply"}),
+            })
+            .unwrap();
+        let mut restarted = ChatState::default();
+        assert!(apply_next_event(
+            &mut restarted,
+            &replay_rx,
+            Some(&cursor)
+        ));
+        assert_eq!(load_cursor_from(&cursor), 11);
+        assert_eq!(restarted.messages[0].text, "reply");
+
+        std::fs::remove_file(cursor).ok();
+    }
+
+    #[test]
+    fn failed_send_is_removed_and_identical_retry_uses_a_new_message_id() {
+        let (mut app, tx) = app();
+        let failed = app.chat.push_optimistic_user("hello".into());
+
+        app.record_turn_result(failed.clone(), Err("offline".into()));
+
+        assert!(app.chat.messages.is_empty());
+        assert_eq!(app.input, "hello");
+        let retry = app.chat.push_optimistic_user(std::mem::take(&mut app.input));
+        assert_ne!(failed, retry);
+        app.record_turn_result(retry.clone(), Ok(()));
+        send(
+            &tx,
+            "turn.user",
+            serde_json::json!({"text":"hello", "client_message_id": retry}),
+        );
+        app.drain_events();
+
+        assert_eq!(app.chat.messages.len(), 1);
+        assert!(app.chat.messages[0].status == Status::Delivered);
+    }
+
+    #[test]
+    fn failed_response_does_not_remove_an_already_delivered_message() {
+        let (mut app, tx) = app();
+        let pending = app.chat.push_optimistic_user("hello".into());
+        send(
+            &tx,
+            "turn.user",
+            serde_json::json!({"text":"hello", "client_message_id": pending.clone()}),
+        );
+        app.drain_events();
+
+        app.record_turn_result(pending, Err("late failure".into()));
+
+        assert_eq!(app.chat.messages.len(), 1);
+        assert!(app.chat.messages[0].status == Status::Delivered);
+        assert!(app.input.is_empty());
+    }
+
+    #[test]
+    fn config_tab_contains_every_section_four_key() {
+        let mut actual = CONFIG_KEYS.to_vec();
+        actual.sort_unstable();
+        let mut expected = vec![
+            "budgets.router",
+            "budgets.talk_first_token",
+            "budgets.think_first_token",
+            "models.local_only",
+            "models.router",
+            "models.talk",
+            "models.think",
+            "packs.talk",
+            "packs.think",
+        ];
+        expected.sort_unstable();
+
+        assert_eq!(actual, expected);
     }
 }

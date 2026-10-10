@@ -14,7 +14,6 @@ pub fn run(path: &Path, scope_id: &str, cursor: i64, tx: Sender<Event>) {
         |cursor| EventStream::connect(path, scope_id, cursor),
         EventStream::read_event,
         |event| tx.send(event).is_ok(),
-        crate::app::save_cursor,
         std::thread::sleep,
     );
 }
@@ -24,7 +23,6 @@ fn run_with<S>(
     mut connect: impl FnMut(i64) -> io::Result<S>,
     mut read: impl FnMut(&mut S) -> io::Result<Option<Event>>,
     mut deliver: impl FnMut(Event) -> bool,
-    mut persist: impl FnMut(i64),
     mut wait: impl FnMut(Duration),
 ) {
     let mut cursor = initial_cursor;
@@ -51,7 +49,6 @@ fn run_with<S>(
                         return;
                     }
                     cursor = delivered_cursor;
-                    persist(cursor);
                     retry = MIN_RETRY;
                 }
                 Err(_) => {
@@ -112,7 +109,6 @@ mod tests {
         ])));
         let cursors = Arc::new(Mutex::new(Vec::new()));
         let delivered = Arc::new(Mutex::new(Vec::new()));
-        let persisted = Arc::new(Mutex::new(Vec::new()));
         let waits = Arc::new(Mutex::new(Vec::new()));
 
         run_with(
@@ -137,10 +133,6 @@ mod tests {
                 }
             },
             {
-                let persisted = persisted.clone();
-                move |cursor| persisted.lock().unwrap().push(cursor)
-            },
-            {
                 let waits = waits.clone();
                 move |delay| waits.lock().unwrap().push(delay)
             },
@@ -148,7 +140,6 @@ mod tests {
 
         assert_eq!(*cursors.lock().unwrap(), vec![0, 0, 1, 1]);
         assert_eq!(*delivered.lock().unwrap(), vec![1, 2]);
-        assert_eq!(*persisted.lock().unwrap(), vec![1, 2]);
         assert_eq!(
             *waits.lock().unwrap(),
             vec![Duration::from_millis(20), Duration::from_millis(20)]
@@ -176,7 +167,6 @@ mod tests {
             },
             |stream: &mut FakeSource| stream.reads.pop_front().unwrap(),
             |_| false,
-            |_| {},
             {
                 let waits = waits.clone();
                 move |delay| waits.lock().unwrap().push(delay)
