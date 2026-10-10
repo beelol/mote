@@ -7,13 +7,13 @@ Images, avatars, icons, times, and rules. Small display elements that are not te
 An image the runtime fetches and caches:
 
 ```
-image .cover alt "Album cover"
+image media.current.cover alt "Album cover"
 ```
 
 A small round image for a person or repo:
 
 ```
-avatar .author.avatar alt .author.login
+avatar media.current.author.avatar alt media.current.author.login
 ```
 
 A theme glyph for a fixed semantic name:
@@ -25,7 +25,7 @@ icon "check"
 A time, formatted, optionally relative:
 
 ```
-timestamp .updated relative
+timestamp media.current.updated relative
 ```
 
 A thin rule between blocks:
@@ -36,6 +36,9 @@ divider
 
 ## Slice
 
+- `media.current` is a host published `Value<Media>` with `cover: asset`,
+  `author: { avatar: asset, login: str }` and `updated: datetime`.
+- These fragments use root Value paths and require no enclosing collection.
 - `image` and `avatar` take a `Value<asset>` as the source and a required `alt`. The runtime fetches
   the asset. The model never fetches.
 - `icon` takes a fixed name from [../grammar.md](../grammar.md).

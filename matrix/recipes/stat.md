@@ -19,12 +19,15 @@ stat "Latency p50" latency delta trend
 A key value, for a detail row:
 
 ```
-kv "Repo" .repo
-kv "Author" .author.login
+kv "Repo" github.pull_request.repo
+kv "Author" github.pull_request.author.login
 ```
 
 ## Slice
 
+- `github.pull_request` is a host published `Value<PullRequest>` with `repo: str`
+  and `author: { login: str }` for these detail fragments.
+- These fragments use root Value paths and require no enclosing collection.
 - `stat` takes a label literal and a typed string or number value.
 - Its optional delta accepts the same type choices.
 - `kv` takes a label literal and a typed string, number or closed enum value.

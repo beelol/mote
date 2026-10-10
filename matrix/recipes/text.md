@@ -26,7 +26,7 @@ md message.body
 A link the runtime opens:
 
 ```
-link "Open on GitHub" to .url
+link "Open on GitHub" to github.pull_request.url
 ```
 
 A short keyword chip:
@@ -37,6 +37,8 @@ tag "rust"
 
 ## Slice
 
+- `github.pull_request` is a host published `Value<PullRequest>` with `url: url` for the link.
+- These fragments use root Value paths and require no enclosing collection.
 - A literal string, or a `Value<str>` for live text.
 - `md` takes a `Value<str>` and renders a subset: emphasis, lists, inline code, links. No raw HTML,
   no images, no deep headings.
