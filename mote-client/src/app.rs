@@ -11,6 +11,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 
 type TurnResult = (LocalMessageId, Result<(), String>);
 type PipelineResult = Result<PipelineSnapshot, String>;
+type UiEventResult = (crate::surface::SurfaceEvent, Result<(), String>);
 
 fn ui_event_params(event: &crate::surface::SurfaceEvent) -> serde_json::Value {
     serde_json::json!({
@@ -37,6 +38,17 @@ fn spawn_pipeline_load_with(
 ) {
     std::thread::spawn(move || {
         let _ = tx.send(load());
+    });
+}
+
+fn spawn_ui_event_with(
+    tx: Sender<UiEventResult>,
+    event: crate::surface::SurfaceEvent,
+    send: impl FnOnce() -> Result<(), String> + Send + 'static,
+) {
+    std::thread::spawn(move || {
+        let result = send();
+        let _ = tx.send((event, result));
     });
 }
 
@@ -117,6 +129,8 @@ pub struct MoteApp {
     fixture: Option<Node>,
     turn_tx: Sender<TurnResult>,
     turn_rx: Receiver<TurnResult>,
+    ui_event_tx: Sender<UiEventResult>,
+    ui_event_rx: Receiver<UiEventResult>,
     cursor_path: Option<PathBuf>,
 }
 
@@ -130,6 +144,7 @@ impl MoteApp {
         crate::theme::install(&cc.egui_ctx);
         let (turn_tx, turn_rx) = mpsc::channel();
         let (pipeline_tx, pipeline_rx) = mpsc::channel();
+        let (ui_event_tx, ui_event_rx) = mpsc::channel();
         Self {
             socket,
             rx,
@@ -151,6 +166,8 @@ impl MoteApp {
             fixture,
             turn_tx,
             turn_rx,
+            ui_event_tx,
+            ui_event_rx,
             cursor_path: Some(cursor_path()),
         }
     }
@@ -173,6 +190,17 @@ impl MoteApp {
             match result {
                 Ok(snapshot) => self.install_pipeline_snapshot(snapshot),
                 Err(error) => self.status_line = error,
+            }
+        }
+    }
+
+    fn drain_ui_event_results(&mut self, ctx: &egui::Context) {
+        while let Ok((event, result)) = self.ui_event_rx.try_recv() {
+            if let Err(error) = result {
+                crate::surface::discard_change(ctx, &event);
+                self.status_line = error;
+            } else {
+                self.status_line.clear();
             }
         }
     }
@@ -270,13 +298,18 @@ impl MoteApp {
         });
     }
 
-    fn send_ui_event(&mut self, event: &crate::surface::SurfaceEvent) -> Result<(), String> {
-        let mut client = self.client().map_err(|error| format!("cannot reach daemon: {error}"))?;
-        client
-            .call("ui.event", ui_event_params(event))
-            .map_err(|error| format!("cannot send UI event: {error}"))?
-            .map(|_| ())
-            .map_err(|error| format!("{}: {}", error.code, error.message))
+    fn send_ui_event(&self, event: crate::surface::SurfaceEvent) {
+        let socket = self.socket.clone();
+        let params = ui_event_params(&event);
+        spawn_ui_event_with(self.ui_event_tx.clone(), event, move || {
+            let mut client =
+                Client::connect(&socket).map_err(|error| format!("cannot reach daemon: {error}"))?;
+            client
+                .call("ui.event", params)
+                .map_err(|error| format!("cannot send UI event: {error}"))?
+                .map(|_| ())
+                .map_err(|error| format!("{}: {}", error.code, error.message))
+        });
     }
 
     fn preview_view(&mut self, ui: &mut egui::Ui) {
@@ -318,12 +351,7 @@ impl MoteApp {
                 }
             });
         for e in clicked {
-            if let Err(error) = self.send_ui_event(&e) {
-                crate::surface::discard_change(ui.ctx(), &e);
-                self.status_line = error;
-            } else {
-                self.status_line.clear();
-            }
+            self.send_ui_event(e);
         }
 
         ui.separator();
@@ -574,6 +602,7 @@ impl MoteApp {
 impl eframe::App for MoteApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain_events();
+        self.drain_ui_event_results(ctx);
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
 
         if self.fixture.is_some() {
@@ -637,6 +666,7 @@ mod tests {
         let (tx, rx) = std::sync::mpsc::channel();
         let (turn_tx, turn_rx) = std::sync::mpsc::channel();
         let (pipeline_tx, pipeline_rx) = std::sync::mpsc::channel();
+        let (ui_event_tx, ui_event_rx) = std::sync::mpsc::channel();
         (
             MoteApp {
                 socket: PathBuf::new(),
@@ -659,6 +689,8 @@ mod tests {
                 fixture: None,
                 turn_tx,
                 turn_rx,
+                ui_event_tx,
+                ui_event_rx,
                 cursor_path: None,
             },
             tx,
@@ -797,17 +829,52 @@ mod tests {
     }
 
     #[test]
-    fn ui_event_connection_failure_is_returned_for_visible_feedback() {
-        let (mut app, _) = app();
-        let error = app
-            .send_ui_event(&crate::surface::SurfaceEvent::Change {
-                field: "models.talk".into(),
-                value: serde_json::json!("qwen3:0.6b"),
-                state_id: egui::Id::NULL,
-            })
-            .unwrap_err();
+    fn blocked_ui_event_work_does_not_block_the_render_thread() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let event = crate::surface::SurfaceEvent::Change {
+            field: "models.talk".into(),
+            value: serde_json::json!("qwen3:0.6b"),
+            state_id: egui::Id::NULL,
+        };
 
-        assert!(error.contains("cannot reach daemon"));
+        spawn_ui_event_with(tx, event.clone(), move || {
+            release_rx.recv().unwrap();
+            Err("model gate rejected selection".into())
+        });
+
+        assert!(rx.try_recv().is_err());
+        release_tx.send(()).unwrap();
+        let (returned, result) = rx.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
+        assert_eq!(returned, event);
+        assert_eq!(result.unwrap_err(), "model gate rejected selection");
+    }
+
+    #[test]
+    fn failed_ui_event_is_visible_and_rolls_back_local_control_state() {
+        let (mut app, _) = app();
+        let ctx = egui::Context::default();
+        let id = egui::Id::new("rejected-select");
+        ctx.data_mut(|data| {
+            data.insert_temp(id, ("qwen3:4b".to_string(), "qwen3:0.6b".to_string()))
+        });
+        app.ui_event_tx
+            .send((
+                crate::surface::SurfaceEvent::Change {
+                    field: "models.talk".into(),
+                    value: serde_json::json!("qwen3:0.6b"),
+                    state_id: id,
+                },
+                Err("model gate rejected selection".into()),
+            ))
+            .unwrap();
+
+        app.drain_ui_event_results(&ctx);
+
+        assert_eq!(app.status_line, "model gate rejected selection");
+        assert!(ctx
+            .data_mut(|data| data.get_temp::<(String, String)>(id))
+            .is_none());
     }
 
     #[test]
