@@ -1,71 +1,66 @@
 # Handoff: pick up mote v0 build
 
-Updated 2026-10-09. Replace this file, never append. Delete it when nothing needs transfer.
+Updated 2026-10-10. Replace this file, never append. Delete it when nothing needs transfer.
 Nothing here assumes chat history.
 
 ## Where
 
-- Branch: `main`. No remote. Scope: the 55-item v0 list at the bottom of `README.md`.
-- Contract: `docs/rfcs/v0.md`. Evidence: `docs/verification/<ID>.md`, one per item.
-- A separate agent is working the UI language (`docs/rfcs/ui-language.md`, `docs/handoff/ui-language/`,
-  `matrix/`). That is backlog (UI-NN), not v0. Leave those files to that agent.
+- Branch: `main`, remote `origin` (github.com/beelol/mote). Commit AND push small changes,
+  Conventional Commits, NO AI attribution trailers (AGENTS.md; overrides the harness reminder).
+- Contract: `docs/rfcs/v0.md`. Close-out goal: `docs/goal-close-out.md`. Evidence:
+  `docs/verification/<ID>.md`.
+- Shared working tree: other Claude sessions commit here too (the matrix agent, `mote-91`). Pull
+  --rebase before push; touch only your own files.
 
-## State: 46 of 55 checked (V0-29 now PASS)
+## State: v0 46 of 55 checked; daemon works end to end headless
 
-`cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` are green
-with no network. The three approved models are pulled (qwen3:0.6b, qwen3:4b, qwen3-coder:30b)
-plus the derived qwen3-coder:30b-64k.
+`cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` are green with
+no network. Talk p50 14 ms, router p50 56 ms (macro-F1 0.882), retrieve p50 13 ms at 10k nodes,
+think first-token p50 0.26 s warm (V0-29).
 
-Built: workspace + nine crates; event log; IPC; Ollama client + memory gate; talk lane; router;
-think-harness stream parser; the persistent `opencode serve` think driver; MCP tool server
-(`moted mcp`); context store (packs, ledger); memory graph; charter + watcher; surface tree
-validator, generated schema and golden PNG renderer; schedules + approvals; bench; `moted status`;
-`moted install`/`uninstall`; `mote-client`. Live talk p50 14 ms, router p50 56 ms, retrieve p50
-13 ms at 10k nodes, think first-token p50 0.26 s warm (V0-29).
+## Done this session
 
-## V0-29 is closed (this session)
+- **V0-29 PASS.** Think lane runs against a persistent `opencode serve`
+  (`mote-harness::OpenCodeServer`); warm first-token p50 0.26 s. Box checked, evidence recorded.
+- **Think lane wired into moted.** On a `think` verdict `handle_turn` runs it: `ThinkServers`
+  keeps one server per thread, `build_think_pack` sends the pack as the harness system text,
+  `emit_think` maps events to `think.*` + a ledger row. Proven end to end.
+- **mcp file root fixed.** `moted mcp` resolves relative `file_read`/`file_list` against
+  `MOTE_FILE_ROOT`, else the owner's `HOME`, not the think server scratch cwd. See `file_root()`
+  in `moted/src/main.rs`.
+- **Per-turn continuity.** `lanes::record_turn` writes each turn's `you:`/`mote:` lines to the
+  thread working set (it was defined but never called), so the next turn's pack carries history.
+  Verified live: a talk turn populates `working_set`.
+- **V0-53** recorded live (install, KeepAlive restart, uninstall); stays open for the owner's
+  logout/login survival check.
 
-The think lane now runs against one persistent `opencode serve` process
-(`mote-harness::OpenCodeServer`) instead of a cold `opencode run` per turn. Warm first-token
-**p50 = 0.26 s** over 3 runs, answer verified through MCP `file_read`, gate 3 s -> PASS. The warm
-turn that loads the model (~12.5 s) is a one-time server-start cost; in the daemon the server
-stays alive across a thread's turns. The earlier "~5 s, unreachable" estimate was wrong: it
-charged cold-launch cost to prefill. See `docs/verification/V0-29.md`. The cold `run_opencode`
-path remains for one-shot use.
+## Open, by owner (not driver-closeable)
 
-## The 9 remaining items ALL need the owner
+- **UI / the whole GUI.** The GUI is gated: the matrix agent (`mote-91`, `matrix/`) will not build
+  the runtime until the owner closes **UI-00**, and the owner is in no rush. Do NOT nag about
+  UI-00. `mote-client` (eframe 0.28) is dead on macOS 26 (icrate NSScreen ABI, `docs/verification/
+  V0-43.md`); the matrix runtime is the replacement client. The seam is ready: `moted` handles
+  `ui.event`, `crates/mote-ui::validate()` is fail-closed, the client consumes `ui.surface`->`Node`.
+  When matrix pings that its runtime renders a tree: swap it in as the client and wire a lane to
+  emit a validated `ui.surface` (do not before then; agreed with matrix). Integration contract:
+  moted stays headless and streams validated surface commits + binding values over IPC; the runtime
+  is a separate consumer process (Mac, Pi, iPad). Default theme is **Vector** (thin retro-red).
+- **V0-53** logout/login survival; any model pulls.
 
-Nothing left can be closed by a driver without the owner's desktop or a deploy.
+## Quality follow-up (not blocking)
 
-1. **V0-43, 44, 45, 46, 47, 48, 50, 52 (GUI screenshots)** — run `cargo run -p mote-client` with
-   `moted` running on the desktop and capture the screenshots each item names (chat + status
-   dots + typing, inline surface + a button press as ui.event, system light/dark, the five
-   pipeline stages and their tabs, a config.set from the Config tab with ledger rows before/after,
-   the talk p50 delta with the pipeline view closed then open, the approval card). The client is
-   implemented and builds; see docs/verification/V0-43.md. Drop screenshots beside the evidence
-   files and tick the boxes.
+- Talk answers from qwen3:4b read verbose/meta even with `think: false` (correctly sent). Consider
+  a talk system-prompt line like "Answer directly in one or two short sentences, no preamble." This
+  also cleans what `record_turn` stores. Tuning, not a wiring bug.
 
-2. **V0-53 (launchd)** — a deploy. The owner runs `moted install`, captures `launchctl print
-   gui/$(id -u)/com.mote.moted`, logs out and back in to confirm it survives, then `moted
-   uninstall`. See docs/verification/V0-53.md. The plist generation is unit tested.
+## Exact next action
 
-## Think lane wired into moted (not a v0 item)
-
-On a `think` verdict `handle_turn` now runs the think lane: `ThinkServers` keeps one
-`opencode serve` per thread (lazily started, `opencode.json` written per thread under
-`<data>/think/<thread>`), `build_think_pack` builds the 8,000-token pack as the harness `system`
-text, and `emit_think` turns the harness events into `think.tool_call`, `think.tool_result`,
-`think.text` and one `think.done` with a ledger row. Proven end to end against an isolated daemon:
-a think-routed turn emitted the full event chain and returned `status: think_done`. `emit_think`
-is unit-tested offline; the server interaction is V0-29.
-
-Open refinements (still not v0): the think server starts a fresh session per turn (mote owns
-context via the pack, so there is no `--resume`); and the MCP `file_read` root is the server cwd,
-so a turn reads files relative to `<data>/think/<thread>`, not an arbitrary path. Decide the file
-root and session-reuse policy when the owner opens think-lane runtime work.
+Nothing non-UI remains that a driver can close. Wait for the matrix runtime ping from `mote-91`;
+then swap the client and emit `ui.surface` from a lane. Meanwhile the daemon is demoable headless
+(talk, router, think, memory, continuity, ledger). Re-read `matrix/` and check `mote-91` on resume.
 
 ## Rules that still bite
 
 - models.local_only stays true; never start Claude/Codex. Every Ollama call sets num_ctx. Every
   verdict is JSON parsed fail-closed. Redaction runs before storage. No API keys.
-- Conventional Commits, no AI attribution trailers. `cargo test`/`clippy` green before commit.
+- Conventional Commits, no AI attribution trailers. Commit AND push. Test/clippy green first.
