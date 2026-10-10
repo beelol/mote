@@ -10,7 +10,7 @@ use mote_context::{count_tokens, ContextStore, LedgerEntry, Pack, PackBuilder, P
 use mote_eventlog::EventLog;
 use mote_harness::ThinkEvent;
 use mote_localmodel::{ChatOptions, Ollama};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -171,7 +171,7 @@ impl Route {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RouterVerdict {
     route: String,
@@ -209,6 +209,7 @@ struct RouterOutcome {
     pack: Pack,
     timing: CallTiming,
     status: &'static str,
+    completion: String,
 }
 
 fn run_router(
@@ -242,17 +243,29 @@ fn run_router(
         router_schema(),
         num_ctx,
     );
-    let (route, reason, status) = match verdict {
-        Ok(v) if v.route == "talk" => (Route::Talk, v.reason, "ok"),
-        Ok(v) if v.route == "think" => (Route::Think, v.reason, "ok"),
-        _ => (
+    let (route, reason, status, completion) = match verdict {
+        Ok(v) => {
+            let completion = serde_json::to_string(&v).unwrap_or_default();
+            match v.route.as_str() {
+                "talk" => (Route::Talk, v.reason, "ok", completion),
+                "think" => (Route::Think, v.reason, "ok", completion),
+                _ => (
+                    Route::Think,
+                    "invalid or missing verdict; fail-closed to think".to_string(),
+                    "error",
+                    completion,
+                ),
+            }
+        }
+        Err(_) => (
             Route::Think,
             "invalid or missing verdict; fail-closed to think".to_string(),
             "error",
+            String::new(),
         ),
     };
     let timing = request.finish(status, None);
-    Some(RouterOutcome { route, reason, pack, timing, status })
+    Some(RouterOutcome { route, reason, pack, timing, status, completion })
 }
 
 /// The five texts of a talk pack.
@@ -468,7 +481,7 @@ pub fn run_turn(
             "router",
             router_model,
             &router.pack,
-            "",
+            &router.completion,
             router.timing,
             false,
             router.status,
@@ -851,6 +864,7 @@ mod tests {
         assert_eq!(rows.iter().filter(|row| row.lane == "talk").count(), 1);
         let router = rows.iter().find(|row| row.lane == "router").unwrap();
         assert_eq!(router.latency_kind, "total");
+        assert!(router.completion_tokens > 0);
         assert_eq!(store.count_packs().unwrap(), 2);
         let requests = log.recent_kind_since("model.request", 0, 10).unwrap();
         let responses = log.recent_kind_since("model.response", 0, 10).unwrap();

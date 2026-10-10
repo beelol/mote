@@ -536,6 +536,7 @@ mod tests {
 
     #[test]
     fn opening_a_legacy_database_adds_unknown_latency_kind() {
+        mem::ensure_vec_extension();
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE ledger(

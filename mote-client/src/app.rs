@@ -346,16 +346,13 @@ impl MoteApp {
                 }
             });
         }
-        if crate::surface::button(ui, "Apply").clicked() {
-            let edits: Vec<(String, String)> = self
-                .config_edits
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-            for (key, val) in edits {
-                self.apply_config(&key, &val);
-            }
-            self.request_pipeline_snapshot();
+        let clicked = ui
+            .add_enabled_ui(!self.pipeline_loading, |ui| {
+                crate::surface::button(ui, "Apply").clicked()
+            })
+            .inner;
+        if clicked {
+            self.apply_config_edits();
         }
     }
 
@@ -511,6 +508,22 @@ impl MoteApp {
                 Err(e) => self.status_line = format!("{e}"),
             }
         }
+    }
+
+    fn apply_config_edits(&mut self) -> bool {
+        if self.pipeline_loading {
+            return false;
+        }
+        let edits: Vec<(String, String)> = self
+            .config_edits
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+        for (key, value) in edits {
+            self.apply_config(&key, &value);
+        }
+        self.request_pipeline_snapshot();
+        true
     }
 }
 
@@ -1011,5 +1024,22 @@ mod tests {
         app.pipeline_request_revision = 2;
         app.install_pipeline_snapshot(pipeline_snapshot("fresh-snapshot"));
         assert_eq!(app.config_edits["models.talk"], "fresh-snapshot");
+    }
+
+    #[test]
+    fn apply_is_withheld_after_edit_then_refresh_until_loading_finishes() {
+        let (mut app, _tx) = app();
+        app.config_edits.insert("models.talk".into(), "edited-model".into());
+        app.config_revision = 1;
+        app.config_edit_revisions.insert("models.talk".into(), 1);
+
+        app.pipeline_request_revision = app.config_revision;
+        app.pipeline_loading = true;
+        let applied = app.apply_config_edits();
+
+        assert!(!applied);
+        assert!(app.pipeline_loading);
+        assert_eq!(app.config_edits["models.talk"], "edited-model");
+        assert!(app.status_line.is_empty());
     }
 }
