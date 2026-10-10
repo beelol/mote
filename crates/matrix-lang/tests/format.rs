@@ -66,7 +66,13 @@ fn formats_every_positive_fixture_idempotently() {
         }
     }
     for entry in fs::read_dir(root.join("conformance/v0")).unwrap() {
-        round_trip(&fs::read_to_string(entry.unwrap().path()).unwrap());
+        let path = entry.unwrap().path();
+        if path
+            .extension()
+            .is_some_and(|extension| extension == "matrix")
+        {
+            round_trip(&fs::read_to_string(path).unwrap());
+        }
     }
 }
 

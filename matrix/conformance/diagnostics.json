@@ -1,0 +1,153 @@
+[
+  {
+    "source": "screen { # }",
+    "diagnostics": [
+      {
+        "code": "E_LEX_COMMENT",
+        "severity": "error",
+        "span": {
+          "start": 9,
+          "end": 10
+        },
+        "declaration_path": [],
+        "message": "comments are not part of Matrix source",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "source": "screen { row { mystery } }",
+    "diagnostics": [
+      {
+        "code": "E_PARSE_DECLARATION",
+        "severity": "error",
+        "span": {
+          "start": 15,
+          "end": 22
+        },
+        "declaration_path": [
+          "screen[0]",
+          "row[0]",
+          "mystery[0]"
+        ],
+        "message": "unknown declaration or misplaced modifier",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "source": "screen { text absent }",
+    "diagnostics": [
+      {
+        "code": "E_RESOLVE_PATH",
+        "severity": "error",
+        "span": {
+          "start": 14,
+          "end": 20
+        },
+        "declaration_path": [
+          "screen",
+          "0"
+        ],
+        "message": "Unknown Value path",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "source": "screen { slider \"Volume\" amount min 0 max 10 }",
+    "diagnostics": [
+      {
+        "code": "E_LOWER_UNSUPPORTED",
+        "severity": "error",
+        "span": {
+          "start": 9,
+          "end": 44
+        },
+        "declaration_path": [
+          "screen",
+          "0"
+        ],
+        "message": "The v0 consumer cannot represent this declaration losslessly",
+        "hint": "Use the supported v0 subset or a versioned consumer contract"
+      }
+    ]
+  },
+  {
+    "source": "screen { header { text \"Heading\" } }",
+    "diagnostics": [
+      {
+        "code": "E_LOWER_UNSUPPORTED",
+        "severity": "error",
+        "span": {
+          "start": 9,
+          "end": 34
+        },
+        "declaration_path": [
+          "screen",
+          "0"
+        ],
+        "message": "The v0 consumer cannot represent this declaration losslessly",
+        "hint": "Use the supported v0 subset or a versioned consumer contract"
+      }
+    ]
+  },
+  {
+    "source": "screen { footer { text \"Footer\" } }",
+    "diagnostics": [
+      {
+        "code": "E_LOWER_UNSUPPORTED",
+        "severity": "error",
+        "span": {
+          "start": 9,
+          "end": 33
+        },
+        "declaration_path": [
+          "screen",
+          "0"
+        ],
+        "message": "The v0 consumer cannot represent this declaration losslessly",
+        "hint": "Use the supported v0 subset or a versioned consumer contract"
+      }
+    ]
+  },
+  {
+    "source": "screen { list from fixture.items select one { item { text .value } } }",
+    "diagnostics": [
+      {
+        "code": "E_LOWER_UNSUPPORTED",
+        "severity": "error",
+        "span": {
+          "start": 9,
+          "end": 68
+        },
+        "declaration_path": [
+          "screen",
+          "0"
+        ],
+        "message": "The v0 consumer cannot represent this declaration losslessly",
+        "hint": "Use the supported v0 subset or a versioned consumer contract"
+      }
+    ]
+  },
+  {
+    "source": "screen { row { text \"x\" fill } }",
+    "diagnostics": [
+      {
+        "code": "E_LOWER_UNSUPPORTED",
+        "severity": "error",
+        "span": {
+          "start": 15,
+          "end": 28
+        },
+        "declaration_path": [
+          "screen",
+          "0",
+          "0"
+        ],
+        "message": "The v0 consumer cannot represent this declaration losslessly",
+        "hint": "Use the supported v0 subset or a versioned consumer contract"
+      }
+    ]
+  }
+]

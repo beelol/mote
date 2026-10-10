@@ -125,6 +125,7 @@ pub enum Property {
     Key(Vec<String>),
     Selection(Selection),
     ColumnKind(ColumnKind),
+    OptionLabels(BTreeMap<String, String>),
     Tone(Tone),
     Role(Role),
     Trigger(MenuTrigger),
@@ -177,6 +178,7 @@ pub struct ResolvedDeclaration {
     pub action: Option<ResolvedAction>,
     pub children: Vec<ResolvedDeclaration>,
     pub rows: Vec<ResolvedRow>,
+    pub empty_templates: Vec<ResolvedDeclaration>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1155,6 +1157,22 @@ impl Resolver<'_> {
                     "Field selection must occur once in the offered options",
                 ));
             }
+            let mut labels = BTreeMap::new();
+            for member in set {
+                if let Some(label) = self.manifest.enums[name].labels.get(member) {
+                    if label != member {
+                        self.charge(
+                            member.len().saturating_add(label.len()),
+                            node.span,
+                            &node.identity.path,
+                        )?;
+                        labels.insert(member.into(), label.clone());
+                    }
+                }
+            }
+            if !labels.is_empty() {
+                node.properties.push(Property::OptionLabels(labels));
+            }
         }
         node.values.insert("options".into(), value);
         Ok(())
@@ -1300,8 +1318,6 @@ impl Resolver<'_> {
             row_keys.push(row_key);
         }
         if rows.is_empty() {
-            let old_nodes = self.nodes;
-            let old_bytes = self.bytes;
             let mut row_context = context.clone();
             row_context.dry = true;
             row_context.row = Some(ResolvedValue {
@@ -1322,10 +1338,9 @@ impl Resolver<'_> {
                 .filter(|(_, d)| template(d))
             {
                 let path: Vec<_> = node.identity.path.iter().copied().chain([index]).collect();
-                self.declaration(child, &path, &row_context)?;
+                node.empty_templates
+                    .push(self.declaration(child, &path, &row_context)?);
             }
-            self.nodes = old_nodes;
-            self.bytes = old_bytes;
         }
         for (row, key) in rows.iter().zip(row_keys) {
             let identity = RowIdentity {
@@ -1405,6 +1420,7 @@ impl Resolver<'_> {
             action: None,
             children: Vec::new(),
             rows: Vec::new(),
+            empty_templates: Vec::new(),
         };
         let mut child_context = context.clone();
         match &declaration.kind {

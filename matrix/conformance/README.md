@@ -3,11 +3,16 @@
 The ten design cases are the first ten cases in [../examples.md](../examples.md).
 Their source is measured directly from that document.
 Case 10 is an intentional scope rejection.
-The cases exercise a future parser and do not claim an existing interpreter.
+The toolchain tests parse and resolve all ten cases.
+Cases 1 through 9 resolve against their host snapshots.
+Case 6 lowers to the unchanged list fixture.
+The other positive cases reject unsupported v0 semantics.
 
 The `v0/` fragments document exact resolved snapshots of nine existing JSON fixtures.
 They use the lowering subset in [../runtime.md](../runtime.md).
-Their matching JSON files stay in `crates/mote-ui/fixtures/` and are not edited or copied.
+Their matching consumer JSON files stay unchanged in `crates/mote-ui/fixtures/`.
+The compact `v0/*.json` snapshots pin canonical lowering output.
+Tests compare each snapshot with both the compiler output and the unchanged consumer fixture.
 The host fixture manifest supplies the data below.
 Source measurements exclude that manifest in the same way ordinary Matrix source excludes host contracts.
 
@@ -31,6 +36,11 @@ Design cases 1 through 5 and 7 through 9 need semantics absent from the v0 schem
 Case 10 has no valid lowered JSON.
 The existing `10_chat_progress.json` has arbitrary chat children without message roles.
 It has no exact source equivalent under the Matrix chat signature.
+Determinate unlabeled progress has a separate lowering test.
+
+The negative cases in `diagnostics.json` pin every diagnostic field for lexer, parser, resolver
+and unsupported-lowering failures.
+The v0 consumer's rejected-JSON text node remains unchanged.
 
 Run the measurement command in [../measurement.md](../measurement.md).
 The command measures source and compact JSON rather than validating Matrix grammar or lowering.

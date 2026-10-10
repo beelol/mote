@@ -48,10 +48,17 @@ fn accepts_documented_examples_and_recipes() {
 #[test]
 fn accepts_all_nine_v0_fragments() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../matrix/conformance/v0");
-    let files: Vec<_> = fs::read_dir(root).unwrap().collect();
+    let files: Vec<_> = fs::read_dir(root)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "matrix")
+        })
+        .collect();
     assert_eq!(files.len(), 9);
     for file in files {
-        accept(&fs::read_to_string(file.unwrap().path()).unwrap());
+        accept(&fs::read_to_string(file).unwrap());
     }
 }
 

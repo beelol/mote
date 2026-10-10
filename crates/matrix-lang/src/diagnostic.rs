@@ -42,6 +42,8 @@ pub enum DiagnosticCode {
     ResolveAction,
     ResolveConstraint,
     ResolveLimit,
+    LowerUnsupported,
+    LowerLimit,
 }
 
 impl DiagnosticCode {
@@ -72,6 +74,8 @@ impl DiagnosticCode {
             Self::ResolveAction => "E_RESOLVE_ACTION",
             Self::ResolveConstraint => "E_RESOLVE_CONSTRAINT",
             Self::ResolveLimit => "E_RESOLVE_LIMIT",
+            Self::LowerUnsupported => "E_LOWER_UNSUPPORTED",
+            Self::LowerLimit => "E_LOWER_LIMIT",
         }
     }
 }

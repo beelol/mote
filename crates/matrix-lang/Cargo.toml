@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+mote-ui = { path = "../mote-ui" }
 serde_json.workspace = true
 regex.workspace = true
 chrono.workspace = true

@@ -28,7 +28,13 @@ fn documented_candidates_remain_incomplete_at_every_extendible_byte() {
         }
     }
     for entry in fs::read_dir(root.join("conformance/v0")).unwrap() {
-        sources.push(fs::read_to_string(entry.unwrap().path()).unwrap());
+        let path = entry.unwrap().path();
+        if path
+            .extension()
+            .is_some_and(|extension| extension == "matrix")
+        {
+            sources.push(fs::read_to_string(path).unwrap());
+        }
     }
     for source in sources {
         let surface = if source.starts_with("screen ") || source.starts_with("screen{") {
