@@ -1,12 +1,14 @@
 #![allow(dead_code)]
 
 use crate::model_call::{ledger_entry, ModelRequest};
-use mote_context::{ContextStore, PackBuilder, PartKind};
+use mote_context::{count_tokens, ContextStore, PackBuilder, PartKind};
 use mote_eventlog::EventLog;
 use mote_localmodel::Ollama;
 use mote_redact::redact;
+use serde::de::{MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use serde_json::json;
+use std::fmt;
 
 pub(crate) const SURFACE_MODEL: &str = "qwen3:4b";
 pub(crate) const SURFACE_CONTEXT: u32 = 32_768;
@@ -37,25 +39,57 @@ impl<'de> Deserialize<'de> for SurfaceDecision {
     where
         D: Deserializer<'de>,
     {
-        let value = serde_json::Value::deserialize(deserializer)?;
-        let object = value
-            .as_object()
-            .ok_or_else(|| serde::de::Error::custom("surface decision must be an object"))?;
-        match object.get("kind").and_then(serde_json::Value::as_str) {
-            Some("none") if object.len() == 1 => Ok(Self::None),
-            Some("matrix") if object.len() == 2 && object.contains_key("source") => {
-                let source = object["source"]
-                    .as_str()
-                    .ok_or_else(|| serde::de::Error::custom("matrix source must be a string"))?;
-                if source.is_empty() || source.len() > MAX_SOURCE_BYTES {
-                    return Err(serde::de::Error::custom(
-                        "matrix source must contain 1 through 262144 bytes",
-                    ));
-                }
-                Ok(Self::Matrix { source: source.to_string() })
+        struct DecisionVisitor;
+
+        impl<'de> Visitor<'de> for DecisionVisitor {
+            type Value = SurfaceDecision;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a strict surface decision object")
             }
-            _ => Err(serde::de::Error::custom("unknown or malformed surface decision")),
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut kind = None;
+                let mut source = None;
+                let mut source_seen = false;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "kind" => {
+                            if kind.is_some() {
+                                return Err(serde::de::Error::duplicate_field("kind"));
+                            }
+                            kind = Some(map.next_value::<String>()?);
+                        }
+                        "source" => {
+                            if source_seen {
+                                return Err(serde::de::Error::duplicate_field("source"));
+                            }
+                            source_seen = true;
+                            source = Some(map.next_value::<String>()?);
+                        }
+                        _ => return Err(serde::de::Error::unknown_field(&key, &["kind", "source"])),
+                    }
+                }
+                match kind.as_deref() {
+                    Some("none") if !source_seen => Ok(SurfaceDecision::None),
+                    Some("matrix") if source_seen => {
+                        let source = source.unwrap_or_default();
+                        if source.is_empty() || source.len() > MAX_SOURCE_BYTES {
+                            return Err(serde::de::Error::custom(
+                                "matrix source must contain 1 through 262144 bytes",
+                            ));
+                        }
+                        Ok(SurfaceDecision::Matrix { source })
+                    }
+                    _ => Err(serde::de::Error::custom("unknown or malformed surface decision")),
+                }
+            }
         }
+
+        deserializer.deserialize_map(DecisionVisitor)
     }
 }
 
@@ -88,40 +122,75 @@ pub(crate) struct SurfaceInputs<'a> {
     pub(crate) diagnostics: &'a str,
 }
 
+fn labeled_content(label: &str, value: &str) -> String {
+    let mut object = serde_json::Map::new();
+    object.insert(label.to_string(), json!(value));
+    serde_json::Value::Object(object).to_string()
+}
+
+fn shrink(text: &mut String) {
+    if text.is_empty() {
+        return;
+    }
+    let mut end = if text.len() == 1 { 0 } else { text.len() * 7 / 8 };
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text.truncate(end);
+}
+
+fn surface_message_contents(inputs: &SurfaceInputs<'_>) -> [String; 5] {
+    let mut dynamic = [
+        redact(inputs.request),
+        redact(inputs.prose),
+        redact(inputs.previous_source),
+        redact(inputs.diagnostics),
+    ];
+    loop {
+        let contents = [
+            SURFACE_PROMPT.to_string(),
+            labeled_content("request", &dynamic[0]),
+            labeled_content("prose", &dynamic[1]),
+            labeled_content("previous_surface", &dynamic[2]),
+            labeled_content("diagnostics", &dynamic[3]),
+        ];
+        let tokens: usize = contents.iter().map(|content| count_tokens(content)).sum();
+        if tokens <= SURFACE_CONTEXT as usize - 512 {
+            return contents;
+        }
+        let Some(index) = [2, 1, 0, 3].into_iter().find(|index| !dynamic[*index].is_empty()) else {
+            return contents;
+        };
+        shrink(&mut dynamic[index]);
+    }
+}
+
 pub(crate) fn generate_surface(
     log: &EventLog,
     store: &ContextStore,
     client: &Ollama,
     inputs: &SurfaceInputs<'_>,
 ) -> Result<SurfaceDecision, String> {
-    let request_text = redact(inputs.request);
-    let prose = redact(inputs.prose);
-    let previous_source = redact(inputs.previous_source);
-    let diagnostics = redact(inputs.diagnostics);
-    let (pack, texts) = PackBuilder::new("surface")
-        .part(PartKind::Charter, "surface_prompt", SURFACE_PROMPT)
-        .part(PartKind::Profile, "request", &request_text)
-        .part(PartKind::Memory, "prose", &prose)
-        .part(PartKind::WorkingSet, "previous_surface", &previous_source)
-        .part(PartKind::Turn, "diagnostics", &diagnostics)
-        .build_with_texts(SURFACE_CONTEXT as usize - 512);
-    let packed = |kind| {
-        texts
+    let contents = surface_message_contents(inputs);
+    let pack = PackBuilder::new("surface")
+        .part(PartKind::Charter, "surface_prompt", &contents[0])
+        .part(PartKind::Profile, "request", &contents[1])
+        .part(PartKind::Memory, "prose", &contents[2])
+        .part(PartKind::WorkingSet, "previous_surface", &contents[3])
+        .part(PartKind::Turn, "diagnostics", &contents[4])
+        .build(SURFACE_CONTEXT as usize);
+    let messages = serde_json::Value::Array(
+        contents
             .iter()
-            .find_map(|(part_kind, text)| (*part_kind == kind).then_some(text.as_str()))
-            .unwrap_or("")
-    };
-    let user_content = json!({
-        "request": packed(PartKind::Profile),
-        "prose": packed(PartKind::Memory),
-        "previous_surface": packed(PartKind::WorkingSet),
-        "diagnostics": packed(PartKind::Turn)
-    })
-    .to_string();
-    let messages = json!([
-        { "role": "system", "content": packed(PartKind::Charter) },
-        { "role": "user", "content": user_content }
-    ]);
+            .enumerate()
+            .map(|(index, content)| {
+                json!({
+                    "role": if index == 0 { "system" } else { "user" },
+                    "content": content
+                })
+            })
+            .collect(),
+    );
     let schema = surface_schema();
     let request = ModelRequest::begin(
         log,
@@ -160,11 +229,12 @@ pub(crate) fn generate_surface(
         }
         Err(error) => {
             let timing = request.finish("error", None);
+            let completion = error.content.as_deref().unwrap_or("");
             let entry = ledger_entry(
                 "surface",
                 SURFACE_MODEL,
                 &pack,
-                "",
+                completion,
                 timing,
                 false,
                 "error",
@@ -207,13 +277,15 @@ mod tests {
     }
 
     #[test]
-    fn surface_decision_rejects_five_malformed_envelopes() {
+    fn surface_decision_rejects_malformed_and_duplicate_envelopes() {
         for malformed in [
             r#"{"kind":"matrix"}"#,
             r#"{"kind":"matrix","source":4}"#,
             r#"{"kind":"none","extra":true}"#,
             r#"{"kind":"none"} trailing"#,
             r#"the answer is none"#,
+            r#"{"kind":"none","kind":"matrix"}"#,
+            r#"{"kind":"matrix","source":"a","source":"b"}"#,
         ] {
             assert!(
                 parse_verdict::<SurfaceDecision>(malformed).is_err(),
@@ -290,10 +362,23 @@ mod tests {
         assert!(!events[0].payload.to_string().contains(SECRET));
 
         let expected = [
-            (PartKind::Profile, redact(inputs().request)),
-            (PartKind::Memory, redact(inputs().prose)),
-            (PartKind::WorkingSet, redact(inputs().previous_source)),
-            (PartKind::Turn, redact(inputs().diagnostics)),
+            (PartKind::Charter, SURFACE_PROMPT.to_string()),
+            (
+                PartKind::Profile,
+                json!({"request": redact(inputs().request)}).to_string(),
+            ),
+            (
+                PartKind::Memory,
+                json!({"prose": redact(inputs().prose)}).to_string(),
+            ),
+            (
+                PartKind::WorkingSet,
+                json!({"previous_surface": redact(inputs().previous_source)}).to_string(),
+            ),
+            (
+                PartKind::Turn,
+                json!({"diagnostics": redact(inputs().diagnostics)}).to_string(),
+            ),
         ];
         let parts_json: String = store
             .conn()
@@ -331,6 +416,7 @@ mod tests {
             assert_eq!(rows[0].lane, "surface");
             assert_eq!(rows[0].model, SURFACE_MODEL);
             assert_eq!(rows[0].status, status);
+            assert_eq!(rows[0].completion_tokens, count_tokens(content) as i64);
             assert_eq!(log.recent_kind_since("model.request", 0, 10).unwrap().len(), 1);
             assert_eq!(log.recent_kind_since("model.response", 0, 10).unwrap().len(), 1);
         }
@@ -360,5 +446,58 @@ mod tests {
             .sum();
         assert!(sent_tokens <= SURFACE_CONTEXT as usize);
         assert!(!request.body.to_string().contains(&oversized_request));
+    }
+
+    #[test]
+    fn surface_pack_accounts_for_exact_escaped_message_contents() {
+        let srv = ScriptedServer::start().unwrap();
+        srv.set_chat_chunks(reply(r#"{"kind":"none"}"#));
+        let log = EventLog::open_in_memory().unwrap();
+        let store = ContextStore::open_in_memory().unwrap();
+        let inputs = SurfaceInputs {
+            request: "show \"quoted\" \\ path",
+            prose: "line\nnext",
+            previous_source: "screen { text \"\\\"quoted\\\"\" }",
+            diagnostics: "bad\tpath\\",
+        };
+
+        generate_surface(&log, &store, &Ollama::new(srv.base_url()), &inputs).unwrap();
+
+        let request = srv.recorded().into_iter().find(|r| r.path == "/api/chat").unwrap();
+        let messages: Vec<&str> = request.body["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|message| message["content"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            messages,
+            [
+                SURFACE_PROMPT,
+                r#"{"request":"show \"quoted\" \\ path"}"#,
+                r#"{"prose":"line\nnext"}"#,
+                r#"{"previous_surface":"screen { text \"\\\"quoted\\\"\" }"}"#,
+                r#"{"diagnostics":"bad\tpath\\"}"#,
+            ]
+        );
+        let parts_json: String = store
+            .conn()
+            .query_row("SELECT parts FROM packs LIMIT 1", [], |row| row.get(0))
+            .unwrap();
+        let parts: Vec<mote_context::Part> = serde_json::from_str(&parts_json).unwrap();
+        assert_eq!(parts.len(), messages.len());
+        for (part, content) in parts.iter().zip(&messages) {
+            assert_eq!(part.hash, hash_text(content));
+            assert_eq!(part.tokens, count_tokens(content));
+        }
+        let accounted_tokens: i64 = store
+            .conn()
+            .query_row("SELECT token_estimate FROM packs LIMIT 1", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            accounted_tokens,
+            messages.iter().map(|text| count_tokens(text) as i64).sum::<i64>()
+        );
+        assert!(accounted_tokens <= SURFACE_CONTEXT as i64);
     }
 }

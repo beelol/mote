@@ -104,6 +104,21 @@ pub struct StructuredReply<T> {
     pub content: String,
 }
 
+/// Failure from a structured call. Parsed response content is retained when the transport
+/// succeeded so callers can account for the actual completion.
+#[derive(Debug)]
+pub struct StructuredError {
+    pub content: Option<String>,
+}
+
+impl std::fmt::Display for StructuredError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        VerdictError.fmt(f)
+    }
+}
+
+impl std::error::Error for StructuredError {}
+
 #[derive(Debug)]
 pub enum LmError {
     Http(String),
@@ -278,6 +293,7 @@ impl Ollama {
     ) -> Result<T, VerdictError> {
         self.chat_structured_with_raw(model, messages, schema, num_ctx)
             .map(|reply| reply.value)
+            .map_err(|_| VerdictError)
     }
 
     /// Structured output with both the parsed value and exact assistant content.
@@ -287,18 +303,23 @@ impl Ollama {
         messages: Value,
         schema: Value,
         num_ctx: u32,
-    ) -> Result<StructuredReply<T>, VerdictError> {
+    ) -> Result<StructuredReply<T>, StructuredError> {
         let opts = ChatOptions::new(num_ctx).with_format(schema).no_think().temperature(0.0);
         let body = self.build_body(model, messages, &opts, false);
-        let resp = self.post("/api/chat", &body).map_err(|_| VerdictError)?;
-        let v: Value = resp.into_json().map_err(|_| VerdictError)?;
+        let resp = self
+            .post("/api/chat", &body)
+            .map_err(|_| StructuredError { content: None })?;
+        let v: Value = resp
+            .into_json()
+            .map_err(|_| StructuredError { content: None })?;
         let content = v
             .get("message")
             .and_then(|m| m.get("content"))
             .and_then(|c| c.as_str())
-            .ok_or(VerdictError)?
+            .ok_or(StructuredError { content: None })?
             .to_string();
-        let value = parse_verdict::<T>(&content)?;
+        let value = parse_verdict::<T>(&content)
+            .map_err(|_| StructuredError { content: Some(content.clone()) })?;
         Ok(StructuredReply { value, content })
     }
 
@@ -484,5 +505,28 @@ mod tests {
 
         assert_eq!(reply.value.route, "talk");
         assert_eq!(reply.content, content);
+    }
+
+    #[test]
+    fn structured_output_preserves_raw_content_when_parsing_fails() {
+        let srv = ScriptedServer::start().unwrap();
+        let content = r#"{"route":"talk"} malformed"#;
+        srv.set_chat_chunks(vec![json!({
+            "message": {"role":"assistant","content": content},
+            "done": true
+        })
+        .to_string()]);
+        let client = Ollama::new(srv.base_url());
+
+        let error = client
+            .chat_structured_with_raw::<Verdict>(
+                "qwen3:0.6b",
+                json!([{"role":"user","content":"hey"}]),
+                json!({"type":"object"}),
+                32768,
+            )
+            .unwrap_err();
+
+        assert_eq!(error.content.as_deref(), Some(content));
     }
 }

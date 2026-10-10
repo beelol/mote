@@ -4,6 +4,7 @@ Updated 2026-10-10. Replace this file, never append.
 
 Branch: `main`. Base: `092a2cb`.
 Requested subject: `fix(models): redact and account for surface calls`.
+Fix Round 1 subject: `fix(models): preserve strict surface accounting`.
 Preserve untracked `.DS_Store` and `.superpowers/`. Do not push.
 
 Task 1 of the inferred Matrix surfaces plan is implemented. It is not connected to ordinary talk
@@ -19,10 +20,16 @@ no surface unless a surface materially helps or the request asks for a dashboard
 table or controls.
 
 Request text, delivered prose, prior canonical source and diagnostics are redacted before pack
-construction and before the HTTP request. Oversized inputs are trimmed once through the pack
-builder. The exact trimmed texts are sent to the model, so ledger accounting matches the outbound
-body. Every invoked surface call records one five-part pack, one `surface` ledger row, one redacted
-`model.request` event and one `model.response` event on both success and failure.
+construction and before the HTTP request. Each of the five stored pack parts is now the exact
+content of one outbound message. Dynamic values are JSON serialized with their labels before token
+accounting, so quotes, backslashes and fixed prompt text are included. Oversized redacted values
+are reduced before serialization until the complete message content fits within 32,768 tokens.
+
+Malformed structured replies retain their raw assistant content. A failed surface call records its
+real completion-token count instead of zero. The strict decision visitor rejects duplicate `kind`
+and `source` fields before JSON values can collapse them. Every invoked surface call records one
+five-part pack, one `surface` ledger row, one redacted `model.request` event and one
+`model.response` event on both success and failure.
 
 Shared request timing and ledger construction now live in `moted/src/model_call.rs`. Existing talk,
 router and think behavior remains unchanged. Tests inspect the real scripted HTTP bodies for talk
