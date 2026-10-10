@@ -214,7 +214,8 @@ fn measure_host_and_transport(tokenizer: &tiktoken_rs::CoreBPE) -> Result<(), Bo
         &pipeline.config,
         &pipeline,
         &matrix::HostSnapshot::default(),
-    );
+    )
+    .map_err(|errors| std::io::Error::other(format!("host bindings: {errors:?}")))?;
     let source = fs::read_to_string("matrix/examples/mote-dashboard.matrix")?;
     let surface = matrix::compile(&source, &bindings)
         .map_err(|errors| format!("dashboard compile failed: {errors:?}"))?;

@@ -4,6 +4,7 @@ Updated 2026-10-10. Replace this file, never append.
 
 Branch: `main`. Task 6 base: `36639ad`.
 Requested subject: `feat(matrix): refresh validated host snapshots`.
+Fix Round 1 subject: `fix(matrix): reject unsupported host states`.
 Preserve untracked `.DS_Store` and `.superpowers/`. Do not push.
 
 The daemon now retains one accepted typed `HostSnapshot` per Matrix thread.
@@ -21,19 +22,22 @@ Rejection changes none of those three values.
 Focused acceptance starts from progress 0.25 and one populated list row.
 One host refresh changes progress to 0.75 and replaces the list with three rows.
 The newly lowered JSON has the exact values and rows.
-The real decoder, reducer and renderer observe one complete replacement.
+The test captures every event after the pre-refresh sequence.
+The daemon emits exactly one `ui.surface` and no other event.
+Feeding the complete stream through the real decoder and reducer causes one complete replacement
+and one rendered frame.
 No displayed node contains a source path.
 The scripted Ollama request count and context ledger count remain unchanged.
 
 An out-of-range progress update fails before commitment.
-Pending, failure, key and selection declarations are valid full-catalog source semantics but remain
-unsupported by v0 lowering.
+Typed pending and failed host snapshot proposals fail before source resolution.
+Keyed and selected collection declarations remain unsupported by v0 lowering.
 Each returns a structured diagnostic and preserves the prior surface, source and accepted snapshot.
 
 UI-30 remains partial.
 Loaded progress and populated-list updates are covered.
-Pending and failed collection transitions and revised-consumer key and selection behavior remain
-contract-gated.
+Visible pending and failed collection transitions and revised-consumer key and selection behavior
+remain contract-gated.
 No native screenshot is claimed.
 
 The focused client suite passed 91 tests.

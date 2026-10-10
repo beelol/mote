@@ -144,7 +144,8 @@ impl Daemon {
         let snapshot = self.pipeline_snapshot().map_err(|error| {
             json!([{"code":"E_HOST","severity":"error","message":error.message}])
         })?;
-        let bindings = matrix::host_bindings(&snapshot.config, &snapshot, host);
+        let bindings = matrix::host_bindings(&snapshot.config, &snapshot, host)
+            .map_err(|errors| matrix::diagnostics(&errors))?;
         matrix::compile(source, &bindings)
             .map(|surface| (surface, bindings))
             .map_err(|errors| matrix::diagnostics(&errors))
@@ -275,7 +276,14 @@ impl Daemon {
         let mut snapshots = self.matrix_snapshots.lock().unwrap();
         let snapshot = self.pipeline_snapshot()?;
         let host = snapshots.get(thread).cloned().unwrap_or_default();
-        let bindings = matrix::host_bindings(&snapshot.config, &snapshot, &host);
+        let bindings = match matrix::host_bindings(&snapshot.config, &snapshot, &host) {
+            Ok(bindings) => bindings,
+            Err(errors) => {
+                let diagnostics = matrix::diagnostics(&errors);
+                self.emit_matrix_diagnostic(thread, Some(candidate), &diagnostics)?;
+                return Ok(json!({"status":"rejected", "diagnostics":diagnostics}));
+            }
+        };
         match matrix::compile_surface(&parsed, &bindings) {
             Ok(surface) => {
                 let source = matrix_lang::format_surface(&parsed);
@@ -939,6 +947,8 @@ mod approval_dispatch_tests {
 
         let requests = server.recorded().len();
         let ledger = daemon.store.lock().unwrap().count_ledger().unwrap();
+        let pre_refresh_seq = daemon.log.max_seq().unwrap();
+        let mut emitted = daemon.log.subscribe("main", pre_refresh_seq).unwrap();
         daemon
             .refresh_matrix_host_snapshot(
                 "main",
@@ -946,7 +956,13 @@ mod approval_dispatch_tests {
             )
             .unwrap();
 
-        let refreshed = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().unwrap();
+        let mut events = Vec::new();
+        while let Some(event) = emitted.recv_timeout(Duration::from_millis(5)) {
+            events.push(event);
+        }
+        assert_eq!(events.len(), 1, "host refresh emitted extra consumer events");
+        assert_eq!(events.iter().filter(|event| event.kind == "ui.surface").count(), 1);
+        let refreshed = &events[0];
         assert_eq!(refreshed.kind, "ui.surface");
         assert_eq!(refreshed.payload["surface"]["children"][0]["value"], json!(0.75));
         assert_eq!(
@@ -958,7 +974,9 @@ mod approval_dispatch_tests {
             ])
         );
         assert!(!refreshed.payload["surface"].to_string().contains("host."));
-        client.event(&refreshed);
+        for event in &events {
+            client.event(event);
+        }
         assert_eq!(client.switches, 2, "one accepted snapshot caused more than one redraw");
         assert_eq!(client.surface().unwrap().0, refreshed.seq);
         let refreshed_display = client.frame(vec![]);
@@ -997,9 +1015,18 @@ mod approval_dispatch_tests {
             surface.payload
         );
 
+        for proposed in [matrix::HostSnapshot::pending(), matrix::HostSnapshot::failed()] {
+            let response = daemon
+                .refresh_matrix_host_snapshot("main", proposed)
+                .unwrap();
+            assert_eq!(response["ok"], false);
+            assert_eq!(response["diagnostics"][0]["code"], "E_LOWER_UNSUPPORTED");
+            assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), committed);
+            assert_eq!(daemon.matrix_sources.lock().unwrap()["main"], source);
+            assert_eq!(daemon.matrix_snapshots.lock().unwrap()["main"], accepted);
+        }
+
         for unsupported in [
-            r#"screen { list from host.items { item { text .label } empty "Pending" } }"#,
-            r#"screen { list from host.items { item { text .label } error "Failed" } }"#,
             r#"screen { list from host.items key label { item { text .label } } }"#,
             r#"screen { list from host.items select one { item { text .label } } }"#,
         ] {

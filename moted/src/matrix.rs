@@ -149,10 +149,12 @@ pub struct HostBindings {
     pub snapshot: BindingSnapshot,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq)]
-pub struct HostSnapshot {
-    progress: f64,
-    items: Vec<String>,
+pub enum HostSnapshot {
+    Ready { progress: f64, items: Vec<String> },
+    Pending,
+    Failed,
 }
 
 impl Default for HostSnapshot {
@@ -161,15 +163,24 @@ impl Default for HostSnapshot {
     }
 }
 
+#[allow(dead_code)]
 impl HostSnapshot {
     pub fn ready(
         progress: f64,
         items: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
-        Self {
+        Self::Ready {
             progress,
             items: items.into_iter().map(Into::into).collect(),
         }
+    }
+
+    pub fn pending() -> Self {
+        Self::Pending
+    }
+
+    pub fn failed() -> Self {
+        Self::Failed
     }
 }
 
@@ -185,7 +196,22 @@ pub fn host_bindings(
     config: &BTreeMap<String, Value>,
     pipeline: &PipelineSnapshot,
     host: &HostSnapshot,
-) -> HostBindings {
+) -> Result<HostBindings, Vec<Diagnostic>> {
+    let HostSnapshot::Ready { progress, items } = host else {
+        let state = match host {
+            HostSnapshot::Pending => "pending",
+            HostSnapshot::Failed => "failed",
+            HostSnapshot::Ready { .. } => unreachable!(),
+        };
+        return Err(vec![Diagnostic {
+            code: matrix_lang::DiagnosticCode::LowerUnsupported,
+            severity: matrix_lang::Severity::Error,
+            span: matrix_lang::Span::new(0, 0),
+            declaration_path: vec!["screen".into()],
+            message: format!("The v0 consumer cannot represent a {state} host snapshot"),
+            hint: Some("Wait for a loaded snapshot before committing this surface".into()),
+        }]);
+    };
     let mut manifest = Manifest::default();
     manifest
         .enums
@@ -266,11 +292,11 @@ pub fn host_bindings(
     );
     snapshot
         .values
-        .insert("host.progress".into(), json!(host.progress));
+        .insert("host.progress".into(), json!(progress));
     snapshot.values.insert(
         "host.items".into(),
         Value::Array(
-            host.items
+            items
                 .iter()
                 .map(|label| json!({"label": label}))
                 .collect(),
@@ -281,7 +307,7 @@ pub fn host_bindings(
             snapshot.fields.insert(name.clone(), value.clone());
         }
     }
-    HostBindings { manifest, snapshot }
+    Ok(HostBindings { manifest, snapshot })
 }
 
 pub fn compile(source: &str, bindings: &HostBindings) -> Result<Value, Vec<Diagnostic>> {
