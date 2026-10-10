@@ -1,5 +1,6 @@
 //! The egui application: chat view and pipeline view.
 
+use crate::pipeline::PipelineSnapshot;
 use crate::state::{ChatState, LocalMessageId};
 use eframe::egui;
 use mote_eventlog::Event;
@@ -9,6 +10,16 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 type TurnResult = (LocalMessageId, Result<(), String>);
+type PipelineResult = Result<PipelineSnapshot, String>;
+
+fn spawn_pipeline_load_with(
+    tx: Sender<PipelineResult>,
+    load: impl FnOnce() -> PipelineResult + Send + 'static,
+) {
+    std::thread::spawn(move || {
+        let _ = tx.send(load());
+    });
+}
 
 fn cursor_path() -> PathBuf {
     mote_paths::data_dir().join("client_cursor")
@@ -34,15 +45,15 @@ fn apply_next_event(
     chat: &mut ChatState,
     rx: &Receiver<Event>,
     cursor_path: Option<&std::path::Path>,
-) -> bool {
+) -> Option<Event> {
     let Ok(event) = rx.try_recv() else {
-        return false;
+        return None;
     };
     chat.reduce(&event);
     if let Some(path) = cursor_path {
         save_cursor_to(path, event.seq);
     }
-    true
+    Some(event)
 }
 
 #[derive(PartialEq)]
@@ -74,6 +85,10 @@ pub struct MoteApp {
     stage: usize,
     tab: usize,
     config_edits: std::collections::HashMap<String, String>,
+    pipeline: Option<PipelineSnapshot>,
+    pipeline_loading: bool,
+    pipeline_tx: Sender<PipelineResult>,
+    pipeline_rx: Receiver<PipelineResult>,
     status_line: String,
     fixture: Option<Node>,
     turn_tx: Sender<TurnResult>,
@@ -90,6 +105,7 @@ impl MoteApp {
     ) -> Self {
         crate::theme::install(&cc.egui_ctx);
         let (turn_tx, turn_rx) = mpsc::channel();
+        let (pipeline_tx, pipeline_rx) = mpsc::channel();
         Self {
             socket,
             rx,
@@ -99,6 +115,10 @@ impl MoteApp {
             stage: 0,
             tab: 0,
             config_edits: std::collections::HashMap::new(),
+            pipeline: None,
+            pipeline_loading: false,
+            pipeline_tx,
+            pipeline_rx,
             status_line: String::new(),
             fixture,
             turn_tx,
@@ -112,10 +132,50 @@ impl MoteApp {
     }
 
     fn drain_events(&mut self) {
-        while apply_next_event(&mut self.chat, &self.rx, self.cursor_path.as_deref()) {}
+        while let Some(event) =
+            apply_next_event(&mut self.chat, &self.rx, self.cursor_path.as_deref())
+        {
+            if let Some(snapshot) = &mut self.pipeline {
+                snapshot.ingest_live(event);
+            }
+        }
         while let Ok((pending, result)) = self.turn_rx.try_recv() {
             self.record_turn_result(pending, result);
         }
+        while let Ok(result) = self.pipeline_rx.try_recv() {
+            self.pipeline_loading = false;
+            match result {
+                Ok(snapshot) => self.install_pipeline_snapshot(snapshot),
+                Err(error) => self.status_line = error,
+            }
+        }
+    }
+
+    fn install_pipeline_snapshot(&mut self, snapshot: PipelineSnapshot) {
+        self.config_edits = CONFIG_KEYS
+            .into_iter()
+            .filter_map(|key| snapshot.config_edit_value(key).map(|value| (key.into(), value)))
+            .collect();
+        self.pipeline = Some(snapshot);
+        self.status_line.clear();
+    }
+
+    fn request_pipeline_snapshot(&mut self) {
+        if self.pipeline_loading {
+            return;
+        }
+        self.pipeline_loading = true;
+        let socket = self.socket.clone();
+        let tx = self.pipeline_tx.clone();
+        spawn_pipeline_load_with(tx, move || {
+            let mut client = Client::connect(&socket)
+                .map_err(|error| format!("cannot reach daemon: {error}"))?;
+            let value = client
+                .call("pipeline.snapshot", serde_json::json!({}))
+                .map_err(|error| format!("cannot read pipeline: {error}"))?
+                .map_err(|error| format!("{}: {}", error.code, error.message))?;
+            PipelineSnapshot::from_value(value)
+        });
     }
 
     fn record_turn_result(&mut self, pending: LocalMessageId, result: Result<(), String>) {
@@ -211,6 +271,10 @@ impl MoteApp {
                     self.stage = i;
                 }
             }
+            ui.separator();
+            if crate::surface::button(ui, "Refresh").clicked() {
+                self.request_pipeline_snapshot();
+            }
         });
         ui.separator();
         ui.horizontal(|ui| {
@@ -223,23 +287,26 @@ impl MoteApp {
         ui.separator();
         match TABS[self.tab] {
             "Config" => self.config_tab(ui),
-            "Now" => {
-                ui.label(format!("Live events for the {} stage.", STAGES[self.stage]));
-            }
-            "Numbers" => {
-                ui.label("p50/p95 latency, tokens and cost over the last hour (from the ledger).");
-            }
-            "Requests" => {
-                ui.label("Outbound calls with redacted payloads and timing (from the ledger).");
-            }
+            "Now" => self.now_tab(ui),
+            "Numbers" => self.numbers_tab(ui),
+            "Requests" => self.requests_tab(ui),
             _ => {}
+        }
+        if self.pipeline_loading {
+            crate::theme::caption(ui, "Refreshing pipeline data...");
+        }
+        if !self.status_line.is_empty() {
+            ui.colored_label(ui.visuals().error_fg_color, &self.status_line);
         }
     }
 
     fn config_tab(&mut self, ui: &mut egui::Ui) {
+        if self.config_edits.is_empty() {
+            ui.label("No configuration snapshot is available.");
+            return;
+        }
         for key in CONFIG_KEYS {
-            let current = self.read_config(key);
-            let buf = self.config_edits.entry(key.to_string()).or_insert(current);
+            let buf = self.config_edits.entry(key.to_string()).or_default();
             ui.horizontal(|ui| {
                 ui.label(key);
                 ui.text_edit_singleline(buf);
@@ -254,16 +321,111 @@ impl MoteApp {
             for (key, val) in edits {
                 self.apply_config(&key, &val);
             }
+            self.request_pipeline_snapshot();
         }
     }
 
-    fn read_config(&self, key: &str) -> String {
-        if let Ok(mut c) = self.client() {
-            if let Ok(Ok(v)) = c.call("config.get", serde_json::json!({ "key": key })) {
-                return v["value"].to_string();
-            }
+    fn now_tab(&self, ui: &mut egui::Ui) {
+        let stage = STAGES[self.stage];
+        let Some(snapshot) = &self.pipeline else {
+            ui.label("No pipeline snapshot is available.");
+            return;
+        };
+        crate::theme::caption(
+            ui,
+            &format!(
+                "Newest {} stored events. Snapshot at {}.",
+                snapshot.event_limit, snapshot.generated_at
+            ),
+        );
+        crate::theme::caption(
+            ui,
+            "Main-thread events update live. Other scopes update on Refresh.",
+        );
+        let events = snapshot.events_for(stage);
+        if events.is_empty() {
+            ui.label(format!("No {stage} events were stored in the last hour."));
+            return;
         }
-        String::new()
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            for event in events {
+                ui.horizontal(|ui| {
+                    ui.strong(format!("#{} {}", event.seq, event.kind));
+                    crate::theme::caption(ui, &format!("{} · {}", event.ts, event.scope_id));
+                });
+                ui.monospace(event.payload.to_string());
+                ui.separator();
+            }
+        });
+    }
+
+    fn numbers_tab(&self, ui: &mut egui::Ui) {
+        let stage = STAGES[self.stage];
+        let Some(snapshot) = &self.pipeline else {
+            ui.label("No pipeline snapshot is available.");
+            return;
+        };
+        let Some(numbers) = snapshot.numbers_for(stage) else {
+            ui.label(format!("No {stage} ledger data was stored in the last hour."));
+            return;
+        };
+        crate::theme::caption(
+            ui,
+            &format!("Last {} minutes.", snapshot.window_ms / 60_000),
+        );
+        egui::Grid::new("pipeline_numbers").striped(true).show(ui, |ui| {
+            ui.label("Calls");
+            ui.label(numbers.calls.to_string());
+            ui.end_row();
+            ui.label("Latency p50");
+            ui.label(format!("{} ms", numbers.latency_p50_ms));
+            ui.end_row();
+            ui.label("Latency p95");
+            ui.label(format!("{} ms", numbers.latency_p95_ms));
+            ui.end_row();
+            ui.label("Budget");
+            ui.label(numbers.budget_ms.map_or_else(|| "unavailable".into(), |ms| format!("{ms} ms")));
+            ui.end_row();
+            ui.label("Prompt tokens");
+            ui.label(numbers.prompt_tokens.to_string());
+            ui.end_row();
+            ui.label("Completion tokens");
+            ui.label(numbers.completion_tokens.to_string());
+            ui.end_row();
+            ui.label("Cost");
+            ui.label(format!("${:.6}", numbers.cost_usd));
+            ui.end_row();
+        });
+    }
+
+    fn requests_tab(&self, ui: &mut egui::Ui) {
+        let stage = STAGES[self.stage];
+        let Some(snapshot) = &self.pipeline else {
+            ui.label("No pipeline snapshot is available.");
+            return;
+        };
+        let requests = snapshot.requests_for(stage);
+        if requests.is_empty() {
+            ui.label(format!("No {stage} outbound requests were stored in the last hour."));
+            return;
+        }
+        crate::theme::caption(
+            ui,
+            &format!("Newest {} stored outbound requests.", snapshot.request_limit),
+        );
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            for request in requests {
+                ui.horizontal(|ui| {
+                    ui.strong(format!("#{} {}", request.seq, request.lane));
+                    let timing = request
+                        .latency_ms
+                        .map_or_else(|| "latency unavailable".into(), |ms| format!("{ms} ms"));
+                    crate::theme::caption(ui, &format!("{} · {timing}", request.ts));
+                });
+                ui.monospace(request.payload.to_string());
+                ui.separator();
+            }
+        });
     }
 
     fn apply_config(&mut self, key: &str, val: &str) {
@@ -335,6 +497,7 @@ impl eframe::App for MoteApp {
                     .clicked()
                     {
                         self.screen = Screen::Pipeline;
+                        self.request_pipeline_snapshot();
                     }
                 });
             });
@@ -360,6 +523,7 @@ mod tests {
     fn app() -> (MoteApp, std::sync::mpsc::Sender<Event>) {
         let (tx, rx) = std::sync::mpsc::channel();
         let (turn_tx, turn_rx) = std::sync::mpsc::channel();
+        let (pipeline_tx, pipeline_rx) = std::sync::mpsc::channel();
         (
             MoteApp {
                 socket: PathBuf::new(),
@@ -370,6 +534,10 @@ mod tests {
                 stage: 0,
                 tab: 0,
                 config_edits: Default::default(),
+                pipeline: None,
+                pipeline_loading: false,
+                pipeline_tx,
+                pipeline_rx,
                 status_line: String::new(),
                 fixture: None,
                 turn_tx,
@@ -512,7 +680,7 @@ mod tests {
         .unwrap();
         let mut chat = ChatState::default();
 
-        assert!(apply_next_event(&mut chat, &rx, Some(&cursor)));
+        assert!(apply_next_event(&mut chat, &rx, Some(&cursor)).is_some());
         assert_eq!(load_cursor_from(&cursor), 10);
         assert_eq!(chat.messages.len(), 1);
         drop(rx);
@@ -532,7 +700,8 @@ mod tests {
             &mut restarted,
             &replay_rx,
             Some(&cursor)
-        ));
+        )
+        .is_some());
         assert_eq!(load_cursor_from(&cursor), 11);
         assert_eq!(restarted.messages[0].text, "reply");
 
@@ -598,5 +767,100 @@ mod tests {
         expected.sort_unstable();
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn pipeline_snapshot_loading_runs_off_the_rendering_thread() {
+        let (result_tx, result_rx) = std::sync::mpsc::channel();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+
+        spawn_pipeline_load_with(result_tx, move || {
+            started_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+            Err("offline".to_string())
+        });
+
+        started_rx.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
+        assert!(matches!(result_rx.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)));
+        release_tx.send(()).unwrap();
+        assert_eq!(
+            result_rx.recv_timeout(std::time::Duration::from_secs(1)).unwrap().unwrap_err(),
+            "offline"
+        );
+    }
+
+    #[test]
+    fn installing_a_snapshot_seeds_all_config_edits_and_clears_errors() {
+        let (mut app, _tx) = app();
+        app.status_line = "offline".into();
+        let snapshot = PipelineSnapshot::from_value(serde_json::json!({
+            "generated_at": 5000,
+            "event_limit": 200,
+            "request_limit": 200,
+            "window_ms": 3600000,
+            "config": {
+                "models.local_only": true,
+                "models.talk": "qwen3:4b",
+                "models.router": "qwen3:0.6b",
+                "models.think": "qwen3-coder:30b-64k",
+                "budgets.talk_first_token": 300,
+                "budgets.router": 150,
+                "budgets.think_first_token": 3000,
+                "packs.talk": 600,
+                "packs.think": 8000
+            },
+            "events": [],
+            "numbers": [],
+            "requests": []
+        }))
+        .unwrap();
+
+        app.install_pipeline_snapshot(snapshot);
+
+        assert_eq!(app.config_edits.len(), 9);
+        assert_eq!(app.config_edits["models.talk"], "qwen3:4b");
+        assert!(app.status_line.is_empty());
+    }
+
+    #[test]
+    fn subscribed_main_events_update_the_cached_pipeline_snapshot() {
+        let (mut app, tx) = app();
+        app.install_pipeline_snapshot(
+            PipelineSnapshot::from_value(serde_json::json!({
+                "generated_at": 5000,
+                "event_limit": 200,
+                "request_limit": 200,
+                "window_ms": 3600000,
+                "config": {
+                    "models.local_only": true,
+                    "models.talk": "qwen3:4b",
+                    "models.router": "qwen3:0.6b",
+                    "models.think": "qwen3-coder:30b-64k",
+                    "budgets.talk_first_token": 300,
+                    "budgets.router": 150,
+                    "budgets.think_first_token": 3000,
+                    "packs.talk": 600,
+                    "packs.think": 8000
+                },
+                "events": [],
+                "numbers": [],
+                "requests": []
+            }))
+            .unwrap(),
+        );
+        tx.send(Event {
+            seq: 12,
+            ts: 5100,
+            scope_id: "main".into(),
+            kind: "talk.delta".into(),
+            payload: serde_json::json!({"text": "live"}),
+        })
+        .unwrap();
+
+        app.drain_events();
+
+        let snapshot = app.pipeline.as_ref().unwrap();
+        assert_eq!(snapshot.events_for("talk")[0].seq, 12);
     }
 }

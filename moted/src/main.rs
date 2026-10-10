@@ -10,6 +10,7 @@ mod embed;
 mod gate;
 mod lanes;
 mod mcp;
+mod pipeline;
 mod service;
 mod watchers;
 
@@ -291,6 +292,24 @@ impl Dispatch for Daemon {
                     .revert(seq)
                     .map_err(|e| RpcError::invalid_params(e.to_string()))?;
                 Ok(json!({ "seq": new_seq }))
+            }
+            "pipeline.snapshot" => {
+                let config = {
+                    let config = self.config.lock().unwrap();
+                    pipeline::CONFIG_KEYS
+                        .into_iter()
+                        .filter_map(|key| {
+                            config.get_json(key).map(|value| (key.to_string(), value))
+                        })
+                        .collect()
+                };
+                let store = self.store.lock().unwrap();
+                let snapshot = pipeline::build_snapshot(&self.log, &store, config, now_ms())
+                    .map_err(|error| {
+                        RpcError::internal(format!("read pipeline snapshot: {error}"))
+                    })?;
+                serde_json::to_value(snapshot)
+                    .map_err(|error| RpcError::internal(format!("encode pipeline snapshot: {error}")))
             }
             "character.info" => {
                 let c = self.character.lock().unwrap();
@@ -583,6 +602,24 @@ mod approval_dispatch_tests {
         assert!(!target.exists());
 
         std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn pipeline_snapshot_rpc_is_read_only_and_returns_all_config_keys() {
+        let (data, _outside) = dirs("pipeline-snapshot");
+        let daemon = daemon(&data);
+
+        let response = daemon.call("pipeline.snapshot", json!({})).unwrap();
+
+        assert_eq!(response["event_limit"], pipeline::PIPELINE_EVENT_LIMIT);
+        let config = response["config"].as_object().unwrap();
+        assert_eq!(config.len(), 9);
+        assert_eq!(config["models.talk"], "qwen3:4b");
+        assert_eq!(config["budgets.router"], 150);
+        assert_eq!(response["numbers"], json!([]));
+        assert_eq!(response["requests"], json!([]));
+
+        std::fs::remove_dir_all(data).ok();
     }
 
     #[test]

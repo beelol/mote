@@ -191,6 +191,20 @@ pub struct LedgerEntry {
     pub status: String,
 }
 
+/// A stored ledger row returned by read-only reporting queries.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LedgerRow {
+    pub id: i64,
+    pub ts: i64,
+    pub lane: String,
+    pub model: String,
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub latency_ms: i64,
+    pub cost_usd: f64,
+    pub status: String,
+}
+
 /// The context store over one SQLite connection.
 pub struct ContextStore {
     conn: Connection,
@@ -322,6 +336,30 @@ impl ContextStore {
         self.conn.query_row("SELECT COUNT(*) FROM ledger", [], |r| r.get(0))
     }
 
+    /// Read every ledger row at or after `since_ts`, newest first. Reporting callers aggregate
+    /// the complete time window so percentiles and totals are not computed from a truncated sample.
+    pub fn ledger_since(&self, since_ts: i64) -> rusqlite::Result<Vec<LedgerRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, ts, lane, model, prompt_tokens, completion_tokens, latency_ms,
+                    cost_usd, status
+             FROM ledger WHERE ts>=?1 ORDER BY ts DESC, id DESC",
+        )?;
+        let rows = stmt.query_map([since_ts], |row| {
+            Ok(LedgerRow {
+                id: row.get(0)?,
+                ts: row.get(1)?,
+                lane: row.get(2)?,
+                model: row.get(3)?,
+                prompt_tokens: row.get(4)?,
+                completion_tokens: row.get(5)?,
+                latency_ms: row.get(6)?,
+                cost_usd: row.get(7)?,
+                status: row.get(8)?,
+            })
+        })?;
+        rows.collect()
+    }
+
     /// Write a memory node (one transaction, no model call).
     pub fn memory_write(
         &self,
@@ -439,5 +477,42 @@ mod tests {
             .part(PartKind::WorkingSet, "w", &big)
             .build(600);
         assert!(pack.token_estimate() <= 600, "got {}", pack.token_estimate());
+    }
+
+    #[test]
+    fn ledger_since_filters_cutoff_and_returns_newest_first() {
+        let mut store = ContextStore::open_in_memory().unwrap();
+        let clock = Arc::new(Mutex::new(1_000_000i64));
+        let c = clock.clone();
+        store.set_clock(Arc::new(move || *c.lock().unwrap()));
+
+        store.record(&sample_pack(), &entry()).unwrap();
+        *clock.lock().unwrap() = 2_000_000;
+        let mut newer = entry();
+        newer.latency_ms = 250;
+        newer.prompt_tokens = 20;
+        newer.completion_tokens = 8;
+        newer.cost_usd = 0.25;
+        store.record(&sample_pack(), &newer).unwrap();
+        *clock.lock().unwrap() = 3_000_000;
+        let mut newest = entry();
+        newest.lane = "think".into();
+        newest.latency_ms = 900;
+        store.record(&sample_pack(), &newest).unwrap();
+
+        let rows = store.ledger_since(1_500_000).unwrap();
+
+        assert_eq!(rows.iter().map(|row| row.ts).collect::<Vec<_>>(), [3_000_000, 2_000_000]);
+        assert_eq!(rows[0].lane, "think");
+        assert_eq!(rows[1].prompt_tokens, 20);
+        assert_eq!(rows[1].completion_tokens, 8);
+        assert_eq!(rows[1].latency_ms, 250);
+        assert_eq!(rows[1].cost_usd, 0.25);
+    }
+
+    #[test]
+    fn ledger_since_is_empty_without_rows() {
+        let store = ContextStore::open_in_memory().unwrap();
+        assert!(store.ledger_since(0).unwrap().is_empty());
     }
 }

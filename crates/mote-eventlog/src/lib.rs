@@ -149,6 +149,61 @@ impl EventLog {
             |r| r.get(0),
         )
     }
+
+    /// Read at most `limit` events at or after `since_ts`, newest first.
+    pub fn recent_since(&self, since_ts: i64, limit: usize) -> rusqlite::Result<Vec<Event>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let guard = self.inner.lock().unwrap();
+        let mut stmt = guard.conn.prepare(
+            "SELECT seq, ts, scope_id, kind, payload FROM events
+             WHERE ts>=?1 ORDER BY seq DESC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![since_ts, limit as i64], |row| {
+            let payload_text: String = row.get(4)?;
+            let payload = serde_json::from_str(&payload_text)
+                .unwrap_or(serde_json::Value::String(payload_text));
+            Ok(Event {
+                seq: row.get(0)?,
+                ts: row.get(1)?,
+                scope_id: row.get(2)?,
+                kind: row.get(3)?,
+                payload,
+            })
+        })?;
+        rows.collect()
+    }
+
+    /// Read at most `limit` events of `kind` at or after `since_ts`, newest first.
+    pub fn recent_kind_since(
+        &self,
+        kind: &str,
+        since_ts: i64,
+        limit: usize,
+    ) -> rusqlite::Result<Vec<Event>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let guard = self.inner.lock().unwrap();
+        let mut stmt = guard.conn.prepare(
+            "SELECT seq, ts, scope_id, kind, payload FROM events
+             WHERE kind=?1 AND ts>=?2 ORDER BY seq DESC LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![kind, since_ts, limit as i64], |row| {
+            let payload_text: String = row.get(4)?;
+            let payload = serde_json::from_str(&payload_text)
+                .unwrap_or(serde_json::Value::String(payload_text));
+            Ok(Event {
+                seq: row.get(0)?,
+                ts: row.get(1)?,
+                scope_id: row.get(2)?,
+                kind: row.get(3)?,
+                payload,
+            })
+        })?;
+        rows.collect()
+    }
 }
 
 impl Inner {
@@ -390,5 +445,46 @@ mod tests {
         // Recover from the log without loss: everything is still replayable.
         let fresh = log.subscribe("s", 0).unwrap();
         assert_eq!(fresh.replay_remaining() as i64, log.count("s").unwrap());
+    }
+
+    #[test]
+    fn recent_events_are_bounded_newest_first_and_redacted() {
+        let log = EventLog::open_in_memory().unwrap();
+        log.append("main", "talk.delta", &serde_json::json!({"text": "first"})).unwrap();
+        log.append(
+            "pipeline",
+            "model.request",
+            &serde_json::json!({"prompt": "sk-abcdefghijklmnopqrstuvwxyz"}),
+        )
+        .unwrap();
+        log.append("main", "talk.done", &serde_json::json!({"ledger_id": 1})).unwrap();
+
+        let events = log.recent_since(0, 2).unwrap();
+
+        assert_eq!(events.iter().map(|event| event.kind.as_str()).collect::<Vec<_>>(), [
+            "talk.done",
+            "model.request",
+        ]);
+        assert_eq!(events[1].payload["prompt"], "[redacted]");
+    }
+
+    #[test]
+    fn recent_events_by_kind_are_filtered_before_the_limit() {
+        let log = EventLog::open_in_memory().unwrap();
+        log.append("pipeline", "model.request", &serde_json::json!({"id": 1}))
+            .unwrap();
+        for index in 0..5 {
+            log.append("main", "talk.delta", &serde_json::json!({"index": index}))
+                .unwrap();
+        }
+        log.append("pipeline", "model.request", &serde_json::json!({"id": 2}))
+            .unwrap();
+
+        let events = log.recent_kind_since("model.request", 0, 2).unwrap();
+
+        assert_eq!(events.iter().map(|event| event.payload["id"].as_i64()).collect::<Vec<_>>(), [
+            Some(2),
+            Some(1),
+        ]);
     }
 }

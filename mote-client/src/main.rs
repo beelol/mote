@@ -7,6 +7,7 @@
 
 mod app;
 mod fixture;
+mod pipeline;
 mod state;
 mod stream;
 mod surface;

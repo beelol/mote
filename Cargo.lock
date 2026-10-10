@@ -2341,6 +2341,7 @@ dependencies = [
  "mote-ipc",
  "mote-paths",
  "mote-ui",
+ "serde",
  "serde_json",
 ]
 
