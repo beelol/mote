@@ -96,18 +96,27 @@ impl ChatState {
             "turn.user" => {
                 let text = ev.payload["text"].as_str().unwrap_or("");
                 let local_id = ev.payload["client_message_id"].as_str();
-                if let Some(existing) = local_id.and_then(|local_id| {
+                let identity_conflicts = local_id.is_some_and(|local_id| {
                     self.messages
-                        .iter_mut()
-                        .find(|message| message.local_id.as_deref() == Some(local_id))
+                        .iter()
+                        .any(|message| message.local_id.as_deref() == Some(local_id))
+                });
+                if let Some(existing) = local_id.and_then(|local_id| {
+                    self.messages.iter_mut().find(|message| {
+                        message.local_id.as_deref() == Some(local_id)
+                            && message.text == text
+                            && matches!(message.status, Status::Sending | Status::Sent)
+                    })
                 }) {
-                    if matches!(existing.status, Status::Sending | Status::Sent) {
-                        existing.status = Status::Delivered;
-                    }
+                    existing.status = Status::Delivered;
                     return;
                 }
                 self.messages.push(Message {
-                    local_id: local_id.map(str::to_owned),
+                    local_id: if identity_conflicts {
+                        None
+                    } else {
+                        local_id.map(str::to_owned)
+                    },
                     role: "user".into(),
                     text: text.into(),
                     status: Status::Delivered,
@@ -239,5 +248,47 @@ mod tests {
         ));
         assert_eq!(chat.messages.len(), 1);
         assert!(chat.messages[0].status == Status::Delivered);
+    }
+
+    #[test]
+    fn colliding_message_id_with_different_text_stays_distinct() {
+        let mut chat = ChatState::default();
+        let pending = chat.push_optimistic_user("hello".into());
+
+        chat.reduce(&event(
+            10,
+            "turn.user",
+            serde_json::json!({"text": "goodbye", "client_message_id": pending.clone()}),
+        ));
+
+        assert_eq!(chat.messages.len(), 2);
+        assert_eq!(chat.messages[0].text, "hello");
+        assert!(chat.messages[0].status == Status::Sending);
+        assert_eq!(chat.messages[0].local_id.as_deref(), Some(pending.as_str()));
+        assert_eq!(chat.messages[1].text, "goodbye");
+        assert!(chat.messages[1].status == Status::Delivered);
+        assert!(chat.messages[1].local_id.is_none());
+    }
+
+    #[test]
+    fn message_id_reused_after_delivery_stays_distinct() {
+        let mut chat = ChatState::default();
+        let pending = chat.push_optimistic_user("hello".into());
+        let delivered = || {
+            event(
+                11,
+                "turn.user",
+                serde_json::json!({"text": "hello", "client_message_id": pending.clone()}),
+            )
+        };
+
+        chat.reduce(&delivered());
+        chat.reduce(&delivered());
+
+        assert_eq!(chat.messages.len(), 2);
+        assert!(chat.messages[0].status == Status::Delivered);
+        assert_eq!(chat.messages[0].local_id.as_deref(), Some(pending.as_str()));
+        assert!(chat.messages[1].status == Status::Delivered);
+        assert!(chat.messages[1].local_id.is_none());
     }
 }
