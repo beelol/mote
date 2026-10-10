@@ -2209,6 +2209,8 @@ dependencies = [
 name = "matrix-lang"
 version = "0.0.0"
 dependencies = [
+ "chrono",
+ "regex",
  "serde_json",
 ]
 

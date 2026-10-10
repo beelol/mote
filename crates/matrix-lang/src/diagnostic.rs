@@ -32,6 +32,16 @@ pub enum DiagnosticCode {
     DuplicateArgument,
     DepthLimit,
     NodeLimit,
+    InvalidManifest,
+    InvalidSnapshot,
+    ResolvePath,
+    ResolveType,
+    ResolveScope,
+    ResolveField,
+    ResolveKey,
+    ResolveAction,
+    ResolveConstraint,
+    ResolveLimit,
 }
 
 impl DiagnosticCode {
@@ -52,6 +62,16 @@ impl DiagnosticCode {
             Self::DuplicateArgument => "E_PARSE_DUPLICATE_ARGUMENT",
             Self::DepthLimit => "E_PARSE_DEPTH",
             Self::NodeLimit => "E_PARSE_NODES",
+            Self::InvalidManifest => "E_MANIFEST",
+            Self::InvalidSnapshot => "E_SNAPSHOT",
+            Self::ResolvePath => "E_RESOLVE_PATH",
+            Self::ResolveType => "E_RESOLVE_TYPE",
+            Self::ResolveScope => "E_RESOLVE_SCOPE",
+            Self::ResolveField => "E_RESOLVE_FIELD",
+            Self::ResolveKey => "E_RESOLVE_KEY",
+            Self::ResolveAction => "E_RESOLVE_ACTION",
+            Self::ResolveConstraint => "E_RESOLVE_CONSTRAINT",
+            Self::ResolveLimit => "E_RESOLVE_LIMIT",
         }
     }
 }

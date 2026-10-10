@@ -3,12 +3,18 @@ mod decimal;
 pub mod diagnostic;
 pub mod format;
 pub mod lexer;
+pub mod manifest;
 pub mod parser;
+pub mod resolve;
 pub mod stream;
+pub mod types;
 
 pub use ast::{Declaration, DeclarationKind, Surface};
 pub use diagnostic::{Diagnostic, DiagnosticCode, Severity, Span};
 pub use format::{format_fragment, format_surface};
 pub use lexer::{lex, Token, TokenKind};
+pub use manifest::{BindingSnapshot, Manifest};
 pub use parser::{parse_fragment, parse_surface};
+pub use resolve::{resolve, ResolvedSurface};
 pub use stream::{CandidateStatus, CandidateStream};
+pub use types::Type;
