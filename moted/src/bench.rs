@@ -1,17 +1,480 @@
-//! Benchmarks: `moted bench talk|router|memory`. Each runs 20 iterations against the live local
-//! models, reports p50 and p95, and appends one JSON line to `<data dir>/bench.jsonl`. See
-//! docs/rfcs/v0.md section 17. The latency evidence for V0-21, V0-26 and V0-36 comes from here.
+//! Benchmarks: `moted bench talk|router|memory|surface`. The latency benchmarks report p50 and p95.
+//! The surface benchmark reports its fixed-corpus validity gate. Each appends one JSON line to
+//! `<data dir>/bench.jsonl`. See docs/rfcs/v0.md section 17.
 
-use crate::lanes;
-use mote_context::ContextStore;
+use crate::{inferred_ui, lanes, matrix, pipeline};
+use matrix_lang::{lower_v0, parse_surface, resolve};
+use mote_context::{hash_text, ContextStore};
+use mote_eventlog::EventLog;
 use mote_localmodel::Ollama;
+use serde::Serialize;
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
 /// Default run count.
 pub const RUNS: usize = 20;
+
+#[derive(Clone, Debug)]
+struct SurfaceCase {
+    category: String,
+    request: String,
+    expects_surface: bool,
+}
+
+impl SurfaceCase {
+    fn new(category: &str, request: &str, expects_surface: bool) -> Self {
+        Self {
+            category: category.to_string(),
+            request: request.to_string(),
+            expects_surface,
+        }
+    }
+}
+
+fn surface_corpus() -> Vec<SurfaceCase> {
+    const SUBJECTS: [&str; 20] = [
+        "agent runtime",
+        "local models",
+        "request pipeline",
+        "memory index",
+        "tool policy",
+        "daily plan",
+        "build status",
+        "test suite",
+        "privacy settings",
+        "context budget",
+        "task queue",
+        "release checks",
+        "conversation state",
+        "latency report",
+        "local services",
+        "project notes",
+        "workspace health",
+        "model routing",
+        "event history",
+        "approval queue",
+    ];
+    let mut cases = Vec::with_capacity(200);
+    for (index, subject) in SUBJECTS.into_iter().enumerate() {
+        cases.push(SurfaceCase::new(
+            "none",
+            &format!("Explain the {subject} in two plain sentences."),
+            false,
+        ));
+        if index >= 18 {
+            continue;
+        }
+        cases.push(SurfaceCase::new(
+            "action",
+            &format!("Show a compact {subject} panel with a refresh button."),
+            true,
+        ));
+        cases.push(SurfaceCase::new(
+            "field",
+            &format!("Show a compact {subject} form with the local-only field."),
+            true,
+        ));
+        cases.push(SurfaceCase::new(
+            "list",
+            &format!("Show a compact {subject} list using the available host items."),
+            true,
+        ));
+        cases.push(SurfaceCase::new(
+            "progress",
+            &format!("Show compact progress for the {subject} using host progress."),
+            true,
+        ));
+        cases.push(SurfaceCase::new(
+            "row",
+            &format!("Show two compact {subject} labels side by side in one row."),
+            true,
+        ));
+        cases.push(SurfaceCase::new(
+            "select",
+            &format!("Show a compact {subject} control for selecting the talk model."),
+            true,
+        ));
+        cases.push(SurfaceCase::new(
+            "stack",
+            &format!("Show a compact vertical stack of three {subject} labels."),
+            true,
+        ));
+        cases.push(SurfaceCase::new(
+            "table",
+            &format!("Show a compact table of pipeline stages for the {subject}."),
+            true,
+        ));
+        cases.push(SurfaceCase::new(
+            "text",
+            &format!("Show a compact surface with the literal text {subject}."),
+            true,
+        ));
+        cases.push(SurfaceCase::new(
+            "toggle",
+            &format!("Show a compact {subject} toggle for local-only models."),
+            true,
+        ));
+    }
+    cases
+}
+
+fn surface_corpus_hash(cases: &[SurfaceCase]) -> String {
+    let canonical = cases
+        .iter()
+        .map(|case| {
+            format!(
+                "{}\t{}\t{}",
+                case.category, case.expects_surface, case.request
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    hash_text(&canonical)
+}
+
+fn surface_category_counts(cases: &[SurfaceCase]) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for case in cases {
+        *counts.entry(case.category.clone()).or_default() += 1;
+    }
+    counts
+}
+
+#[derive(Clone, Debug)]
+struct AttemptTrace {
+    envelope_valid: bool,
+    matrix_decision: bool,
+    matrix_parsed: bool,
+    host_resolved: bool,
+    v0_lowered: bool,
+    none: bool,
+    diagnostics: String,
+}
+
+impl AttemptTrace {
+    fn envelope_failure() -> Self {
+        Self {
+            envelope_valid: false,
+            matrix_decision: false,
+            matrix_parsed: false,
+            host_resolved: false,
+            v0_lowered: false,
+            none: false,
+            diagnostics: String::new(),
+        }
+    }
+
+    fn none() -> Self {
+        Self {
+            envelope_valid: true,
+            none: true,
+            ..Self::envelope_failure()
+        }
+    }
+
+    #[cfg(test)]
+    fn parsed_but_unresolved() -> Self {
+        Self {
+            envelope_valid: true,
+            matrix_decision: true,
+            matrix_parsed: true,
+            host_resolved: false,
+            v0_lowered: false,
+            none: false,
+            diagnostics: "host resolution failed".to_string(),
+        }
+    }
+
+    fn valid_matrix() -> Self {
+        Self {
+            envelope_valid: true,
+            matrix_decision: true,
+            matrix_parsed: true,
+            host_resolved: true,
+            v0_lowered: true,
+            none: false,
+            diagnostics: String::new(),
+        }
+    }
+
+    fn valid_for(&self, case: &SurfaceCase) -> bool {
+        if case.expects_surface {
+            self.v0_lowered
+        } else {
+            self.none
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+struct SurfaceMetrics {
+    samples: usize,
+    attempts: usize,
+    envelope_valid: usize,
+    matrix_parsed: usize,
+    host_resolved: usize,
+    v0_lowered: usize,
+    first_attempt_valid: usize,
+    after_retry_valid: usize,
+    retries: usize,
+    first_attempt_rate: f64,
+    after_retry_rate: f64,
+}
+
+impl SurfaceMetrics {
+    fn from_traces(cases: &[SurfaceCase], traces: &[Vec<AttemptTrace>]) -> Self {
+        assert_eq!(cases.len(), traces.len(), "one attempt trace per corpus case");
+        let mut metrics = Self {
+            samples: cases.len(),
+            ..Self::default()
+        };
+        for (case, attempts) in cases.iter().zip(traces) {
+            metrics.attempts += attempts.len();
+            metrics.retries += attempts.len().saturating_sub(1);
+            for attempt in attempts {
+                metrics.envelope_valid += usize::from(attempt.envelope_valid);
+                metrics.matrix_parsed += usize::from(attempt.matrix_parsed);
+                metrics.host_resolved += usize::from(attempt.host_resolved);
+                metrics.v0_lowered += usize::from(attempt.v0_lowered);
+            }
+            metrics.first_attempt_valid += usize::from(
+                attempts
+                    .first()
+                    .is_some_and(|attempt| attempt.valid_for(case)),
+            );
+            metrics.after_retry_valid += usize::from(
+                attempts
+                    .last()
+                    .is_some_and(|attempt| attempt.valid_for(case)),
+            );
+        }
+        if metrics.samples > 0 {
+            metrics.first_attempt_rate =
+                metrics.first_attempt_valid as f64 / metrics.samples as f64;
+            metrics.after_retry_rate = metrics.after_retry_valid as f64 / metrics.samples as f64;
+        }
+        metrics
+    }
+}
+
+fn surface_activation(evidence: Option<(usize, usize)>) -> bool {
+    evidence.is_some_and(|(valid, samples)| samples > 0 && valid * 100 >= samples * 95)
+}
+
+fn default_surface_config() -> BTreeMap<String, Value> {
+    BTreeMap::from([
+        ("models.local_only".to_string(), json!(true)),
+        ("models.talk".to_string(), json!("qwen3:4b")),
+        ("models.router".to_string(), json!("qwen3:0.6b")),
+        ("models.think".to_string(), json!("qwen3-coder:30b-64k")),
+    ])
+}
+
+fn surface_bindings() -> Result<matrix::HostBindings, String> {
+    let config = default_surface_config();
+    let snapshot = pipeline::PipelineSnapshot {
+        generated_at: 0,
+        event_limit: pipeline::PIPELINE_EVENT_LIMIT,
+        request_limit: pipeline::PIPELINE_REQUEST_LIMIT,
+        window_ms: 3_600_000,
+        config: config.clone(),
+        events: Vec::new(),
+        numbers: Vec::new(),
+        requests: Vec::new(),
+    };
+    matrix::host_bindings(
+        &config,
+        &snapshot,
+        &matrix::HostSnapshot::ready(0.5, ["first", "second"]),
+    )
+    .map_err(|errors| matrix::diagnostics(&errors).to_string())
+}
+
+fn evaluate_decision(
+    decision: Result<inferred_ui::SurfaceDecision, String>,
+    bindings: &matrix::HostBindings,
+) -> AttemptTrace {
+    let Ok(decision) = decision else {
+        return AttemptTrace::envelope_failure();
+    };
+    let inferred_ui::SurfaceDecision::Matrix { source } = decision else {
+        return AttemptTrace::none();
+    };
+    let parsed = match parse_surface(&source) {
+        Ok(parsed) => parsed,
+        Err(errors) => {
+            return AttemptTrace {
+                envelope_valid: true,
+                matrix_decision: true,
+                diagnostics: matrix::diagnostics(&errors).to_string(),
+                ..AttemptTrace::envelope_failure()
+            };
+        }
+    };
+    let resolved = match resolve(&parsed, &bindings.manifest, &bindings.snapshot) {
+        Ok(resolved) => resolved,
+        Err(errors) => {
+            return AttemptTrace {
+                envelope_valid: true,
+                matrix_decision: true,
+                matrix_parsed: true,
+                diagnostics: matrix::diagnostics(&errors).to_string(),
+                ..AttemptTrace::envelope_failure()
+            };
+        }
+    };
+    match lower_v0(&resolved) {
+        Ok(_) => AttemptTrace::valid_matrix(),
+        Err(errors) => AttemptTrace {
+            envelope_valid: true,
+            matrix_decision: true,
+            matrix_parsed: true,
+            host_resolved: true,
+            diagnostics: matrix::diagnostics(&errors).to_string(),
+            ..AttemptTrace::envelope_failure()
+        },
+    }
+}
+
+fn bench_surface_cases(
+    cases: &[SurfaceCase],
+    log: &EventLog,
+    store: &ContextStore,
+    client: &Ollama,
+) -> Result<SurfaceMetrics, String> {
+    let bindings = surface_bindings()?;
+    let mut traces = Vec::with_capacity(cases.len());
+    for case in cases {
+        let first_inputs = inferred_ui::SurfaceInputs {
+            request: &case.request,
+            prose: "The requested response is complete.",
+            previous_source: "",
+            diagnostics: "",
+        };
+        let first = evaluate_decision(
+            inferred_ui::generate_surface(log, store, client, &first_inputs),
+            &bindings,
+        );
+        let retry = first.matrix_decision && !first.v0_lowered;
+        let mut attempts = vec![first];
+        if retry {
+            let retry_inputs = inferred_ui::SurfaceInputs {
+                request: &case.request,
+                prose: "The requested response is complete.",
+                previous_source: "",
+                diagnostics: &attempts[0].diagnostics,
+            };
+            attempts.push(evaluate_decision(
+                inferred_ui::generate_surface(log, store, client, &retry_inputs),
+                &bindings,
+            ));
+        }
+        traces.push(attempts);
+    }
+    Ok(SurfaceMetrics::from_traces(cases, &traces))
+}
+
+#[derive(Debug, Serialize)]
+struct SurfaceReport {
+    name: &'static str,
+    revision: String,
+    model: &'static str,
+    corpus_hash: String,
+    category_counts: BTreeMap<String, usize>,
+    status: &'static str,
+    reason: Option<String>,
+    activation_passed: bool,
+    metrics: SurfaceMetrics,
+}
+
+fn revision() -> String {
+    std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|revision| revision.trim().to_string())
+        .filter(|revision| !revision.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn unavailable_surface_report(cases: &[SurfaceCase], reason: String) -> SurfaceReport {
+    SurfaceReport {
+        name: "surface",
+        revision: revision(),
+        model: inferred_ui::SURFACE_MODEL,
+        corpus_hash: surface_corpus_hash(cases),
+        category_counts: surface_category_counts(cases),
+        status: "unavailable",
+        reason: Some(reason),
+        activation_passed: false,
+        metrics: SurfaceMetrics {
+            samples: cases.len(),
+            ..SurfaceMetrics::default()
+        },
+    }
+}
+
+fn run_surface(log: &EventLog, store: &ContextStore, client: &Ollama) -> SurfaceReport {
+    let cases = surface_corpus();
+    if std::env::var("MOTE_LIVE").as_deref() != Ok("1") {
+        return unavailable_surface_report(&cases, "MOTE_LIVE=1 is required".to_string());
+    }
+    let models = match client.list_models() {
+        Ok(models) => models,
+        Err(error) => {
+            return unavailable_surface_report(
+                &cases,
+                format!("could not list local Ollama models: {error}"),
+            );
+        }
+    };
+    if !models
+        .iter()
+        .any(|(name, _)| name == inferred_ui::SURFACE_MODEL)
+    {
+        return unavailable_surface_report(
+            &cases,
+            format!(
+                "approved local model {} is not installed",
+                inferred_ui::SURFACE_MODEL
+            ),
+        );
+    }
+    match bench_surface_cases(&cases, log, store, client) {
+        Ok(metrics) => SurfaceReport {
+            name: "surface",
+            revision: revision(),
+            model: inferred_ui::SURFACE_MODEL,
+            corpus_hash: surface_corpus_hash(&cases),
+            category_counts: surface_category_counts(&cases),
+            status: "complete",
+            reason: None,
+            activation_passed: surface_activation(Some((
+                metrics.first_attempt_valid,
+                metrics.samples,
+            ))),
+            metrics,
+        },
+        Err(error) => unavailable_surface_report(&cases, error),
+    }
+}
+
+fn append_surface_report(path: &Path, report: &SurfaceReport) -> std::io::Result<()> {
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
+    writeln!(
+        file,
+        "{}",
+        serde_json::to_string(report).expect("surface report serializes")
+    )
+}
 
 /// A benchmark result: p50/p95 of the primary metric, plus any extra metrics.
 #[derive(Debug, Clone)]
@@ -137,9 +600,25 @@ pub fn bench_memory_scale(scale: usize, probes: usize) -> BenchResult {
 }
 
 /// Run a named benchmark with live dependencies and append the result line.
-pub fn run_named(name: &str, data_dir: &Path, client: &Ollama, config: &crate::config::ConfigStore) {
+pub fn run_named(
+    name: &str,
+    data_dir: &Path,
+    client: &Ollama,
+    config: &crate::config::ConfigStore,
+    log: &EventLog,
+    store: &ContextStore,
+) {
     let bench_path = data_dir.join("bench.jsonl");
     let result = match name {
+        "surface" => {
+            let report = run_surface(log, store, client);
+            let line = serde_json::to_string(&report).expect("surface report serializes");
+            if let Err(error) = append_surface_report(&bench_path, &report) {
+                eprintln!("moted bench surface: could not append result: {error}");
+            }
+            println!("{line}");
+            return;
+        }
         "talk" => {
             let model = config.get_json("models.talk").and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
             bench_talk(client, &model, 32768, RUNS)
@@ -164,7 +643,7 @@ pub fn run_named(name: &str, data_dir: &Path, client: &Ollama, config: &crate::c
             return;
         }
         other => {
-            eprintln!("moted bench: unknown benchmark '{other}' (talk|router|memory)");
+            eprintln!("moted bench: unknown benchmark '{other}' (talk|router|memory|surface)");
             return;
         }
     };
@@ -178,6 +657,8 @@ pub fn run_named(name: &str, data_dir: &Path, client: &Ollama, config: &crate::c
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mote_context::ContextStore;
+    use mote_eventlog::EventLog;
     use mote_testkit::ScriptedServer;
 
     #[test]
@@ -212,5 +693,126 @@ mod tests {
         }
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn surface_corpus_is_fixed_and_represents_every_v0_category() {
+        let corpus = surface_corpus();
+
+        assert_eq!(corpus.len(), 200);
+        assert_eq!(
+            surface_corpus_hash(&corpus),
+            "447a7a73f4669a6450bf88a9e1ab5bc03f914c2ab70d213f3d398e49980a5d2d"
+        );
+        assert_eq!(
+            surface_category_counts(&corpus),
+            [
+                ("action", 18),
+                ("field", 18),
+                ("list", 18),
+                ("none", 20),
+                ("progress", 18),
+                ("row", 18),
+                ("select", 18),
+                ("stack", 18),
+                ("table", 18),
+                ("text", 18),
+                ("toggle", 18),
+            ]
+            .into_iter()
+            .map(|(name, count)| (name.to_string(), count))
+            .collect()
+        );
+    }
+
+    #[test]
+    fn surface_metrics_count_each_validation_boundary_and_retry_outcome() {
+        let cases = vec![
+            SurfaceCase::new("none", "say hello", false),
+            SurfaceCase::new("toggle", "show a toggle", true),
+            SurfaceCase::new("table", "show a table", true),
+            SurfaceCase::new("list", "show a list", true),
+        ];
+        let attempts = vec![
+            vec![AttemptTrace::none()],
+            vec![AttemptTrace::valid_matrix()],
+            vec![
+                AttemptTrace::parsed_but_unresolved(),
+                AttemptTrace::valid_matrix(),
+            ],
+            vec![AttemptTrace::envelope_failure()],
+        ];
+
+        let metrics = SurfaceMetrics::from_traces(&cases, &attempts);
+
+        assert_eq!(metrics.samples, 4);
+        assert_eq!(metrics.attempts, 5);
+        assert_eq!(metrics.envelope_valid, 4);
+        assert_eq!(metrics.matrix_parsed, 3);
+        assert_eq!(metrics.host_resolved, 2);
+        assert_eq!(metrics.v0_lowered, 2);
+        assert_eq!(metrics.first_attempt_valid, 2);
+        assert_eq!(metrics.after_retry_valid, 3);
+        assert_eq!(metrics.retries, 1);
+        assert_eq!(metrics.first_attempt_rate, 0.5);
+        assert_eq!(metrics.after_retry_rate, 0.75);
+    }
+
+    #[test]
+    #[should_panic(expected = "one attempt trace per corpus case")]
+    fn surface_metrics_never_silently_omit_a_corpus_case() {
+        let cases = vec![
+            SurfaceCase::new("none", "say hello", false),
+            SurfaceCase::new("toggle", "show a toggle", true),
+        ];
+
+        let _ = SurfaceMetrics::from_traces(&cases, &[vec![AttemptTrace::none()]]);
+    }
+
+    #[test]
+    fn production_activation_requires_available_first_attempt_rate_at_least_ninety_five_percent() {
+        assert!(!surface_activation(None));
+        assert!(!surface_activation(Some((189, 200))));
+        assert!(surface_activation(Some((190, 200))));
+        assert!(surface_activation(Some((200, 200))));
+        assert!(!surface_activation(Some((0, 0))));
+    }
+
+    #[test]
+    fn surface_benchmark_uses_the_ledgered_model_boundary_for_every_attempt() {
+        let srv = ScriptedServer::start().unwrap();
+        srv.set_chat_chunks(vec![
+            json!({
+                "model":"qwen3:4b",
+                "message":{"role":"assistant","content":"{\"kind\":\"matrix\",\"source\":\"not matrix\"}"},
+                "done":true
+            }).to_string(),
+        ]);
+        let client = Ollama::new(srv.base_url());
+        let log = EventLog::open_in_memory().unwrap();
+        let store = ContextStore::open_in_memory().unwrap();
+        let cases = vec![SurfaceCase::new("toggle", "show a toggle", true)];
+
+        let metrics = bench_surface_cases(&cases, &log, &store, &client).unwrap();
+
+        assert_eq!(metrics.attempts, 2);
+        assert_eq!(metrics.retries, 1);
+        assert_eq!(store.count_ledger().unwrap(), 2);
+        assert_eq!(
+            store
+                .ledger_since(0)
+                .unwrap()
+                .iter()
+                .filter(|row| row.lane == "surface")
+                .count(),
+            2
+        );
+        assert_eq!(
+            srv.recorded()
+                .iter()
+                .filter(|request| request.path == "/api/chat")
+                .count(),
+            2
+        );
     }
 }

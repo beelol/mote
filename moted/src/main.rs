@@ -3793,10 +3793,10 @@ fn main() {
     }
 }
 
-/// Run a named benchmark (`moted bench talk|router|memory`).
+/// Run a named benchmark (`moted bench talk|router|memory|surface`).
 fn run_bench(name: Option<String>) -> Result<(), i32> {
     let name = name.ok_or_else(|| {
-        eprintln!("moted bench: name required (talk|router|memory)");
+        eprintln!("moted bench: name required (talk|router|memory|surface)");
         1
     })?;
     let data = mote_paths::ensure_data_dir().map_err(|e| {
@@ -3805,11 +3805,15 @@ fn run_bench(name: Option<String>) -> Result<(), i32> {
     })?;
     let gate = Arc::new(OllamaGate::new(Ollama::local()));
     let log = EventLog::open(&mote_paths::db_path()).map_err(|_| 1)?;
-    let config = ConfigStore::load(&mote_paths::config_path(), log, gate).map_err(|e| {
+    let config = ConfigStore::load(&mote_paths::config_path(), log.clone(), gate).map_err(|e| {
         eprintln!("moted bench: {e}");
         1
     })?;
-    bench::run_named(&name, &data, &Ollama::local(), &config);
+    let store = ContextStore::open(&mote_paths::db_path()).map_err(|error| {
+        eprintln!("moted bench: {error}");
+        1
+    })?;
+    bench::run_named(&name, &data, &Ollama::local(), &config, &log, &store);
     Ok(())
 }
 
