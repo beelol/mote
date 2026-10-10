@@ -53,3 +53,4 @@ Every recipe uses the same four parts.
 
 ### Patterns
 - [pull requests](pull-requests.md), the worked inferred UI case
+- [calendar](calendar.md), the agenda representation of a day and a week

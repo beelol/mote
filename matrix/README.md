@@ -70,7 +70,9 @@ shape, and name the actions. matrix is the vocabulary for exactly that and nothi
    source. Includes the GitHub pull request surface.
 7. [decisions.md](decisions.md). The decisions an owner must confirm, and where this design departs
    from the earlier UI language RFC.
-8. [GOAL.md](GOAL.md). A resumable goal for continuing to iterate on matrix.
+8. [GOAL.md](GOAL.md). A resumable goal for continuing to iterate on matrix design coverage.
+9. [CLOSEOUT.md](CLOSEOUT.md). A single goal that drives the whole UI plan to a state the owner can
+   approve, through `UI-00`.
 
 ## Status
 

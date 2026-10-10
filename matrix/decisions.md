@@ -73,6 +73,9 @@ reconsidering.
   exists to close.
 - `toast` and transient notifications. Deferred. These are a host concern that may not belong in the
   surface language at all.
+- A time grid calendar, where an event's top is its start and its height is its duration. Rejected.
+  Proportional placement needs pixels, which matrix forbids. The agenda list in `recipes/calendar.md`
+  is the accepted representation. Reconsider only if a required surface cannot be read as an agenda.
 
 ## Open questions for the next iteration
 
