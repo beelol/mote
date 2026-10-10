@@ -1,11 +1,11 @@
 # Handoff: Mote closeout
 
-Updated 2026-10-10 02:02 PDT. Replace this file, never append. Delete it when nothing needs
+Updated 2026-10-10 02:28 PDT. Replace this file, never append. Delete it when nothing needs
 transfer. Nothing here assumes chat history.
 
 ## Where
 
-- Branch: `main`. `HEAD` and `origin/main` are `5ef7b25` before this handoff update.
+- Branch: `main`. `HEAD` and `origin/main` are `47507d2` before this handoff update.
 - Contract: `docs/rfcs/v0.md`. Driver goal: `docs/goal-close-out.md`. Matrix plan:
   `matrix/CLOSEOUT.md`.
 - The owner directed this session to drive Mote and delegate Matrix UI work. Do not ask the owner
@@ -20,14 +20,18 @@ transfer. Nothing here assumes chat history.
 - First Mac-native Matrix runtime with Vector: `ca89996`, `45c7e68` and `d2f4110`.
 - Acceptance reconciliation for all open UI criteria: `414c0af`.
 - Current closeout state: `57c6880`. Streamed text after a surface remains visible: `5ef7b25`.
-- Independent task reviews are clean. The last complete workspace run passed 86 tests with zero
+- Approval cards and thread-scoped pending actions: `bd6e674`.
+- Durable client replay and optimistic turn identity: `214b588`, `91ec919` and `47507d2`.
+- Independent task reviews are clean. The last complete workspace run passed 103 tests with zero
   failures. Clippy with warnings denied, the client build and whitespace checks also passed.
 
 The client uses exact `eframe` and `egui` 0.31.0 with `winit` 0.30.13. It renders all eleven
 unchanged v0 `Node` variants, supports the fixture preview, follows system appearance and applies
 the Vector light and dark themes. The daemon validates requested trees fail-closed before storing
-them. The Matrix grammar supports only the published v0 lowering subset. Unsupported semantics
-must return `E_LOWER_UNSUPPORTED`.
+them. It emits one redacted user event before lane work. The client reconnects from the last event
+applied by the UI and reconciles optimistic turns by stable local identity. The Matrix grammar
+supports only the published v0 lowering subset. Unsupported semantics must return
+`E_LOWER_UNSUPPORTED`.
 
 ## Open gates
 
@@ -35,7 +39,8 @@ must return `E_LOWER_UNSUPPORTED`.
 - The Mac was locked during runtime verification. The native process launched and remained alive,
   but that is not visible acceptance. No screenshot criterion is closed.
 - Live daemon-connected cursor replay, message states, `ui.event`, system appearance, pipeline
-  tabs, configuration changes, performance and approval-card evidence remain undone.
+  tabs, configuration changes and performance evidence remain undone. The approval lifecycle is
+  wired and tested, but its required screenshot remains undone.
 - V0-53 still requires literal logout and login evidence.
 - UI-00 remains an owner decision. It asks the owner to approve the closed catalog, frozen grammar,
   Vector defaults and the split between Matrix as the future source and the unchanged v0 tree as
