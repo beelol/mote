@@ -63,6 +63,70 @@ fn targets(layout: &Layout) -> Vec<String> {
 }
 
 #[test]
+fn layout_harness_uses_production_navigation_and_panel_margins() {
+    let mut failures = Vec::new();
+    for viewport in VIEWPORTS {
+        for preview in [true, false] {
+            let mut h = harness(
+                &Node::Text {
+                    value: "shell probe".into(),
+                },
+                viewport,
+                preview,
+            );
+            measured(&mut h);
+            let (_, output, layout) = measured(&mut h);
+            let scroll = &layout.scrolls[0];
+            let top = if preview { 16.0 } else { 84.0 };
+            let bottom = viewport.y - 16.0 - if preview { 0.0 } else { 72.0 };
+            let expected = egui::Rect::from_min_max(
+                egui::pos2(16.0, top),
+                egui::pos2(viewport.x - 16.0, bottom),
+            );
+            let central = egui::Rect::from_min_max(
+                egui::pos2(0.0, if preview { 0.0 } else { 68.0 }),
+                viewport.to_pos2(),
+            );
+            assert!(
+                output.shapes.iter().any(
+                    |shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == central)
+                ),
+                "production central panel bounds"
+            );
+            if !preview {
+                let navigation =
+                    egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(viewport.x, 68.0));
+                assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == navigation)), "production navigation bounds");
+            }
+            if scroll.viewport != expected {
+                failures.push(format!(
+                    "{viewport:?} preview={preview}: actual {:?}, production {expected:?}",
+                    scroll.viewport
+                ));
+            }
+            for name in ["Chat", "Pipeline"] {
+                let label = output.shapes.iter().find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == name => Some(text),
+                    _ => None,
+                });
+                if preview {
+                    assert!(label.is_none());
+                } else if label.is_none() {
+                    failures.push(format!(
+                        "{viewport:?}: missing production navigation {name}"
+                    ));
+                }
+            }
+            eprintln!("shell {viewport:?} preview={preview}: central={central:?}; {scroll:?}; controls={:?}", layout.controls);
+            if !preview {
+                h.tab_past_navigation();
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
 fn layout_actual_control_measurements_include_popup_options() {
     let mut failures = Vec::new();
     for viewport in VIEWPORTS {
@@ -416,6 +480,25 @@ fn layout_adjacent_controls_preserve_hit_separation_and_reading_order() {
             for preview in [true, false] {
                 let mut h = harness(&node, viewport, preview);
                 measured(&mut h);
+                let (_, _, initial) = measured(&mut h);
+                assert_geometry(
+                    &initial,
+                    egui::Rect::from_min_size(egui::Pos2::ZERO, viewport),
+                );
+                let scroll = &initial.scrolls[0];
+                if scroll.content.y > scroll.viewport.height() {
+                    h.frame(vec![
+                        egui::Event::PointerMoved(scroll.viewport.center()),
+                        egui::Event::MouseWheel {
+                            unit: egui::MouseWheelUnit::Point,
+                            delta: egui::vec2(0.0, -100_000.0),
+                            modifiers: Default::default(),
+                        },
+                    ]);
+                    for _ in 0..30 {
+                        measured(&mut h);
+                    }
+                }
                 let (_, _, layout) = measured(&mut h);
                 assert!(targets(&layout).is_empty(), "{:?}", targets(&layout));
                 assert_geometry(

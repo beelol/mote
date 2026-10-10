@@ -139,12 +139,7 @@ impl ObservationHarness {
                 events,
                 ..Default::default()
             },
-            |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    if self.app.fixture.is_some() { self.app.preview_view(ui); }
-                    else { self.app.chat_view(ui); }
-                });
-            },
+            |ctx| self.app.draw_shell(ctx),
         );
         (crate::surface::observation::take(), output)
     }
@@ -166,6 +161,16 @@ impl ObservationHarness {
         }]);
         output.platform_output.events.extend(released.platform_output.events);
         output
+    }
+
+    pub fn tab_past_navigation(&mut self) {
+        for label in ["Chat", "Pipeline"] {
+            let output = self.key(egui::Key::Tab, false);
+            assert!(output.platform_output.events.iter().any(|event| matches!(event,
+                egui::output::OutputEvent::FocusGained(info) if info.label.as_deref() == Some(label))),
+                "missing navigation focus: {label}");
+            assert!(self.queued().is_empty());
+        }
     }
 
     pub fn edit(&mut self, text: &str) {
@@ -282,6 +287,7 @@ mod tests {
         let mut harness = ObservationHarness::default();
         harness.event(&surface(1, field()));
         harness.frame(vec![]);
+        harness.tab_past_navigation();
         harness.key(egui::Key::Tab, false);
         harness.edit("edited");
         assert!(texts(&mut harness).contains(&"edited".into()));
@@ -362,6 +368,7 @@ mod tests {
         second.payload["surface_id"] = identity;
         harness.event(&second);
         harness.frame(vec![]);
+        harness.tab_past_navigation();
         harness.key(egui::Key::Tab, false);
         harness.edit("edited");
         assert!(texts(&mut harness).contains(&"edited".into()));
@@ -404,6 +411,7 @@ mod tests {
             let mut harness = ObservationHarness::default();
             harness.event(&surface(1, old.clone()));
             harness.frame(vec![]);
+            harness.tab_past_navigation();
             harness.key(egui::Key::Tab, false);
             harness.event(&surface(2, replacement.clone()));
             harness.key(egui::Key::Space, false);
@@ -435,6 +443,7 @@ mod tests {
             survivor.payload["surface_id"] = identity;
             harness.event(&survivor);
             harness.frame(vec![]);
+            harness.tab_past_navigation();
             harness.key(egui::Key::Tab, false);
             let focused = harness.ctx.memory(|memory| memory.focused());
             assert!(focused.is_some());
@@ -461,6 +470,7 @@ mod tests {
             survivor.payload["surface_id"] = json!("survivor");
             harness.event(&survivor);
             harness.frame(vec![]);
+            harness.tab_past_navigation();
             harness.key(egui::Key::Tab, false);
             assert!(harness.ctx.memory(|memory| memory.focused()).is_some());
             harness.incoming.send(StreamUpdate::Disconnected).unwrap();
@@ -476,6 +486,7 @@ mod tests {
         let node = json!({"type":"toggle","label":"Enabled","name":"enabled","value":true});
         toggle.event(&surface(1, node.clone()));
         toggle.frame(vec![]);
+        toggle.tab_past_navigation();
         toggle.key(egui::Key::Tab, false);
         toggle.key(egui::Key::Space, false);
         assert_eq!(toggle.queued()[0]["args"]["value"], false);
@@ -509,6 +520,7 @@ mod tests {
         let toggle = json!({"type":"toggle", "label":"Enabled", "name":"enabled", "value":true});
         harness.event(&surface(1, toggle.clone()));
         harness.frame(vec![]);
+        harness.tab_past_navigation();
         harness.key(egui::Key::Tab, false);
         harness.key(egui::Key::Space, false);
         assert_eq!(harness.queued(), [json!({"thread":"main","event":"change","args":{"field":"enabled","value":false},"surface_seq":1,"node_path":[]})]);
@@ -565,6 +577,7 @@ mod tests {
             let mut harness = ObservationHarness::default();
             harness.event(&surface(1, node));
             harness.frame(vec![]);
+            harness.tab_past_navigation();
             assert_eq!(focus_type(&harness.key(egui::Key::Tab, false)), [expected]);
             let focused = harness.ctx.memory(|memory| memory.focused());
             harness.key(egui::Key::Tab, false);
@@ -576,6 +589,7 @@ mod tests {
         let mut harness = ObservationHarness::default();
         harness.event(&surface(2, json!({"type":"stack","children":controls})));
         harness.frame(vec![]);
+        harness.tab_past_navigation();
         let order = [egui::WidgetType::TextEdit, egui::WidgetType::Checkbox, egui::WidgetType::ComboBox, egui::WidgetType::Button];
         let mut identities = Vec::new();
         for expected in order {
@@ -601,6 +615,7 @@ mod tests {
             let mut harness = ObservationHarness::default();
             harness.event(&surface(7, serde_json::from_str(fixture).unwrap()));
             harness.frame(vec![]);
+            harness.tab_past_navigation();
             harness.key(egui::Key::Tab, false);
             assert!(harness.queued().is_empty());
             for (key, value) in [(egui::Key::Space, false), (egui::Key::Enter, true)] {
@@ -618,6 +633,7 @@ mod tests {
             let mut harness = ObservationHarness::default();
             harness.event(&surface(8, serde_json::from_str(include_str!("../../crates/mote-ui/fixtures/08_select.json")).unwrap()));
             harness.frame(vec![]);
+            harness.tab_past_navigation();
             harness.key(egui::Key::Tab, false);
             harness.key(key, false);
             assert!(texts(&mut harness).contains(&"qwen3:0.6b".into()));

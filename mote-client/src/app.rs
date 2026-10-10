@@ -662,12 +662,8 @@ impl MoteApp {
     }
 }
 
-impl eframe::App for MoteApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.drain_events();
-        self.drain_ui_event_results(ctx);
-        ctx.request_repaint_after(std::time::Duration::from_millis(100));
-
+impl MoteApp {
+    fn draw_shell(&mut self, ctx: &egui::Context) {
         if self.fixture.is_some() {
             egui::CentralPanel::default()
                 .frame(
@@ -717,6 +713,15 @@ impl eframe::App for MoteApp {
                 Screen::Chat => self.chat_view(ui),
                 Screen::Pipeline => self.pipeline_view(ui),
             });
+    }
+}
+
+impl eframe::App for MoteApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.drain_events();
+        self.drain_ui_event_results(ctx);
+        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        self.draw_shell(ctx);
     }
 }
 

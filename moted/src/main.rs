@@ -1737,6 +1737,7 @@ mod approval_dispatch_tests {
         let mut field = ObservationHarness::default();
         field.event(&original);
         field.frame(vec![]);
+        field.tab_past_navigation();
         field.key(InputKey::Tab, false);
         for text in ["first edit", "second edit"] {
             field.edit(text);
@@ -1768,6 +1769,7 @@ mod approval_dispatch_tests {
             let mut harness = ObservationHarness::default();
             harness.event(&committed);
             harness.frame(vec![]);
+            harness.tab_past_navigation();
             for _ in 0..tabs { harness.key(InputKey::Tab, false); }
             assert!(harness.queued().is_empty());
             assert_eq!(daemon.log.max_seq().unwrap(), committed.seq);
