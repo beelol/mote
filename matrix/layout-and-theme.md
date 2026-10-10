@@ -71,10 +71,11 @@ paddings in matrix source.
 ### The default theme
 
 matrix ships with one default theme so a surface always has somewhere to inherit from. The default
-theme follows the system light or dark setting. Its spacing and padding scales are standard, its
-control height is comfortable for both pointer and 48 pixel touch, and its status tones are the
-conventional six. A runtime that defines no theme gets the default theme. This means a model can
-emit a surface the first day with zero theme setup.
+theme is Vector: thin retro red on a dark base, an Atari vector line look, with structure drawn as
+thin strokes and one red accent. It follows the system light or dark setting, its control height is
+comfortable for both pointer and 48 pixel touch, and its status tones are the conventional six. A
+runtime that defines no theme gets Vector, so a model can emit a surface the first day with zero
+theme setup. The full token set is in [themes/vector.md](themes/vector.md).
 
 ### Theme overrides padding and the standard sizes
 
