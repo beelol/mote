@@ -17,6 +17,8 @@ Updated 2026-10-10. Replace this file, never append.
 - The dashboard source and compiled consumer tree use the production trusted host contract.
 - The manifest and snapshot rows are declared canonical measurement encodings of in-memory structures.
 - The request, response and event rows include the current IPC envelope fields and newline framing.
+- Shared production builders link the measurements to the client, server and daemon serialization.
+- Six independent production drift probes fail the check, including daemon result and surface payload changes.
 - These rows are deterministic samples, not live traffic captures.
 - UI-04 has evidence and a README link.
 - No Matrix language or runtime behavior changed.

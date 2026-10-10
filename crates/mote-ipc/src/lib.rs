@@ -214,7 +214,7 @@ fn handle_connection<D: Dispatch>(stream: UnixStream, dispatch: Arc<D>) {
         }
 
         let reply = match dispatch.call(&method, params) {
-            Ok(result) => json!({ "id": id, "result": result }),
+            Ok(result) => success_envelope(id, result),
             Err(e) => {
                 // An unknown method surfaces as invalid_request; the handler chooses otherwise.
                 error_reply(id, &e)
@@ -242,7 +242,7 @@ fn stream_events<D: Dispatch>(
     };
     loop {
         if let Some(ev) = sub.recv_timeout(Duration::from_millis(250)) {
-            write_line(writer, &json!({ "event": ev }))?;
+            write_line(writer, &event_envelope(&ev))?;
         }
         // On idle, loop again; a dropped peer is detected on the next real write.
     }
@@ -252,10 +252,26 @@ fn error_reply(id: Value, e: &RpcError) -> Value {
     json!({ "id": id, "error": { "code": e.code, "message": e.message } })
 }
 
-fn write_line(writer: &mut UnixStream, value: &Value) -> io::Result<()> {
+pub fn request_envelope(id: Value, method: &str, params: Value) -> Value {
+    json!({ "id": id, "method": method, "params": params })
+}
+
+pub fn success_envelope(id: Value, result: Value) -> Value {
+    json!({ "id": id, "result": result })
+}
+
+pub fn event_envelope(event: &Event) -> Value {
+    json!({ "event": event })
+}
+
+pub fn encode_frame(value: &Value) -> io::Result<Vec<u8>> {
     let mut line = serde_json::to_vec(value).map_err(io::Error::other)?;
     line.push(b'\n');
-    writer.write_all(&line)?;
+    Ok(line)
+}
+
+fn write_line(writer: &mut UnixStream, value: &Value) -> io::Result<()> {
+    writer.write_all(&encode_frame(value)?)?;
     writer.flush()
 }
 
@@ -277,7 +293,7 @@ impl Client {
     pub fn call(&mut self, method: &str, params: Value) -> io::Result<Result<Value, RpcError>> {
         let id = self.next_id;
         self.next_id += 1;
-        let req = json!({ "id": id, "method": method, "params": params });
+        let req = request_envelope(json!(id), method, params);
         write_line(&mut self.writer, &req)?;
         let mut line = String::new();
         let n = self.reader.read_line(&mut line)?;
@@ -321,8 +337,11 @@ impl EventStream {
         let stream = UnixStream::connect(path)?;
         stream.set_read_timeout(Some(Duration::from_millis(200)))?;
         let mut w = stream.try_clone()?;
-        let req = json!({ "id": 0, "method": "events.subscribe",
-                          "params": { "scope_id": scope_id, "cursor": cursor } });
+        let req = request_envelope(
+            json!(0),
+            "events.subscribe",
+            json!({ "scope_id": scope_id, "cursor": cursor }),
+        );
         write_line(&mut w, &req)?;
         Ok((BufReader::new(stream.try_clone()?), stream))
     }

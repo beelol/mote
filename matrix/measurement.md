@@ -133,9 +133,12 @@ Array order is preserved.
 Neither encoding adds a newline.
 Changing this declared encoding changes its measurement cost.
 
-The IPC rows serialize the actual current request, reply and event envelope shapes from `mote-ipc`.
+The IPC rows call the production `mote-ipc` request, success and event envelope builders.
+They call the same `encode_frame` function as the socket writer.
+The client and server use these builders for real traffic.
+The daemon and measurement call the same Matrix success result and surface payload builders.
 Each row includes one terminating newline, as required by its framing.
-They are deterministic samples of the wire contract, not a live traffic capture.
+They are deterministic samples encoded by the production wire contract, not a live traffic capture.
 Request id is `1` and thread is `main`.
 The request is `{"id":1,"method":"matrix.render","params":{"source":"...","thread":"main"}}`.
 The source string is JSON escaped inside this request.
@@ -163,3 +166,10 @@ Two checked runs produced byte-identical complete TSV output on 2026-10-10.
 Both SHA-256 hashes were `16235ce2bf2d52764cc7630606dfe1fcb41505b8deaffe09654fa5469799840c`.
 The complete output is committed in [measurement-output.tsv](measurement-output.tsv).
 The acceptance evidence is [UI-04](../docs/verification/UI-04.md).
+
+The check is linked to production serialization rather than independent envelope replicas.
+Adding a field to the production successful render result fails the checked response count.
+Adding a field to the production surface payload fails the checked event count.
+Changing each production outer envelope or its framing also fails the check.
+All six temporary drift probes were restored after confirming these failures.
+The restored production output proves the committed counts above without changing the fixture.

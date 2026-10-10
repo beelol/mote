@@ -145,13 +145,13 @@ impl Daemon {
                     .append(
                         thread,
                         "ui.surface",
-                        &json!({"surface":node, "surface_id":"matrix"}),
+                        &matrix::surface_payload(&node),
                     )
                     .map_err(|error| RpcError::internal(format!("commit surface: {error}")))?;
                 if retain {
                     sources.insert(thread.into(), source.into());
                 }
-                Ok(json!({"ok": true, "valid": valid}))
+                Ok(matrix::render_success(valid))
             }
             Err(diagnostics) => Ok(json!({"ok": false, "diagnostics": diagnostics})),
         }

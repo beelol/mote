@@ -25,6 +25,14 @@ pub struct HostBindings {
     pub snapshot: BindingSnapshot,
 }
 
+pub fn surface_payload(surface: &Value) -> Value {
+    json!({"surface": surface, "surface_id": "matrix"})
+}
+
+pub fn render_success(valid: bool) -> Value {
+    json!({"ok": true, "valid": valid})
+}
+
 pub fn host_bindings(
     config: &BTreeMap<String, Value>,
     pipeline: &PipelineSnapshot,

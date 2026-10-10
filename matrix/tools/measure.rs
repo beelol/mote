@@ -217,11 +217,7 @@ fn measure_host_and_transport(tokenizer: &tiktoken_rs::CoreBPE) -> Result<(), Bo
     let node = mote_ui::validate(&serde_json::to_vec(&surface)?)
         .map_err(|error| format!("dashboard validation failed: {}", error.0))?;
     let surface = serde_json::to_value(node)?;
-    let mut event = log.append(
-        "main",
-        "ui.surface",
-        &json!({"surface": surface, "surface_id": "matrix"}),
-    )?;
+    let mut event = log.append("main", "ui.surface", &matrix::surface_payload(&surface))?;
     event.ts = 0;
     if event.seq != 1 {
         return Err("dashboard measurement expects the first committed event".into());
@@ -247,23 +243,24 @@ fn measure_host_and_transport(tokenizer: &tiktoken_rs::CoreBPE) -> Result<(), Bo
         (
             "matrix_render_request",
             "ipc_json_line",
-            format!(
-                "{}\n",
-                json!({"id": 1, "method": "matrix.render", "params": {"thread": "main", "source": source}})
-            ),
+            String::from_utf8(mote_ipc::encode_frame(&mote_ipc::request_envelope(
+                json!(1),
+                "matrix.render",
+                json!({"thread": "main", "source": source}),
+            ))?)?,
         ),
         (
             "matrix_render_response",
             "ipc_json_line",
-            format!(
-                "{}\n",
-                json!({"id": 1, "result": {"ok": true, "valid": true}})
-            ),
+            String::from_utf8(mote_ipc::encode_frame(&mote_ipc::success_envelope(
+                json!(1),
+                matrix::render_success(true),
+            ))?)?,
         ),
         (
             "ui_surface_event",
             "ipc_json_line",
-            format!("{}\n", json!({"event": event})),
+            String::from_utf8(mote_ipc::encode_frame(&mote_ipc::event_envelope(&event))?)?,
         ),
     ] {
         println!(

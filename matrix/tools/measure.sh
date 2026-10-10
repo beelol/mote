@@ -9,7 +9,7 @@ matrix_mode=${1-}
 matrix_probe_dir=$(mktemp -d /private/tmp/matrix-measure.XXXXXX)
 trap 'rm -f "$matrix_probe_dir/measure" "$matrix_probe_dir/output.tsv" "$matrix_probe_dir/artifacts.jsonl"; rmdir "$matrix_probe_dir"' EXIT HUP INT TERM
 cargo build --workspace --offline --locked --message-format=json > "$matrix_probe_dir/artifacts.jsonl"
-matrix_libs='tiktoken_rs serde_json matrix_lang mote_context mote_eventlog mote_ui serde rusqlite'
+matrix_libs='tiktoken_rs serde_json matrix_lang mote_context mote_eventlog mote_ipc mote_ui serde rusqlite'
 set --
 for matrix_lib in $matrix_libs; do
   matrix_rlib=$(jq -ers --arg name "$matrix_lib" '
