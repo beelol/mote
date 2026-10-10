@@ -97,6 +97,13 @@ pub struct ChatChunk {
     pub done: bool,
 }
 
+/// A structured reply together with the exact assistant content that was parsed.
+#[derive(Debug, Clone)]
+pub struct StructuredReply<T> {
+    pub value: T,
+    pub content: String,
+}
+
 #[derive(Debug)]
 pub enum LmError {
     Http(String),
@@ -269,6 +276,18 @@ impl Ollama {
         schema: Value,
         num_ctx: u32,
     ) -> Result<T, VerdictError> {
+        self.chat_structured_with_raw(model, messages, schema, num_ctx)
+            .map(|reply| reply.value)
+    }
+
+    /// Structured output with both the parsed value and exact assistant content.
+    pub fn chat_structured_with_raw<T: DeserializeOwned>(
+        &self,
+        model: &str,
+        messages: Value,
+        schema: Value,
+        num_ctx: u32,
+    ) -> Result<StructuredReply<T>, VerdictError> {
         let opts = ChatOptions::new(num_ctx).with_format(schema).no_think().temperature(0.0);
         let body = self.build_body(model, messages, &opts, false);
         let resp = self.post("/api/chat", &body).map_err(|_| VerdictError)?;
@@ -277,8 +296,10 @@ impl Ollama {
             .get("message")
             .and_then(|m| m.get("content"))
             .and_then(|c| c.as_str())
-            .ok_or(VerdictError)?;
-        parse_verdict::<T>(content)
+            .ok_or(VerdictError)?
+            .to_string();
+        let value = parse_verdict::<T>(&content)?;
+        Ok(StructuredReply { value, content })
     }
 
     /// Ensure a model is loaded. Checks it exists, enforces the memory gate against real free
@@ -430,6 +451,38 @@ mod tests {
         let rec = srv.recorded();
         let chat = rec.iter().find(|r| r.path == "/api/chat").unwrap();
         assert!(chat.body.get("format").is_some(), "format schema must be sent");
+        assert_eq!(chat.body["model"], "qwen3:0.6b");
         assert_eq!(chat.body["options"]["num_ctx"], 32768);
+        assert_eq!(chat.body["options"]["temperature"], 0.0);
+        assert_eq!(chat.body["think"], false);
+        assert_eq!(chat.body["stream"], false);
+    }
+
+    #[test]
+    fn structured_output_returns_raw_content_with_the_parsed_value() {
+        let srv = ScriptedServer::start().unwrap();
+        let content = r#"{"route":"talk","reason":"chit chat"}"#;
+        srv.set_chat_chunks(vec![json!({
+            "message": {"role":"assistant","content": content},
+            "done": true
+        })
+        .to_string()]);
+        let client = Ollama::new(srv.base_url());
+        let schema = json!({
+            "type":"object",
+            "properties":{"route":{"type":"string"},"reason":{"type":"string"}}
+        });
+
+        let reply: StructuredReply<Verdict> = client
+            .chat_structured_with_raw(
+                "qwen3:0.6b",
+                json!([{"role":"user","content":"hey"}]),
+                schema,
+                32768,
+            )
+            .unwrap();
+
+        assert_eq!(reply.value.route, "talk");
+        assert_eq!(reply.content, content);
     }
 }

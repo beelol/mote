@@ -2454,6 +2454,7 @@ dependencies = [
  "mote-ipc",
  "mote-localmodel",
  "mote-paths",
+ "mote-redact",
  "mote-testkit",
  "mote-ui",
  "notify",

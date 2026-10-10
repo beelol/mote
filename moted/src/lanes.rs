@@ -6,121 +6,18 @@
 //! parallel; any invalid verdict is fail-closed to `think`. On a `think` verdict the talk lane
 //! finishes its sentence, emits `talk.handoff` and gives no second answer.
 
+use crate::model_call::{ledger_entry, CallTiming, ModelRequest};
 use mote_context::{count_tokens, ContextStore, LedgerEntry, Pack, PackBuilder, PartKind};
 use mote_eventlog::EventLog;
 use mote_harness::ThinkEvent;
 use mote_localmodel::{ChatOptions, Ollama};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 /// Default talk pack budget in tokens.
 pub const TALK_BUDGET: usize = 600;
-
-static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
-
-#[derive(Debug, Clone, Copy)]
-struct CallTiming {
-    total_ms: i64,
-    first_token_ms: Option<i64>,
-}
-
-struct ModelRequest<'a> {
-    log: &'a EventLog,
-    request_id: String,
-    lane: &'a str,
-    model: &'a str,
-    started: Instant,
-}
-
-impl<'a> ModelRequest<'a> {
-    fn begin(
-        log: &'a EventLog,
-        lane: &'a str,
-        model: &'a str,
-        payload: serde_json::Value,
-    ) -> rusqlite::Result<Self> {
-        let epoch = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        let counter = REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let request_id = format!("{}-{epoch}-{counter}", std::process::id());
-        log.append(
-            "pipeline",
-            "model.request",
-            &json!({
-                "request_id": request_id,
-                "lane": lane,
-                "model": model,
-                "payload": payload
-            }),
-        )?;
-        Ok(Self { log, request_id, lane, model, started: Instant::now() })
-    }
-
-    fn elapsed_ms(&self) -> i64 {
-        self.started.elapsed().as_millis() as i64
-    }
-
-    fn finish(
-        self,
-        status: &str,
-        first_token: Option<Duration>,
-    ) -> CallTiming {
-        let timing = CallTiming {
-            total_ms: self.elapsed_ms(),
-            first_token_ms: first_token.map(|duration| duration.as_millis() as i64),
-        };
-        let _ = self.log.append(
-            "pipeline",
-            "model.response",
-            &json!({
-                "request_id": self.request_id,
-                "lane": self.lane,
-                "model": self.model,
-                "status": status,
-                "total_ms": timing.total_ms,
-                "first_token_ms": timing.first_token_ms
-            }),
-        );
-        timing
-    }
-}
-
-fn latency_for(timing: CallTiming, expected_first_token: bool) -> (i64, String) {
-    if expected_first_token {
-        timing
-            .first_token_ms
-            .map(|latency| (latency, "first_token".to_string()))
-            .unwrap_or_else(|| (timing.total_ms, "total".to_string()))
-    } else {
-        (timing.total_ms, "total".to_string())
-    }
-}
-
-fn ledger_entry(
-    lane: &str,
-    model: &str,
-    pack: &Pack,
-    completion: &str,
-    timing: CallTiming,
-    expected_first_token: bool,
-    status: &str,
-) -> LedgerEntry {
-    let (latency_ms, latency_kind) = latency_for(timing, expected_first_token);
-    LedgerEntry {
-        lane: lane.into(),
-        model: model.into(),
-        prompt_tokens: pack.token_estimate() as i64,
-        completion_tokens: count_tokens(completion) as i64,
-        latency_ms,
-        latency_kind,
-        cost_usd: 0.0,
-        status: status.into(),
-    }
-}
 
 /// The fixed few-shot prompt for the router, stored in the repo.
 pub const ROUTER_PROMPT: &str = "\
@@ -371,7 +268,7 @@ pub fn run_talk(
         }
         if !chunk.content.is_empty() {
             if first_token.is_none() {
-                first_token = Some(request.started.elapsed());
+                first_token = Some(request.elapsed());
             }
             answer.push_str(&chunk.content);
             let _ = log.append(thread_id, "talk.delta", &json!({ "text": chunk.content }));
@@ -833,6 +730,20 @@ mod tests {
         }
         assert!(request_id.is_some(), "an outbound call must be recorded");
         assert_eq!(request_id, response_id, "timing must correlate to the request");
+        let outbound = srv
+            .recorded()
+            .into_iter()
+            .find(|request| request.path == "/api/chat")
+            .unwrap()
+            .body;
+        assert_eq!(outbound["model"], "qwen3:4b");
+        assert_eq!(outbound["stream"], true);
+        assert_eq!(outbound["think"], false);
+        assert_eq!(outbound["options"]["num_ctx"], 32768);
+        assert_eq!(
+            outbound["messages"][1]["content"],
+            "my key is sk-abcdefghijklmnopqrstuvwxyz please remember"
+        );
     }
 
     #[test]
@@ -870,6 +781,23 @@ mod tests {
         let responses = log.recent_kind_since("model.response", 0, 10).unwrap();
         assert_eq!(requests.len(), 2);
         assert_eq!(responses.len(), 2);
+        let outbound = srv.recorded();
+        let talk = outbound
+            .iter()
+            .find(|request| request.path == "/api/chat" && request.body["stream"] == true)
+            .unwrap();
+        assert_eq!(talk.body["model"], "qwen3:4b");
+        assert_eq!(talk.body["messages"][1]["content"], "hello");
+        let router = outbound
+            .iter()
+            .find(|request| request.path == "/api/chat" && request.body["stream"] == false)
+            .unwrap();
+        assert_eq!(router.body["model"], "qwen3:0.6b");
+        assert_eq!(router.body["messages"][1]["content"], "hello");
+        assert_eq!(router.body["think"], false);
+        assert_eq!(router.body["options"]["num_ctx"], 32768);
+        assert_eq!(router.body["options"]["temperature"], 0.0);
+        assert_eq!(router.body["format"], router_schema());
     }
 
     #[test]
@@ -1056,6 +984,10 @@ mod tests {
         assert_eq!(requests.len(), 1);
         assert_eq!(responses.len(), 1);
         assert_eq!(requests[0].payload["request_id"], responses[0].payload["request_id"]);
+        assert_eq!(requests[0].payload["lane"], "think");
+        assert_eq!(requests[0].payload["model"], "qwen3-coder:30b-64k");
+        assert_eq!(requests[0].payload["payload"]["system"], system);
+        assert_eq!(requests[0].payload["payload"]["turn"], turn);
     }
 
     #[test]
