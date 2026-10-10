@@ -56,6 +56,9 @@ retro-red Atari vector-line identity that materializes elements in as strokes; l
   owner closes **UI-00**. So the working-GUI path is: owner closes UI-00 -> matrix builds the
   first-milestone runtime -> it pings this driver -> swap it in as the client. Until then there is
   no runtime to adopt.
+- **Owner stance (2026-10-10):** let matrix keep iterating; the owner is in no rush on UI-00 and
+  will close it on their own timeline (or when the matrix agent is done). Do NOT nag the owner
+  about UI-00. UI is the last thing, picked up when matrix lands. Work everything else first.
 
 ## Seam readiness (daemon side, checked 2026-10-10)
 
@@ -69,19 +72,22 @@ retro-red Atari vector-line identity that materializes elements in as strokes; l
 
 ## Prioritized close-out backlog
 
-1. **GUI via matrix (blocked on matrix runtime).** When the matrix runtime can render one surface
-   from the v0 tree, replace `mote-client`. Define and build the host seam: moted streams surfaces
-   over IPC, the runtime renders, button/submit come back as `ui.event`. This closes the bulk of
-   V0-43..48, 50, 52 once a window actually draws.
-2. **Think-lane runtime decisions (daemon, doable now).** The persistent server is wired
-   (`ThinkServers`); decide session reuse vs fresh-per-turn and the `moted mcp` `file_read` root so
-   a real think turn reads the intended files. Record in the think reuse doc / v0 evidence.
-3. **Integration seam prep (doable now).** Make sure the surface tree the matrix runtime will
-   consume is exactly what `crates/mote-ui` validates and what the client subscribes to, so the
-   swap is mechanical.
-4. **Owner-only, leave open with clear asks:** V0-53 logout/login survival; the 8 GUI screenshots
-   (after the matrix GUI draws); any model pulls.
-5. Keep `docs/HANDOFF.md` current each resume: what changed, what the matrix agent shipped, exact
+Everything except UI comes first. UI is last, picked up only when the matrix runtime lands.
+
+1. **Think-lane runtime correctness (daemon, doable now).** The persistent server is wired
+   (`ThinkServers`); settle session reuse vs fresh-per-turn and the `moted mcp` `file_read` root so
+   a real think turn reads the owner's intended files, not the server scratch dir. Record it.
+2. **End-to-end soundness (daemon, doable now).** A turn's message and answer must persist so the
+   next turn has continuity: confirm the working set and memory are updated per turn, and that
+   talk -> router -> think -> memory holds together across turns. Fix gaps, add tests.
+3. **Integration seam prep (doable now).** Keep the surface tree the matrix runtime will consume
+   exactly what `crates/mote-ui` validates and what the client subscribes to, so the swap is
+   mechanical. (Do not emit `ui.surface` from a lane until the runtime can draw one; agreed with
+   the matrix agent.)
+4. **Owner-only, leave open with clear asks:** V0-53 logout/login survival; any model pulls.
+5. **UI, last.** When the matrix runtime renders a surface and pings, swap it in as the client and
+   wire a lane to emit a validated `ui.surface`; that closes the bulk of V0-43..48, 50, 52.
+6. Keep `docs/HANDOFF.md` current each resume: what changed, what the matrix agent shipped, exact
    next action, blockers.
 
 ## Resume procedure
