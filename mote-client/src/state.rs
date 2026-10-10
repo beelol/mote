@@ -33,6 +33,7 @@ pub struct Message {
     pub status: Status,
     pub surface: Option<Node>,
     pub surface_id: Option<String>,
+    pub surface_seq: Option<i64>,
 }
 
 pub struct ChatState {
@@ -71,6 +72,7 @@ impl ChatState {
             status: Status::Sending,
             surface: None,
             surface_id: None,
+            surface_seq: None,
         });
         local_id
     }
@@ -126,6 +128,7 @@ impl ChatState {
                     status: Status::Delivered,
                     surface: None,
                     surface_id: None,
+                    surface_seq: None,
                 });
             }
             "talk.delta" => {
@@ -144,6 +147,7 @@ impl ChatState {
                     status: Status::Delivered,
                     surface: None,
                     surface_id: None,
+                    surface_seq: None,
                 });
             }
             "talk.done" => {
@@ -162,6 +166,7 @@ impl ChatState {
                     status: Status::Read,
                     surface: None,
                     surface_id: None,
+                    surface_seq: None,
                 });
             }
             "ui.diagnostic" => {
@@ -198,6 +203,7 @@ impl ChatState {
                     status: Status::Read,
                     surface: None,
                     surface_id: None,
+                    surface_seq: None,
                 });
             }
             "ui.surface" => {
@@ -210,6 +216,7 @@ impl ChatState {
                             })
                         }) {
                             existing.surface = Some(node);
+                            existing.surface_seq = (surface_id == Some("matrix")).then_some(ev.seq);
                             existing.status = Status::Read;
                             return;
                         }
@@ -220,6 +227,7 @@ impl ChatState {
                             status: Status::Read,
                             surface: Some(node),
                             surface_id: surface_id.map(str::to_owned),
+                            surface_seq: (surface_id == Some("matrix")).then_some(ev.seq),
                         });
                     }
                 }
@@ -251,6 +259,7 @@ mod tests {
             status,
             surface: None,
             surface_id: None,
+            surface_seq: None,
         }
     }
 

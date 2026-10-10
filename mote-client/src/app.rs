@@ -14,16 +14,21 @@ type PipelineResult = Result<PipelineSnapshot, String>;
 type UiEventResult = (crate::surface::SurfaceEvent, Result<(), String>);
 
 fn ui_event_params(event: &crate::surface::SurfaceEvent) -> serde_json::Value {
-    serde_json::json!({
+    let mut params = serde_json::json!({
         "thread": "main",
         "event": event.event(),
         "args": event.args(),
-    })
+    });
+    if let Some(seq) = event.context().surface_seq {
+        params["surface_seq"] = serde_json::json!(seq);
+        params["node_path"] = serde_json::json!(event.context().node_path);
+    }
+    params
 }
 
 fn preview_status(event: &crate::surface::SurfaceEvent) -> String {
     match event {
-        crate::surface::SurfaceEvent::Action { event } => {
+        crate::surface::SurfaceEvent::Action { event, .. } => {
             format!("Preview action: {event}")
         }
         crate::surface::SurfaceEvent::Change { field, value, .. } => {
@@ -361,7 +366,11 @@ impl MoteApp {
                         crate::theme::caption(ui, m.status.label());
                     });
                     if let Some(node) = &m.surface {
+                        let first_event = clicked.len();
                         ui.push_id(index, |ui| crate::surface::draw(ui, node, &mut clicked));
+                        for event in &mut clicked[first_event..] {
+                            event.set_surface_seq(m.surface_seq);
+                        }
                     } else {
                         ui.label(&m.text);
                     }
@@ -813,8 +822,53 @@ mod tests {
     }
 
     #[test]
+    fn matrix_click_uses_committed_sequence_and_structural_path_in_worker_params() {
+        let (mut app, tx) = app();
+        let (requests, request_rx) = mpsc::channel();
+        let (results, _) = mpsc::channel();
+        let (observed, observed_rx) = mpsc::channel();
+        app.ui_event_tx = requests;
+        spawn_ui_event_worker_with(request_rx, results, move |event| {
+            observed.send(ui_event_params(event)).unwrap();
+            Ok(())
+        });
+        for seq in [7, 19] {
+            tx.send(Event {
+                seq, ts: 0, scope_id: "main".into(), kind: "ui.surface".into(),
+                payload: serde_json::json!({"surface_id":"matrix", "surface":{
+                    "type":"stack", "children":[{"type":"row", "children":[
+                        {"type":"text", "value":"Status"},
+                        {"type":"action", "label":"Refresh", "event":"refresh"}
+                    ]}]
+                }}),
+            }).unwrap();
+        }
+        app.drain_events();
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let render = |app: &mut MoteApp, events| ctx.run(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0))),
+            events, ..Default::default()
+        }, |ctx| { egui::CentralPanel::default().show(ctx, |ui| app.chat_view(ui)); });
+        let output = render(&mut app, vec![]);
+        let pos = output.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.text() == "Refresh" => Some(text.pos + text.galley.rect.center().to_vec2()),
+            _ => None,
+        }).unwrap();
+        render(&mut app, vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::PointerButton { pos, button:egui::PointerButton::Primary, pressed:true, modifiers:Default::default() },
+            egui::Event::PointerButton { pos, button:egui::PointerButton::Primary, pressed:false, modifiers:Default::default() },
+        ]);
+        assert_eq!(observed_rx.recv_timeout(std::time::Duration::from_secs(1)).unwrap(), serde_json::json!({
+            "thread":"main", "event":"refresh", "args":{}, "surface_seq":19, "node_path":[0,1]
+        }));
+    }
+
+    #[test]
     fn ui_event_params_include_thread_action_name_and_empty_args() {
         let event = crate::surface::SurfaceEvent::Action {
+            context: Default::default(),
             event: "job.run".into(),
         };
         assert_eq!(
@@ -830,6 +884,7 @@ mod tests {
     #[test]
     fn ui_event_params_include_typed_field_change_args() {
         let event = crate::surface::SurfaceEvent::Change {
+            context: crate::surface::SurfaceContext { surface_seq: Some(23), node_path: vec![1] },
             field: "models.local_only".into(),
             value: serde_json::Value::Bool(true),
             state_id: egui::Id::NULL,
@@ -839,6 +894,8 @@ mod tests {
             serde_json::json!({
                 "thread": "main",
                 "event": "change",
+                "surface_seq": 23,
+                "node_path": [1],
                 "args": {
                     "field": "models.local_only",
                     "value": true
@@ -858,11 +915,13 @@ mod tests {
         let (observed_tx, observed_rx) = std::sync::mpsc::channel();
         let (release_tx, release_rx) = std::sync::mpsc::channel();
         let first = crate::surface::SurfaceEvent::Change {
+            context: Default::default(),
             field: "models.talk".into(),
             value: serde_json::json!("qwen3:0.6b"),
             state_id: egui::Id::NULL,
         };
         let second = crate::surface::SurfaceEvent::Change {
+            context: Default::default(),
             field: "models.talk".into(),
             value: serde_json::json!("qwen3:4b"),
             state_id: egui::Id::NULL,
@@ -916,6 +975,7 @@ mod tests {
         app.record_ui_event_result(
             &ctx,
             crate::surface::SurfaceEvent::Change {
+                context: Default::default(),
                 field: "models.talk".into(),
                 value: serde_json::json!("qwen3:0.6b"),
                 state_id: id,

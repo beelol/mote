@@ -103,6 +103,7 @@ struct Daemon {
     watchers: Mutex<Watchers>,
     think: Mutex<ThinkServers>,
     matrix_sources: Mutex<HashMap<String, String>>,
+    matrix_surfaces: Mutex<HashMap<String, matrix::CommittedMatrixSurface>>,
     matrix_candidates: Mutex<HashMap<(String, String), matrix_lang::CandidateStream>>,
     data_dir: PathBuf,
     started: std::time::Instant,
@@ -172,9 +173,20 @@ impl Daemon {
         source: Option<&str>,
     ) -> Result<Value, RpcError> {
         let (node, valid) = validate_surface(surface);
-        self.log
+        let snapshot = self.pipeline_snapshot()?;
+        let bindings = matrix::host_bindings(&snapshot.config, &snapshot);
+        let typed = serde_json::from_value(node.clone())
+            .map_err(|error| RpcError::internal(format!("decode surface contract: {error}")))?;
+        let mut committed = matrix::CommittedMatrixSurface::new(typed, &bindings.manifest);
+        let event = self
+            .log
             .append(thread, "ui.surface", &matrix::surface_payload(&node))
             .map_err(|error| RpcError::internal(format!("commit surface: {error}")))?;
+        committed.seq = event.seq;
+        self.matrix_surfaces
+            .lock()
+            .unwrap()
+            .insert(thread.into(), committed);
         if let Some(source) = source {
             sources.insert(thread.into(), source.into());
         }
@@ -254,11 +266,14 @@ impl Daemon {
         self.render_matrix_with_sources(&mut sources, thread, source, retain)
     }
 
-    fn refresh_matrix(&self, thread: &str) -> Result<Option<Value>, RpcError> {
-        let mut sources = self.matrix_sources.lock().unwrap();
+    fn refresh_matrix_with_sources(
+        &self,
+        sources: &mut HashMap<String, String>,
+        thread: &str,
+    ) -> Result<Option<Value>, RpcError> {
         let source = sources.get(thread).cloned();
         source
-            .map(|source| self.render_matrix_with_sources(&mut sources, thread, &source, false))
+            .map(|source| self.render_matrix_with_sources(sources, thread, &source, false))
             .transpose()
     }
 
@@ -491,6 +506,47 @@ impl Dispatch for Daemon {
                 let event = params.get("event").and_then(|e| e.as_str()).unwrap_or("");
                 let thread = params.get("thread").and_then(|t| t.as_str()).unwrap_or("main");
                 let args = params.get("args").cloned().unwrap_or_else(|| json!({}));
+                let approval = event
+                    .strip_prefix("approve:")
+                    .map(|id| (true, id))
+                    .or_else(|| event.strip_prefix("deny:").map(|id| (false, id)))
+                    .and_then(|(approve, id)| {
+                        id.parse::<i64>().ok().filter(|id| *id > 0).map(|id| (approve, id))
+                    });
+                if let Some((approve, id)) = approval {
+                    if params.get("surface_seq").is_some()
+                        || params.get("node_path").is_some()
+                        || args.as_object().is_none_or(|args| !args.is_empty())
+                    {
+                        return Err(RpcError::invalid_params("approval needs its trusted card contract"));
+                    }
+                    let watchers = self.watchers.lock().unwrap();
+                    let changed = if approve {
+                        watchers.approve_for_thread(id, thread, now_ms())
+                    } else {
+                        watchers.deny_for_thread(id, thread, now_ms())
+                    }
+                    .map_err(|error| RpcError::internal(error.to_string()))?;
+                    if changed {
+                        self.log
+                            .append(thread, "ui.event", &json!({"event":event,"args":args}))
+                            .map_err(|error| RpcError::internal(format!("record UI event: {error}")))?;
+                    }
+                    return Ok(if approve {
+                        json!({"ok":true,"approval":id,"executed":changed})
+                    } else {
+                        json!({"ok":true,"approval":id,"denied":changed})
+                    });
+                }
+                let mut sources = self.matrix_sources.lock().unwrap();
+                let accepted = self.matrix_surfaces.lock().unwrap().get(thread).is_some_and(|surface| {
+                    params.get("args").is_some() && surface.accepts(&params, event, &args)
+                });
+                if !accepted {
+                    return Err(RpcError::invalid_params(
+                        "event does not match the committed surface action or field contract",
+                    ));
+                }
                 if event == "change" {
                     let field = args.get("field").and_then(Value::as_str).ok_or_else(|| {
                         RpcError::invalid_params("change needs a string field")
@@ -512,46 +568,17 @@ impl Dispatch for Daemon {
                     self.log
                         .append(thread, "ui.event", &json!({ "event": event, "args": args }))
                         .map_err(|error| RpcError::internal(format!("record UI event: {error}")))?;
-                    let rendered = self.refresh_matrix(thread)?;
+                    let rendered = self.refresh_matrix_with_sources(&mut sources, thread)?;
                     return Ok(json!({"ok": true, "seq": seq, "rendered": rendered}));
                 }
                 if event == "refresh" {
                     self.log
                         .append(thread, "ui.event", &json!({ "event": event, "args": args }))
                         .map_err(|error| RpcError::internal(format!("record UI event: {error}")))?;
-                    let rendered = self.refresh_matrix(thread)?;
+                    let rendered = self.refresh_matrix_with_sources(&mut sources, thread)?;
                     return Ok(json!({"ok": true, "rendered": rendered}));
                 }
-                self.log
-                    .append(thread, "ui.event", &json!({ "event": event, "args": args }))
-                    .ok();
-                if let Some(id) = event
-                    .strip_prefix("approve:")
-                    .and_then(|id| id.parse::<i64>().ok())
-                    .filter(|id| *id > 0)
-                {
-                    let executed = self
-                        .watchers
-                        .lock()
-                        .unwrap()
-                        .approve_for_thread(id, thread, now_ms())
-                        .map_err(|error| RpcError::internal(error.to_string()))?;
-                    return Ok(json!({ "ok": true, "approval": id, "executed": executed }));
-                }
-                if let Some(id) = event
-                    .strip_prefix("deny:")
-                    .and_then(|id| id.parse::<i64>().ok())
-                    .filter(|id| *id > 0)
-                {
-                    let denied = self
-                        .watchers
-                        .lock()
-                        .unwrap()
-                        .deny_for_thread(id, thread, now_ms())
-                        .map_err(|error| RpcError::internal(error.to_string()))?;
-                    return Ok(json!({ "ok": true, "approval": id, "denied": denied }));
-                }
-                Ok(json!({ "ok": true }))
+                Err(RpcError::invalid_params("unsupported Matrix action"))
             }
             // Validate a surface tree fail-closed and commit it as a `ui.surface` event on the
             // thread scope for the renderer to draw. An invalid tree becomes a text node carrying
@@ -754,6 +781,7 @@ mod approval_dispatch_tests {
             watchers: Mutex::new(Watchers::open_in_memory().unwrap()),
             think: Mutex::new(ThinkServers::new(data_dir.to_path_buf())),
             matrix_sources: Mutex::new(HashMap::new()),
+            matrix_surfaces: Mutex::new(HashMap::new()),
             matrix_candidates: Mutex::new(HashMap::new()),
             data_dir: data_dir.to_path_buf(),
             started: std::time::Instant::now(),
@@ -784,6 +812,153 @@ mod approval_dispatch_tests {
     button "Refresh" -> refresh
   }
 }"#;
+
+    #[test]
+    fn committed_matrix_rejects_forged_events_without_side_effects() {
+        let server = mote_testkit::ScriptedServer::start().unwrap();
+        let cases = [
+            ("unknown action", json!({"event":"launch", "args":{}, "node_path":[4]})),
+            ("absent field", json!({"event":"change", "args":{"field":"models.router","value":"qwen3:4b"}, "node_path":[2]})),
+            ("missing field", json!({"event":"change", "args":{"value":false}, "node_path":[1]})),
+            ("missing value", json!({"event":"change", "args":{"field":"models.local_only"}, "node_path":[1]})),
+            ("extra change argument", json!({"event":"change", "args":{"field":"models.local_only","value":false,"extra":0}, "node_path":[1]})),
+            ("wrong boolean type", json!({"event":"change", "args":{"field":"models.local_only","value":"false"}, "node_path":[1]})),
+            ("wrong select type", json!({"event":"change", "args":{"field":"models.talk","value":true}, "node_path":[2]})),
+            ("unapproved model", json!({"event":"change", "args":{"field":"models.talk","value":"unapproved:latest"}, "node_path":[2]})),
+            ("extra action argument", json!({"event":"refresh", "args":{"extra":0}, "node_path":[4]})),
+            ("missing args", json!({"event":"refresh", "node_path":[4]})),
+            ("nonobject args", json!({"event":"refresh", "args":[], "node_path":[4]})),
+            ("unknown node", json!({"event":"refresh", "args":{}, "node_path":[99]})),
+            ("missing node", json!({"event":"refresh", "args":{}})),
+            ("negative path", json!({"event":"refresh", "args":{}, "node_path":[-1]})),
+            ("fractional path", json!({"event":"refresh", "args":{}, "node_path":[4.5]})),
+            ("string path", json!({"event":"refresh", "args":{}, "node_path":"4"})),
+            ("inert node", json!({"event":"refresh", "args":{}, "node_path":[0]})),
+            ("wrong event for node", json!({"event":"refresh", "args":{}, "node_path":[1]})),
+            ("wrong field for node", json!({"event":"change", "args":{"field":"models.talk","value":"qwen3:0.6b"}, "node_path":[1]})),
+            ("stale revision", json!({"event":"refresh", "args":{}, "node_path":[4], "surface_seq":0})),
+            ("null revision", json!({"event":"refresh", "args":{}, "node_path":[4], "surface_seq":null})),
+            ("missing revision", json!({"event":"refresh", "args":{}, "node_path":[4]})),
+            ("candidate field", json!({"event":"change", "args":{"field":"models.think","value":"qwen3:4b"}, "node_path":[0]})),
+            ("approval through Matrix", json!({"event":"approve:1", "args":{}, "node_path":[4]})),
+        ];
+        let mut failures = Vec::new();
+        for (name, mut params) in cases {
+            let (data, outside) = dirs(name);
+            let mut daemon = daemon(&data);
+            daemon.client = Ollama::new(server.base_url());
+            let target = outside.join("held.txt");
+            let id = daemon.call("file.write", json!({"thread":"main","path":target,"content":"held"})).unwrap()["id"].as_i64().unwrap();
+            daemon.call("matrix.render", json!({"thread":"main","source":MATRIX_DASHBOARD})).unwrap();
+            let surface_seq = daemon.log.max_seq().unwrap();
+            let committed = daemon.matrix_surfaces.lock().unwrap().clone();
+            let rejected = candidate(&daemon, "main", "bad", b"screen { select \"Think\" models.think options model_options icon \"bad\" }", true);
+            assert_eq!(rejected["status"], "rejected");
+            assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), committed);
+            let before = daemon.log.max_seq().unwrap();
+            let config = std::fs::read(data.join("config.toml")).unwrap();
+            let sources = daemon.matrix_sources.lock().unwrap().clone();
+            let contracts = daemon.matrix_surfaces.lock().unwrap().clone();
+            let config_values = daemon.pipeline_snapshot().unwrap().config;
+            params["thread"] = json!("main");
+            if params.get("surface_seq").is_none() && name != "missing revision" {
+                params["surface_seq"] = json!(surface_seq);
+            }
+            let result = daemon.call("ui.event", params);
+            if result.is_ok() || daemon.log.max_seq().unwrap() != before {
+                failures.push(format!("{name}: accepted={} appended={}", result.is_ok(), daemon.log.max_seq().unwrap() - before));
+            }
+            if std::fs::read(data.join("config.toml")).unwrap() != config
+                || *daemon.matrix_sources.lock().unwrap() != sources
+                || *daemon.matrix_surfaces.lock().unwrap() != contracts
+                || daemon.pipeline_snapshot().unwrap().config != config_values
+                || daemon.watchers.lock().unwrap().status(id).unwrap() != "pending"
+                || target.exists()
+            {
+                failures.push(format!("{name}: changed protected state"));
+            }
+            assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), 0);
+            assert_eq!(daemon.store.lock().unwrap().count_packs().unwrap(), 0);
+            assert!(server.recorded().is_empty());
+            std::fs::remove_dir_all(data.parent().unwrap()).ok();
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+
+    #[test]
+    fn matrix_refresh_requires_exposure_and_legacy_events_require_a_trusted_card() {
+        let (data, outside) = dirs("event-contracts");
+        let daemon = daemon(&data);
+        let target = outside.join("held.txt");
+        let id = daemon.call("file.write", json!({"thread":"main","path":target,"content":"held"})).unwrap()["id"].as_i64().unwrap();
+        daemon.call("matrix.render", json!({"source":"screen { text \"No action\" }"})).unwrap();
+        let seq = daemon.log.max_seq().unwrap();
+        for params in [
+            json!({"event":"refresh","args":{},"surface_seq":seq,"node_path":[]}),
+            json!({"event":"refresh","args":{},"node_path":[]}),
+            json!({"event":"anything","args":{}}),
+            json!({"event":"approve:bogus","args":{}}),
+            json!({"event":format!("approve:{id}"),"args":{"extra":true}}),
+            json!({"event":format!("deny:{id}"),"args":[]}),
+            json!({"thread":"other","event":"refresh","args":{},"surface_seq":seq,"node_path":[]}),
+        ] {
+            assert_eq!(daemon.call("ui.event", params).unwrap_err().code, "invalid_params");
+            assert_eq!(daemon.log.max_seq().unwrap(), seq);
+            assert_eq!(daemon.watchers.lock().unwrap().status(id).unwrap(), "pending");
+            assert!(!target.exists());
+        }
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn failed_matrix_append_preserves_source_and_committed_contract() {
+        let (data, _) = dirs("failed-append");
+        let mut daemon = daemon(&data);
+        let database = data.join("events.db");
+        daemon.log = EventLog::open(&database).unwrap();
+        daemon.call("matrix.render", json!({"source":MATRIX_DASHBOARD})).unwrap();
+        let before = daemon.log.max_seq().unwrap();
+        let sources = daemon.matrix_sources.lock().unwrap().clone();
+        let surfaces = daemon.matrix_surfaces.lock().unwrap().clone();
+        let connection = rusqlite::Connection::open(database).unwrap();
+        connection.execute_batch("CREATE TRIGGER reject_surface BEFORE INSERT ON events WHEN NEW.kind = 'ui.surface' BEGIN SELECT RAISE(FAIL, 'surface storage unavailable'); END;").unwrap();
+        assert_eq!(daemon.call("matrix.render", json!({"source":"screen { text \"Replacement\" }"})).unwrap_err().code, "internal");
+        assert!(daemon.call("matrix.candidate", json!({"thread":"main","candidate":"replacement","chunk":b"screen { text \"Candidate\" }".to_vec(),"finish":true})).is_err());
+        assert_eq!(daemon.log.max_seq().unwrap(), before);
+        assert_eq!(*daemon.matrix_sources.lock().unwrap(), sources);
+        assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), surfaces);
+        assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), 0);
+        connection.execute_batch("DROP TRIGGER reject_surface;").unwrap();
+        assert!(daemon.call("ui.event", json!({"event":"refresh","args":{},"surface_seq":before,"node_path":[4]})).is_ok());
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn matrix_candidate_contract_accepts_all_four_typed_fields_and_expires_old_sequence() {
+        let (data, _) = dirs("typed-fields");
+        let daemon = daemon(&data);
+        let source = b"screen { toggle \"Local\" models.local_only select \"Talk\" models.talk options model_options select \"Router\" models.router options model_options select \"Think\" models.think options model_options button \"Refresh\" -> refresh }";
+        assert_eq!(candidate(&daemon, "main", "valid", source, true)["status"], "committed");
+        for (path, field, value) in [
+            (0, "models.local_only", json!(false)),
+            (1, "models.talk", json!("qwen3:0.6b")),
+            (2, "models.router", json!("qwen3:4b")),
+            (3, "models.think", json!("qwen3:4b")),
+        ] {
+            let seq = daemon.log.max_seq().unwrap();
+            let params = json!({"event":"change","args":{"field":field,"value":value},"surface_seq":seq,"node_path":[path]});
+            assert!(daemon.call("ui.event", params.clone()).is_ok());
+            assert_eq!(daemon.config.lock().unwrap().get_json(field), Some(value));
+            let fresh = daemon.log.max_seq().unwrap();
+            assert!(fresh > seq);
+            assert!(daemon.call("ui.event", params).is_err());
+            assert_eq!(daemon.log.max_seq().unwrap(), fresh);
+        }
+        let seq = daemon.log.max_seq().unwrap();
+        assert!(daemon.call("ui.event", json!({"event":"refresh","args":{},"surface_seq":seq,"node_path":[4]})).is_ok());
+        assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), 0);
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
 
     #[test]
     fn matrix_render_compiles_the_daemon_manifest_and_commits_the_surface() {
@@ -938,7 +1113,7 @@ mod approval_dispatch_tests {
     fn matrix_candidate_rejections_preserve_exact_prior_surface_source_and_refresh() {
         let (data, _) = dirs("candidate-rejections");
         let daemon = daemon(&data);
-        let prior = "screen { text \"Prior\" }";
+        let prior = "screen { text \"Prior\" button \"Refresh\" -> refresh }";
         daemon
             .call(
                 "matrix.render",
@@ -998,7 +1173,7 @@ mod approval_dispatch_tests {
             daemon
                 .call(
                     "ui.event",
-                    json!({"thread":"thread-7", "event":"refresh", "args":{}}),
+                    json!({"thread":"thread-7", "event":"refresh", "args":{}, "surface_seq":before, "node_path":[1]}),
                 )
                 .unwrap();
             let event = daemon
@@ -1009,7 +1184,7 @@ mod approval_dispatch_tests {
                 .unwrap();
             assert_eq!(
                 event.payload,
-                json!({"surface_id":"matrix", "surface":{"type":"text","value":"Prior"}})
+                json!({"surface_id":"matrix", "surface":{"type":"stack","children":[{"type":"text","value":"Prior"},{"type":"action","label":"Refresh","event":"refresh"}]}})
             );
         }
         assert_eq!(
@@ -1160,7 +1335,7 @@ mod approval_dispatch_tests {
                 assert_eq!(daemon.log.max_seq().unwrap(), before + 1);
                 assert!(events.recv_timeout(Duration::from_millis(2)).is_none());
                 assert_eq!(daemon.matrix_sources.lock().unwrap()["main"], MATRIX_DASHBOARD);
-                daemon.call("ui.event", json!({"thread":"main", "event":"refresh", "args":{}})).unwrap();
+                daemon.call("ui.event", json!({"thread":"main", "event":"refresh", "args":{}, "surface_seq":before,"node_path":[4]})).unwrap();
                 assert_eq!(events.recv_timeout(Duration::from_millis(10)).unwrap().kind, "ui.event");
                 let refreshed = events.recv_timeout(Duration::from_millis(10)).unwrap();
                 assert_eq!(refreshed.kind, "ui.surface");
@@ -1368,7 +1543,7 @@ mod approval_dispatch_tests {
         ] {
             let (data, _) = dirs(category);
             let daemon = daemon(&data);
-            let prior = "screen { text \"Retained source\" }";
+            let prior = "screen { text \"Retained source\" button \"Refresh\" -> refresh }";
             assert_eq!(
                 daemon
                     .call(
@@ -1410,7 +1585,7 @@ mod approval_dispatch_tests {
             let refreshed = daemon
                 .call(
                     "ui.event",
-                    json!({"thread":"thread-7", "event":"refresh", "args":{}}),
+                    json!({"thread":"thread-7", "event":"refresh", "args":{}, "surface_seq":1,"node_path":[1]}),
                 )
                 .unwrap();
             assert_eq!(
@@ -1425,7 +1600,7 @@ mod approval_dispatch_tests {
             assert_eq!(event.kind, "ui.surface");
             assert_eq!(
                 event.payload,
-                json!({"surface_id":"matrix","surface":{"type":"text","value":"Retained source"}})
+                json!({"surface_id":"matrix","surface":{"type":"stack","children":[{"type":"text","value":"Retained source"},{"type":"action","label":"Refresh","event":"refresh"}]}})
             );
             assert!(events.recv_timeout(Duration::from_millis(2)).is_none());
             std::fs::remove_dir_all(data.parent().unwrap()).ok();
@@ -1450,6 +1625,8 @@ mod approval_dispatch_tests {
                 json!({
                     "thread":"thread-7",
                     "event":"change",
+                    "surface_seq":1,
+                    "node_path":[1],
                     "args":{"field":"models.local_only", "value":false}
                 }),
             )
@@ -1533,7 +1710,7 @@ mod approval_dispatch_tests {
             .cloned()
             .unwrap();
         let expected = daemon.compile_matrix(&retained).unwrap();
-        daemon.refresh_matrix("thread-7").unwrap().unwrap();
+        daemon.render_matrix("thread-7", &retained, false).unwrap();
         let latest = daemon
             .log
             .recent_kind_since("ui.surface", i64::MIN, 1)
@@ -1763,6 +1940,7 @@ mod turn_event_tests {
             watchers: Mutex::new(Watchers::open_in_memory().unwrap()),
             think: Mutex::new(ThinkServers::new(data_dir.clone())),
             matrix_sources: Mutex::new(HashMap::new()),
+            matrix_surfaces: Mutex::new(HashMap::new()),
             matrix_candidates: Mutex::new(HashMap::new()),
             data_dir: data_dir.clone(),
             started: std::time::Instant::now(),
@@ -1991,6 +2169,7 @@ fn run() -> Result<(), i32> {
         watchers: Mutex::new(watchers),
         think: Mutex::new(ThinkServers::new(data.clone())),
         matrix_sources: Mutex::new(HashMap::new()),
+        matrix_surfaces: Mutex::new(HashMap::new()),
         matrix_candidates: Mutex::new(HashMap::new()),
         data_dir: data.clone(),
         started: std::time::Instant::now(),

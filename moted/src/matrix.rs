@@ -1,10 +1,9 @@
 use crate::pipeline::PipelineSnapshot;
-use matrix_lang::manifest::{
-    ActionContract, EnumDefinition, FieldDefinition, RecordDefinition,
-};
+use matrix_lang::manifest::{ActionContract, EnumDefinition, FieldDefinition, RecordDefinition};
 use matrix_lang::{
     lower_v0, parse_surface, resolve, BindingSnapshot, Diagnostic, Manifest, Surface, Type,
 };
+use mote_ui::Node;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -13,10 +12,135 @@ const MODELS: [&str; 3] = ["qwen3:4b", "qwen3:0.6b", "qwen3-coder:30b-64k"];
 pub fn accepts_change(field: &str, value: &Value) -> bool {
     match field {
         "models.local_only" => value.is_boolean(),
-        "models.talk" | "models.router" | "models.think" => value
-            .as_str()
-            .is_some_and(|model| MODELS.contains(&model)),
+        "models.talk" | "models.router" | "models.think" => {
+            value.as_str().is_some_and(|model| MODELS.contains(&model))
+        }
         _ => false,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum ControlContract {
+    Field {
+        name: String,
+        ty: Type,
+        choices: Vec<String>,
+    },
+    Action {
+        name: String,
+        contract: ActionContract,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CommittedMatrixSurface {
+    pub seq: i64,
+    surface: Node,
+    controls: BTreeMap<Vec<usize>, ControlContract>,
+}
+
+impl CommittedMatrixSurface {
+    pub fn new(surface: Node, manifest: &Manifest) -> Self {
+        let mut controls = BTreeMap::new();
+        collect_controls(&surface, manifest, &mut Vec::new(), &mut controls);
+        Self {
+            seq: 0,
+            surface,
+            controls,
+        }
+    }
+
+    pub fn accepts(&self, params: &Value, event: &str, args: &Value) -> bool {
+        if params.get("surface_seq").and_then(Value::as_i64) != Some(self.seq) {
+            return false;
+        }
+        let Some(path) = params
+            .get("node_path")
+            .and_then(Value::as_array)
+            .and_then(|path| {
+                path.iter()
+                    .map(|index| index.as_u64().and_then(|i| usize::try_from(i).ok()))
+                    .collect::<Option<Vec<_>>>()
+            })
+        else {
+            return false;
+        };
+        let Some(args) = args.as_object() else {
+            return false;
+        };
+        match self.controls.get(&path) {
+            Some(ControlContract::Action { name, contract }) => {
+                event == name && contract.parameters.is_empty() && args.is_empty()
+            }
+            Some(ControlContract::Field { name, ty, choices }) => {
+                if event != "change"
+                    || args.len() != 2
+                    || args.get("field").and_then(Value::as_str) != Some(name)
+                {
+                    return false;
+                }
+                args.get("value").is_some_and(|value| match ty {
+                    Type::Boolean => value.is_boolean(),
+                    Type::Enum(_) => value
+                        .as_str()
+                        .is_some_and(|value| choices.iter().any(|choice| choice == value)),
+                    _ => false,
+                })
+            }
+            None => false,
+        }
+    }
+}
+
+fn collect_controls(
+    node: &Node,
+    manifest: &Manifest,
+    path: &mut Vec<usize>,
+    controls: &mut BTreeMap<Vec<usize>, ControlContract>,
+) {
+    match node {
+        Node::Stack { children }
+        | Node::Row { children }
+        | Node::List { children }
+        | Node::Chat { children } => {
+            for (index, child) in children.iter().enumerate() {
+                path.push(index);
+                collect_controls(child, manifest, path, controls);
+                path.pop();
+            }
+        }
+        Node::Toggle { name, .. } | Node::Select { name, .. } | Node::Field { name, .. } => {
+            if let Some(field) = manifest.fields.get(name) {
+                let choices = match &field.binding.ty {
+                    Type::Enum(name) => manifest
+                        .enums
+                        .get(name)
+                        .map(|definition| definition.members.clone())
+                        .unwrap_or_default(),
+                    _ => Vec::new(),
+                };
+                controls.insert(
+                    path.clone(),
+                    ControlContract::Field {
+                        name: name.clone(),
+                        ty: field.binding.ty.clone(),
+                        choices,
+                    },
+                );
+            }
+        }
+        Node::Action { event, .. } => {
+            if let Some(contract) = manifest.actions.get(event) {
+                controls.insert(
+                    path.clone(),
+                    ControlContract::Action {
+                        name: event.clone(),
+                        contract: contract.clone(),
+                    },
+                );
+            }
+        }
+        _ => {}
     }
 }
 
@@ -79,7 +203,9 @@ pub fn host_bindings(
         .insert("refresh".into(), ActionContract::default());
 
     let mut snapshot = BindingSnapshot::default();
-    snapshot.values.insert("model_options".into(), json!(MODELS));
+    snapshot
+        .values
+        .insert("model_options".into(), json!(MODELS));
     snapshot.values.insert(
         "pipeline.stages".into(),
         Value::Array(
@@ -113,7 +239,10 @@ pub fn compile(source: &str, bindings: &HostBindings) -> Result<Value, Vec<Diagn
     compile_surface(&parsed, bindings)
 }
 
-pub fn compile_surface(parsed: &Surface, bindings: &HostBindings) -> Result<Value, Vec<Diagnostic>> {
+pub fn compile_surface(
+    parsed: &Surface,
+    bindings: &HostBindings,
+) -> Result<Value, Vec<Diagnostic>> {
     let resolved = resolve(parsed, &bindings.manifest, &bindings.snapshot)?;
     let node = lower_v0(&resolved)?;
     serde_json::to_value(node).map_err(|error| {
@@ -145,4 +274,3 @@ pub fn diagnostics(errors: &[Diagnostic]) -> Value {
             .collect(),
     )
 }
-

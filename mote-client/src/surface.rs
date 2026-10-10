@@ -1,22 +1,42 @@
 use eframe::egui;
 use mote_ui::Node;
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SurfaceContext {
+    pub surface_seq: Option<i64>,
+    pub node_path: Vec<usize>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum SurfaceEvent {
     Action {
         event: String,
+        context: SurfaceContext,
     },
     Change {
         field: String,
         value: serde_json::Value,
         state_id: egui::Id,
+        context: SurfaceContext,
     },
 }
 
 impl SurfaceEvent {
+    pub fn context(&self) -> &SurfaceContext {
+        match self {
+            Self::Action { context, .. } | Self::Change { context, .. } => context,
+        }
+    }
+
+    pub fn set_surface_seq(&mut self, seq: Option<i64>) {
+        match self {
+            Self::Action { context, .. } | Self::Change { context, .. } => context.surface_seq = seq,
+        }
+    }
+
     pub fn event(&self) -> &str {
         match self {
-            Self::Action { event } => event,
+            Self::Action { event, .. } => event,
             Self::Change { .. } => "change",
         }
     }
@@ -42,6 +62,10 @@ pub fn discard_change(ctx: &egui::Context, event: &SurfaceEvent) {
 }
 
 pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
+    draw_at(ui, node, events, &mut Vec::new());
+}
+
+fn draw_at(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>, path: &mut Vec<usize>) {
     match node {
         Node::Text { value } => {
             ui.label(value);
@@ -52,7 +76,9 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
                     if index > 0 && !matches!(node, Node::Stack { .. }) {
                         ui.separator();
                     }
-                    ui.push_id(index, |ui| draw(ui, child, events));
+                    path.push(index);
+                    ui.push_id(index, |ui| draw_at(ui, child, events, path));
+                    path.pop();
                 }
             });
         }
@@ -60,7 +86,9 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
             egui::Frame::new().inner_margin(16).show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     for (index, child) in children.iter().enumerate() {
-                        ui.push_id(index, |ui| draw(ui, child, events));
+                        path.push(index);
+                        ui.push_id(index, |ui| draw_at(ui, child, events, path));
+                        path.pop();
                     }
                 });
             });
@@ -107,6 +135,7 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
             let response = control(ui, |ui| ui.add(egui::Checkbox::new(&mut edited, label)));
             if response.changed() {
                 events.push(SurfaceEvent::Change {
+                    context: SurfaceContext { surface_seq: None, node_path: path.clone() },
                     field: name.clone(),
                     value: serde_json::Value::Bool(edited),
                     state_id: id,
@@ -143,6 +172,7 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
                                 {
                                     selected = option.clone();
                                     events.push(SurfaceEvent::Change {
+                                        context: SurfaceContext { surface_seq: None, node_path: path.clone() },
                                         field: name.clone(),
                                         value: serde_json::Value::String(selected.clone()),
                                         state_id: id,
@@ -157,6 +187,7 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
         Node::Action { label, event } => {
             if button(ui, label).clicked() {
                 events.push(SurfaceEvent::Action {
+                    context: SurfaceContext { surface_seq: None, node_path: path.clone() },
                     event: event.clone(),
                 });
             }
@@ -315,6 +346,7 @@ mod tests {
         assert_eq!(
             clicked,
             vec![SurfaceEvent::Action {
+                context: Default::default(),
                 event: "gallery.preview".into()
             }]
         );
@@ -508,6 +540,7 @@ mod tests {
         assert_eq!(
             clicked,
             vec![SurfaceEvent::Action {
+                context: Default::default(),
                 event: "job.run".into()
             }]
         );
@@ -531,6 +564,7 @@ mod tests {
         assert_eq!(
             clicked,
             vec![SurfaceEvent::Action {
+                context: Default::default(),
                 event: "job.run".into()
             }]
         );
@@ -572,6 +606,7 @@ mod tests {
         assert_eq!(
             clicked,
             vec![SurfaceEvent::Action {
+                context: Default::default(),
                 event: "job.run".into()
             }]
         );
