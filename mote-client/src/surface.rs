@@ -171,9 +171,7 @@ fn draw_at(
                 .filter(|(host, _)| host == value)
                 .map(|(_, edited)| edited)
                 .unwrap_or(*value);
-            let response = ui.push_id(id, |ui| {
-                control(ui, |ui| ui.add(egui::Checkbox::new(&mut edited, label)))
-            }).inner;
+            let response = identified_control(ui, id, label, Some(&mut edited));
             live.insert(id, response.id);
             if response.changed() {
                 events.push(SurfaceEvent::Change {
@@ -231,7 +229,7 @@ fn draw_at(
         }
         Node::Action { label, event } => {
             let id = namespace.with((ControlKind::Action, &*path));
-            let response = ui.push_id(id, |ui| button(ui, label)).inner;
+            let response = identified_control(ui, id, label, None);
             live.insert(id, response.id);
             if response.clicked() {
                 events.push(SurfaceEvent::Action {
@@ -345,6 +343,69 @@ pub fn button(ui: &mut egui::Ui, label: &str) -> egui::Response {
     })
 }
 
+fn identified_control(
+    ui: &mut egui::Ui,
+    id: egui::Id,
+    label: &str,
+    mut checked: Option<&mut bool>,
+) -> egui::Response {
+    control(ui, |ui| {
+        let padding = ui.spacing().button_padding;
+        let icon_width = ui.spacing().icon_width;
+        let icon_spacing = ui.spacing().icon_spacing;
+        let extra = if checked.is_some() {
+            egui::vec2(icon_width + icon_spacing, 0.0)
+        } else {
+            2.0 * padding
+        };
+        let galley = egui::WidgetText::from(label).into_galley(
+            ui, None, ui.available_width() - extra.x, egui::TextStyle::Button,
+        );
+        let desired = (galley.size() + extra).max(ui.spacing().interact_size);
+        let (_, allocated) = ui.allocate_space(desired);
+        let mut response = ui.interact(allocated, id, egui::Sense::click());
+        response.intrinsic_size = Some(desired);
+        if let Some(value) = checked.as_deref_mut() {
+            if response.clicked() {
+                *value = !*value;
+                response.mark_changed();
+            }
+        }
+        response.widget_info(|| match checked.as_deref() {
+            Some(value) => egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), *value, label),
+            None => egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label),
+        });
+        if ui.is_rect_visible(allocated) {
+            let visuals = ui.style().interact(&response);
+            let text_pos = if let Some(value) = checked.as_deref() {
+                let rect = ui.layout().align_size_within_rect(desired, allocated);
+                let (small, big) = ui.spacing().icon_rectangles(rect);
+                ui.painter().rect(big.expand(visuals.expansion), visuals.corner_radius,
+                    visuals.bg_fill, visuals.bg_stroke, egui::StrokeKind::Inside);
+                if *value {
+                    ui.painter().add(egui::Shape::line(vec![
+                        egui::pos2(small.left(), small.center().y),
+                        egui::pos2(small.center().x, small.bottom()),
+                        egui::pos2(small.right(), small.top()),
+                    ], visuals.fg_stroke));
+                }
+                egui::pos2(rect.left() + icon_width + icon_spacing, rect.center().y - 0.5 * galley.size().y)
+            } else {
+                ui.painter().rect(allocated.expand(visuals.expansion), visuals.corner_radius,
+                    visuals.weak_bg_fill, visuals.bg_stroke, egui::StrokeKind::Inside);
+                ui.layout().align_size_within_rect(galley.size(), allocated.shrink2(padding)).min
+            };
+            ui.painter().galley(text_pos, galley, visuals.text_color());
+        }
+        if checked.is_none() && response.hovered() {
+            if let Some(cursor) = ui.visuals().interact_cursor {
+                ui.ctx().set_cursor_icon(cursor);
+            }
+        }
+        response
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -416,6 +477,69 @@ mod tests {
             })
             .unwrap_or_else(|| panic!("missing rendered text {value}"));
         assert_eq!(text.galley.rows.len(), 1, "{value} wrapped");
+    }
+
+    #[test]
+    fn explicit_control_ids_preserve_vector_shapes_and_widget_semantics() {
+        for dark in [false, true] {
+            for toggle in [false, true] {
+                let actual = egui::Context::default();
+                let native = egui::Context::default();
+                for ctx in [&actual, &native] {
+                    ctx.set_style(crate::theme::style(dark));
+                }
+                let label = "Long control label";
+                let node = if toggle {
+                    Node::Toggle { label: label.into(), name: "enabled".into(), value: true }
+                } else {
+                    Node::Action { label: label.into(), event: "activate".into() }
+                };
+                let mut checked = true;
+                let mut native_frame = |events: Vec<egui::Event>| {
+                    let mut rect = egui::Rect::NOTHING;
+                    let output = native.run(egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0))),
+                        events,
+                        ..Default::default()
+                    }, |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            rect = ui.scope(|ui| {
+                                if toggle {
+                                    control(ui, |ui| ui.add(egui::Checkbox::new(&mut checked, label)));
+                                } else {
+                                    button(ui, label);
+                                }
+                            }).response.rect;
+                        });
+                    });
+                    (output, rect)
+                };
+                let (painted, _, rect) = frame(&actual, &node, vec![]);
+                let (expected, native_rect) = native_frame(vec![]);
+                assert_eq!(rect, native_rect);
+                assert_eq!(painted.shapes, expected.shapes);
+                let key = |key, pressed| egui::Event::Key {
+                    key, physical_key: None, pressed, repeat: false, modifiers: Default::default(),
+                };
+                for events in [
+                    vec![egui::Event::PointerMoved(rect.center())],
+                    vec![key(egui::Key::Tab, true)],
+                    vec![key(egui::Key::Tab, false)],
+                    click_events(egui::pos2(rect.right() - 1.0, rect.bottom() - 1.0)),
+                    vec![key(egui::Key::Space, true)],
+                    vec![key(egui::Key::Space, false)],
+                    vec![key(egui::Key::Enter, true)],
+                    vec![key(egui::Key::Enter, false)],
+                ] {
+                    let (painted, _, _) = frame(&actual, &node, events.clone());
+                    let (expected, native_rect) = native_frame(events);
+                    assert_eq!(rect, native_rect);
+                    assert_eq!(painted.shapes, expected.shapes, "dark={dark}, toggle={toggle}");
+                    assert_eq!(painted.platform_output.events, expected.platform_output.events,
+                        "widget role, name, focus or selection changed: dark={dark}, toggle={toggle}");
+                }
+            }
+        }
     }
 
     #[test]

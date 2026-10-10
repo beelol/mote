@@ -406,6 +406,65 @@ mod tests {
     }
 
     #[test]
+    fn interaction_surviving_toggle_keeps_focus_when_earlier_matrix_is_removed() {
+        assert_control_focus_survives_matrix_removal(
+            json!({"type":"toggle","label":"Survivor","name":"enabled","value":true}),
+            json!({"thread":"main","event":"change","args":{"field":"enabled","value":false}}),
+        );
+    }
+
+    #[test]
+    fn interaction_surviving_action_keeps_focus_when_earlier_matrix_is_removed() {
+        assert_control_focus_survives_matrix_removal(
+            json!({"type":"action","label":"Survivor","event":"survivor.activate"}),
+            json!({"thread":"main","event":"survivor.activate","args":{}}),
+        );
+    }
+
+    fn assert_control_focus_survives_matrix_removal(node: serde_json::Value, expected: serde_json::Value) {
+        for identity in [json!("survivor"), serde_json::Value::Null] {
+            let mut harness = ObservationHarness::default();
+            harness.event(&surface(1, json!({"type":"text","value":"Earlier Matrix"})));
+            let mut survivor = surface(2, node.clone());
+            survivor.payload["surface_id"] = identity;
+            harness.event(&survivor);
+            harness.frame(vec![]);
+            harness.key(egui::Key::Tab, false);
+            let focused = harness.ctx.memory(|memory| memory.focused());
+            assert!(focused.is_some());
+            assert!(harness.queued().is_empty());
+            harness.incoming.send(StreamUpdate::Disconnected).unwrap();
+            harness.app.drain_events();
+            harness.frame(vec![]);
+            assert_eq!(harness.ctx.memory(|memory| memory.focused()), focused,
+                "surviving control lost focus when an earlier message disappeared");
+            harness.key(egui::Key::Space, false);
+            assert_eq!(harness.queued(), [expected.clone()]);
+        }
+    }
+
+    #[test]
+    fn interaction_removed_toggle_and_action_do_not_pass_focus_to_another_surface() {
+        for node in [
+            json!({"type":"toggle","label":"Same","name":"enabled","value":true}),
+            json!({"type":"action","label":"Same","event":"refresh"}),
+        ] {
+            let mut harness = ObservationHarness::default();
+            harness.event(&surface(1, node.clone()));
+            let mut survivor = surface(2, node);
+            survivor.payload["surface_id"] = json!("survivor");
+            harness.event(&survivor);
+            harness.frame(vec![]);
+            harness.key(egui::Key::Tab, false);
+            assert!(harness.ctx.memory(|memory| memory.focused()).is_some());
+            harness.incoming.send(StreamUpdate::Disconnected).unwrap();
+            harness.app.drain_events();
+            harness.key(egui::Key::Space, false);
+            assert!(harness.queued().is_empty(), "removed surface transferred focus");
+        }
+    }
+
+    #[test]
     fn interaction_removed_toggle_and_select_discard_local_values() {
         let mut toggle = ObservationHarness::default();
         let node = json!({"type":"toggle","label":"Enabled","name":"enabled","value":true});
