@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/matrix-lang",
     "crates/mote-redact",
     "crates/mote-paths",
     "crates/mote-eventlog",
