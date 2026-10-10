@@ -4,6 +4,9 @@ Date 2026-10-10.
 Environment is macOS on the shared Mote workspace.
 The measurement uses the repository's approved `tiktoken-rs` 0.6 `o200k_base` tokenizer.
 The cached local Rust libraries were already built.
+Rust is 1.89.0 and Cargo is 1.89.0.
+The host is macOS 26.6.2 (25G83), arm64.
+The shell wrapper uses the installed `jq` 1.7.1 to select Cargo artifacts.
 No dependency was installed and no model was pulled or called.
 
 ## Command and method
@@ -12,21 +15,27 @@ Run from the repository root.
 
 ```sh
 sh matrix/tools/measure.sh
+sh matrix/tools/measure.sh --check
 ```
 
 The command compiles a measurement utility in a fresh temporary directory.
+It first runs an offline, locked workspace build.
+It selects matching library paths from Cargo's artifact report.
+This avoids mixing cached libraries from different feature sets.
+Check mode compares the complete stdout TSV with `matrix/measurement-output.tsv`.
+Any missing row or changed count fails the command.
 It reads the first source fence of each numbered case in `matrix/examples.md`.
 It also reads the nine `.matrix` fragments in `matrix/conformance/v0/`.
 It reads their matching unchanged `.json` files in `crates/mote-ui/fixtures/`.
 JSON is parsed and serialized without indentation or spaces.
 Matrix source keeps its authoring whitespace and final newline.
-Counts include neither Markdown fences nor host manifests.
+The design and v0 fragment counts include neither Markdown fences nor host manifests.
 Tokens use `encode_ordinary` and add no prompt or special tokens.
 Counts are independent of local Ollama model tokenization.
 They are comparable to the existing ledger estimator rather than claimed model input counts.
 
-The tool measures source and snapshots.
-It is not a Matrix parser, compiler or proof of semantic equivalence.
+The fragment comparisons measure source and existing consumer snapshots.
+The separate dashboard measurement compiles and validates the current trusted host contract.
 The fixture manifest and lowering rules document the exact snapshot comparisons.
 No first try validity rate can be measured before a parser exists.
 
@@ -77,3 +86,80 @@ The result excludes host contracts and data snapshots from the Matrix side.
 It measures authoring syntax rather than total transport or storage cost.
 The original v0 chat and progress fixture lacks Matrix message roles and has no exact source equivalent.
 The full catalog requires a future owner approved consumer contract revision.
+
+## Trusted dashboard host and transport
+
+The input source is `matrix/examples/mote-dashboard.matrix` including its final newline.
+The utility imports the production host binding and pipeline modules from `moted/src/`.
+It builds an empty pipeline snapshot from in-memory event and context stores.
+It passes the nine exact v0 config defaults to the production snapshot builder.
+The four model defaults are `models.local_only=true`, `models.talk="qwen3:4b"`,
+`models.router="qwen3:0.6b"` and `models.think="qwen3-coder:30b-64k"`.
+The remaining defaults are `budgets.talk_first_token=300`, `budgets.router=150`,
+`budgets.think_first_token=3000`, `packs.talk=600` and `packs.think=8000`.
+Pipeline numbers, events and requests are empty.
+The generated time is zero.
+The dashboard therefore has an empty stages list.
+Its three selects have the three approved model options.
+Its toggle is true and its action is `refresh`.
+The production compiler lowers the dashboard to the v0 consumer tree.
+The production validator validates that tree before measurement.
+
+| Row | Encoding | Bytes | Tokens |
+|---|---|---|---|
+| `dashboard_source` | Matrix source | 433 | 100 |
+| `dashboard_consumer_json` | Compact consumer JSON | 664 | 227 |
+| `host_manifest` | Canonical measurement JSON | 1097 | 306 |
+| `binding_snapshot` | Canonical measurement JSON | 277 | 103 |
+| `matrix_render_request` | IPC JSON line | 536 | 131 |
+| `matrix_render_response` | IPC JSON line | 43 | 15 |
+| `ui_surface_event` | IPC JSON line | 774 | 258 |
+
+The manifest and snapshot are in-memory Rust structures without a production JSON serializer.
+Their rows are deterministic measurement encodings.
+They are neither transmitted bytes nor Rust memory sizes.
+The encoding retains every manifest field: `version`, `records`, `enums`, `values`, `fields` and `actions`.
+Records encode their `fields`; enums encode `members` and `labels`.
+Bindings encode `ty` and `display`; mutable fields also encode `initial`.
+Actions encode `parameters`.
+Types use objects with a `kind` string.
+Enum and record types add `name`; list and option types add `item`.
+Display formats use a `kind` string and any `symbol` or `decimals` values.
+The snapshot encodes `manifest_version`, `values`, `fields`, `row_fields` and `selections`.
+Row fields and selections are empty objects for this sample.
+A nonempty row field or selection map rejects instead of being omitted.
+Both encodings use compact JSON with lexicographically sorted object keys.
+Array order is preserved.
+Neither encoding adds a newline.
+Changing this declared encoding changes its measurement cost.
+
+The IPC rows serialize the actual current request, reply and event envelope shapes from `mote-ipc`.
+Each row includes one terminating newline, as required by its framing.
+They are deterministic samples of the wire contract, not a live traffic capture.
+Request id is `1` and thread is `main`.
+The request is `{"id":1,"method":"matrix.render","params":{"source":"...","thread":"main"}}`.
+The source string is JSON escaped inside this request.
+The reply is `{"id":1,"result":{"ok":true,"valid":true}}`.
+The event is `{"event":{"kind":"ui.surface","payload":{"surface":...,"surface_id":"matrix"},"scope_id":"main","seq":1,"ts":0}}`.
+The event payload passes through the production redacting event log before measurement.
+Its first stored sequence is `1`.
+Its timestamp is normalized to `0` for reproducibility.
+These metadata values are declared samples, not live measurements.
+
+Source crosses IPC in the render request.
+The unary reply carries only the success and validity result.
+The subscribed event carries the compiled tree and surface identity.
+The host manifest and binding snapshot remain inside the daemon during this render.
+The consumer JSON row is already contained in the event row and must not be added again.
+One render request, reply and subscribed event total 1353 bytes for these sample values.
+Their separately counted tokens sum to 404.
+This sum is not a model prompt count or the tokenization of concatenated frames.
+Subscriptions, later refreshes, config events, socket overhead and database storage are excluded.
+Populated pipeline rows and real timestamps change the event cost.
+The source savings above do not establish total transport savings.
+
+Two checked runs produced byte-identical complete TSV output on 2026-10-10.
+`cmp` exited zero.
+Both SHA-256 hashes were `16235ce2bf2d52764cc7630606dfe1fcb41505b8deaffe09654fa5469799840c`.
+The complete output is committed in [measurement-output.tsv](measurement-output.tsv).
+The acceptance evidence is [UI-04](../docs/verification/UI-04.md).

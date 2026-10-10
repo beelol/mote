@@ -1,0 +1,31 @@
+design_case	matrix_bytes	matrix_tokens	compact_json_bytes	json_tokens
+1	106	29	none	none
+2	77	24	none	none
+3	196	67	none	none
+4	207	58	none	none
+5	100	28	none	none
+6	51	14	125	33
+7	131	33	none	none
+8	56	15	none	none
+9	217	56	none	none
+10	41	12	none	none
+design_total	1182	336	partial	partial
+v0_fixture	matrix_bytes	matrix_tokens	compact_json_bytes	json_tokens
+01_text	23	6	41	11
+02_stack	44	15	99	27
+03_row	37	13	90	25
+04_list	51	13	125	33
+05_table	76	22	96	37
+06_field	26	7	69	18
+07_toggle	31	8	71	19
+08_select	67	27	114	44
+09_action	28	7	53	13
+v0_total	383	118	758	227
+host_and_transport	encoding	bytes	tokens
+dashboard_source	matrix_source	433	100
+dashboard_consumer_json	compact_consumer_json	664	227
+host_manifest	canonical_measurement_json	1097	306
+binding_snapshot	canonical_measurement_json	277	103
+matrix_render_request	ipc_json_line	536	131
+matrix_render_response	ipc_json_line	43	15
+ui_surface_event	ipc_json_line	774	258

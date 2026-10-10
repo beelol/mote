@@ -1,16 +1,30 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/../.."
-matrix_tiktoken=$(ls -t target/debug/deps/libtiktoken_rs-*.rlib 2>/dev/null | head -n 1)
-matrix_json=$(ls -t target/debug/deps/libserde_json-*.rlib 2>/dev/null | head -n 1)
-if [ -z "$matrix_tiktoken" ] || [ -z "$matrix_json" ]; then
-  echo 'Approved local tokenizer or JSON library is not built. Run the normal workspace checks first.' >&2
-  exit 1
-fi
+case "$*" in
+  ''|--check) ;;
+  *) echo 'Usage: sh matrix/tools/measure.sh [--check]' >&2; exit 2 ;;
+esac
+matrix_mode=${1-}
 matrix_probe_dir=$(mktemp -d /private/tmp/matrix-measure.XXXXXX)
+trap 'rm -f "$matrix_probe_dir/measure" "$matrix_probe_dir/output.tsv" "$matrix_probe_dir/artifacts.jsonl"; rmdir "$matrix_probe_dir"' EXIT HUP INT TERM
+cargo build --workspace --offline --locked --message-format=json > "$matrix_probe_dir/artifacts.jsonl"
+matrix_libs='tiktoken_rs serde_json matrix_lang mote_context mote_eventlog mote_ui serde rusqlite'
+set --
+for matrix_lib in $matrix_libs; do
+  matrix_rlib=$(jq -ers --arg name "$matrix_lib" '
+    [.[] | select(.reason == "compiler-artifact" and .target.name == $name)
+      | .filenames[] | select(endswith(".rlib"))] | unique
+    | if length == 1 then .[0] else error("expected one built library for " + $name) end
+  ' "$matrix_probe_dir/artifacts.jsonl")
+  set -- "$@" --extern "$matrix_lib=$matrix_rlib"
+done
 rustc --edition=2021 matrix/tools/measure.rs \
   -L dependency=target/debug/deps \
-  --extern "tiktoken_rs=$matrix_tiktoken" \
-  --extern "serde_json=$matrix_json" \
+  "$@" \
   -o "$matrix_probe_dir/measure"
-"$matrix_probe_dir/measure"
+"$matrix_probe_dir/measure" > "$matrix_probe_dir/output.tsv"
+if [ "$matrix_mode" = --check ]; then
+  diff -u matrix/measurement-output.tsv "$matrix_probe_dir/output.tsv"
+fi
+cat "$matrix_probe_dir/output.tsv"
