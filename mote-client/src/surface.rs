@@ -81,7 +81,17 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, clicked: &mut Vec<String>) {
                     .selected_text(&selected)
                     .show_ui(ui, |ui| {
                         for option in options {
-                            ui.selectable_value(&mut selected, option.clone(), option);
+                            control(ui, |ui| {
+                                let response =
+                                    crate::theme::selectable_label(ui, selected == *option, option);
+                                let target = response.rect.expand2(egui::vec2(0.0, 6.0));
+                                if response
+                                    .union(ui.interact(target, response.id, egui::Sense::click()))
+                                    .clicked()
+                                {
+                                    selected = option.clone();
+                                }
+                            });
                         }
                     });
             });
@@ -194,6 +204,42 @@ mod tests {
                 modifiers: Default::default(),
             },
         ]
+    }
+
+    fn text_center(output: &egui::FullOutput, value: &str) -> egui::Pos2 {
+        output
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == value => {
+                    Some(text.pos + text.galley.rect.center().to_vec2())
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("missing rendered text {value}"))
+    }
+
+    #[test]
+    fn adjacent_popup_choices_keep_independent_48_point_edge_targets() {
+        for offset in [-23.0, 23.0] {
+            let ctx = egui::Context::default();
+            crate::theme::install(&ctx);
+            let node = Node::Select {
+                label: "Mode".into(),
+                name: "mode".into(),
+                options: vec!["Alpha".into(), "Bravo".into(), "Charlie".into()],
+                value: "Alpha".into(),
+            };
+            let (closed, _, _) = frame(&ctx, &node, vec![]);
+            frame(&ctx, &node, click_events(text_center(&closed, "Alpha")));
+            let (popup, _, _) = frame(&ctx, &node, vec![]);
+            let middle = text_center(&popup, "Bravo");
+            assert!(text_center(&popup, "Charlie").y > middle.y);
+            frame(&ctx, &node, click_events(middle + egui::vec2(0.0, offset)));
+            let (selected, _, _) = frame(&ctx, &node, vec![]);
+            assert!(selected.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Bravo")), "middle option was not selected at offset {offset}, middle={middle:?}, labels={:?}", selected.shapes.iter().filter_map(|shape| match &shape.shape { egui::Shape::Text(text) => Some((text.galley.text(), text.pos)), _ => None }).collect::<Vec<_>>());
+            assert!(!selected.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Charlie")), "popup did not close after selection");
+        }
     }
 
     #[test]

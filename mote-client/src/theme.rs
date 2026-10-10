@@ -50,7 +50,7 @@ pub fn style(dark: bool) -> egui::Style {
     v.menu_corner_radius = egui::CornerRadius::ZERO;
     v.window_shadow = egui::epaint::Shadow::NONE;
     v.popup_shadow = egui::epaint::Shadow::NONE;
-    v.selection.bg_fill = accent.gamma_multiply(0.2);
+    v.selection.bg_fill = surface;
     v.selection.stroke = egui::Stroke::new(1.0, accent);
     v.text_cursor.stroke = egui::Stroke::new(1.0, accent);
     v.hyperlink_color = accent;
@@ -96,6 +96,19 @@ pub fn caption(ui: &mut egui::Ui, text: &str) {
     );
 }
 
+pub fn selectable_label(ui: &mut egui::Ui, selected: bool, text: &str) -> egui::Response {
+    let response = ui.selectable_label(selected, text);
+    if selected && ui.is_rect_visible(response.rect) {
+        ui.painter().rect_stroke(
+            response.rect,
+            0,
+            ui.visuals().selection.stroke,
+            egui::StrokeKind::Inside,
+        );
+    }
+    response
+}
+
 pub fn install(ctx: &egui::Context) {
     ctx.set_style_of(egui::Theme::Dark, style(true));
     ctx.set_style_of(egui::Theme::Light, style(false));
@@ -105,6 +118,41 @@ pub fn install(ctx: &egui::Context) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selected_controls_keep_the_surface_fill_in_both_themes() {
+        for (dark, surface) in [
+            (true, egui::Color32::from_rgb(11, 11, 12)),
+            (false, egui::Color32::from_rgb(244, 241, 234)),
+        ] {
+            let ctx = egui::Context::default();
+            ctx.set_style(style(dark));
+            let output = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let _ = selectable_label(ui, true, "Selected");
+                });
+            });
+            assert!(output
+                .shapes
+                .iter()
+                .any(|shape| matches!(&shape.shape, egui::Shape::Rect(_))));
+            let accent = if dark {
+                egui::Color32::from_rgb(229, 72, 77)
+            } else {
+                egui::Color32::from_rgb(200, 50, 46)
+            };
+            assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.stroke.color == accent)), "selected control has no red outline");
+            for shape in output.shapes {
+                if let egui::Shape::Rect(rect) = shape.shape {
+                    assert!(
+                        rect.fill == surface || rect.fill == egui::Color32::TRANSPARENT,
+                        "selected control introduced fill {:?}",
+                        rect.fill
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn runtime_selects_vector_for_system_light_and_dark() {

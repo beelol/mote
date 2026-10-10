@@ -162,7 +162,7 @@ impl MoteApp {
     fn pipeline_view(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             for (i, s) in STAGES.iter().enumerate() {
-                if ui.selectable_label(self.stage == i, *s).clicked() {
+                if crate::theme::selectable_label(ui, self.stage == i, s).clicked() {
                     self.stage = i;
                 }
             }
@@ -170,7 +170,7 @@ impl MoteApp {
         ui.separator();
         ui.horizontal(|ui| {
             for (i, t) in TABS.iter().enumerate() {
-                if ui.selectable_label(self.tab == i, *t).clicked() {
+                if crate::theme::selectable_label(ui, self.tab == i, t).clicked() {
                     self.tab = i;
                 }
             }
@@ -277,15 +277,17 @@ impl eframe::App for MoteApp {
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if ui
-                        .selectable_label(self.screen == Screen::Chat, "Chat")
+                    if crate::theme::selectable_label(ui, self.screen == Screen::Chat, "Chat")
                         .clicked()
                     {
                         self.screen = Screen::Chat;
                     }
-                    if ui
-                        .selectable_label(self.screen == Screen::Pipeline, "Pipeline")
-                        .clicked()
+                    if crate::theme::selectable_label(
+                        ui,
+                        self.screen == Screen::Pipeline,
+                        "Pipeline",
+                    )
+                    .clicked()
                     {
                         self.screen = Screen::Pipeline;
                     }
