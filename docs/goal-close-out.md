@@ -39,6 +39,34 @@ Owner direction already relayed to the matrix agent (2026-10-10): the first/base
 retro-red Atari vector-line identity that materializes elements in as strokes; layout stays strict
 (col/row + header/footer + `fill` + align roles + the closed catalog), no new primitives.
 
+## Confirmed architecture (matrix agent, 2026-10-10)
+
+- The runtime is a **separate consumer process**, not daemon code. `moted` stays headless under
+  launchd, owning data, subscriptions, validation and surface history; it streams validated
+  surface-tree commits plus binding values over the existing IPC event stream and takes `ui.event`
+  back. The runtime holds only interaction state and redraws the newest committed surface. The new
+  runtime **is** the replacement client.
+- One Rust immediate-mode runtime (Taffy, egui, wgpu, rayon, AccessKit) covers Mac, Pi and the
+  newly added **iPad** target. The JSON tree stays the consumer contract, so a second native
+  consumer (e.g. SwiftUI on iOS) stays possible without changing the language.
+- Default theme is named **Vector** (thin retro-red Atari vector-line; the direction the owner
+  locked). Layout model locked: col/row, header/footer, fill, align, auto-scroll; no
+  grid/absolute/z-index/pixels.
+- **Gate:** the matrix agent is the design session and will NOT build the runtime binary until the
+  owner closes **UI-00**. So the working-GUI path is: owner closes UI-00 -> matrix builds the
+  first-milestone runtime -> it pings this driver -> swap it in as the client. Until then there is
+  no runtime to adopt.
+
+## Seam readiness (daemon side, checked 2026-10-10)
+
+- `moted` handles `ui.event` (logs it) and `crates/mote-ui::validate()` is fail-closed (typed
+  `Node` or a `Diagnostic`). `mote-client` already consumes `ui.surface` -> `Node` and returns
+  `ui.event`; the matrix runtime replaces that client against the same contract.
+- Gap: **no lane emits `ui.surface` yet** — talk/think emit text events only, so a GUI shows chat
+  text, not generative surfaces. Wiring a lane to emit a validated `ui.surface` is the small
+  daemon-side piece to show generative UI once the runtime can draw one. Do this when it adds value
+  and stays in budget; it is not required for a chat-only working window.
+
 ## Prioritized close-out backlog
 
 1. **GUI via matrix (blocked on matrix runtime).** When the matrix runtime can render one surface
