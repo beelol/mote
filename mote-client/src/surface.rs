@@ -36,8 +36,8 @@ pub fn discard_change(ctx: &egui::Context, event: &SurfaceEvent) {
         return;
     };
     ctx.data_mut(|data| {
-        data.remove::<bool>(*state_id);
-        data.remove::<String>(*state_id);
+        data.remove::<(bool, bool)>(*state_id);
+        data.remove::<(String, String)>(*state_id);
     });
 }
 
@@ -84,7 +84,9 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
         Node::Field { label, name, value } => {
             let id = ui.make_persistent_id(("field", name));
             let mut edited = ui
-                .data_mut(|data| data.get_temp::<String>(id))
+                .data_mut(|data| data.get_temp::<(String, String)>(id))
+                .filter(|(host, _)| host == value)
+                .map(|(_, edited)| edited)
                 .unwrap_or_else(|| value.clone());
             control(ui, |ui| {
                 ui.label(label);
@@ -93,12 +95,14 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
                     egui::TextEdit::singleline(&mut edited).id(id),
                 );
             });
-            ui.data_mut(|data| data.insert_temp(id, edited));
+            ui.data_mut(|data| data.insert_temp(id, (value.clone(), edited)));
         }
         Node::Toggle { label, name, value } => {
             let id = ui.make_persistent_id(("toggle", name));
             let mut edited = ui
-                .data_mut(|data| data.get_temp::<bool>(id))
+                .data_mut(|data| data.get_temp::<(bool, bool)>(id))
+                .filter(|(host, _)| host == value)
+                .map(|(_, edited)| edited)
                 .unwrap_or(*value);
             let response = control(ui, |ui| ui.add(egui::Checkbox::new(&mut edited, label)));
             if response.changed() {
@@ -108,7 +112,7 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
                     state_id: id,
                 });
             }
-            ui.data_mut(|data| data.insert_temp(id, edited));
+            ui.data_mut(|data| data.insert_temp(id, (*value, edited)));
         }
         Node::Select {
             label,
@@ -118,7 +122,9 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
         } => {
             let id = ui.make_persistent_id(("select", name));
             let mut selected = ui
-                .data_mut(|data| data.get_temp::<String>(id))
+                .data_mut(|data| data.get_temp::<(String, String)>(id))
+                .filter(|(host, _)| host == value)
+                .map(|(_, selected)| selected)
                 .unwrap_or_else(|| value.clone());
             control(ui, |ui| {
                 ui.label(label);
@@ -146,7 +152,7 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
                         }
                     });
             });
-            ui.data_mut(|data| data.insert_temp(id, selected));
+            ui.data_mut(|data| data.insert_temp(id, (value.clone(), selected)));
         }
         Node::Action { label, event } => {
             if button(ui, label).clicked() {
@@ -444,6 +450,46 @@ mod tests {
             egui::Shape::Text(text) if text.galley.text() == "Alpha"
         )));
         assert!(!reverted.shapes.iter().any(|shape| matches!(
+            &shape.shape,
+            egui::Shape::Text(text) if text.galley.text() == "Bravo"
+        )));
+    }
+
+    #[test]
+    fn replacement_surface_host_value_overrides_cached_select_edit() {
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let original = Node::Select {
+            label: "Mode".into(),
+            name: "models.talk".into(),
+            options: vec!["Alpha".into(), "Bravo".into(), "Charlie".into()],
+            value: "Alpha".into(),
+        };
+        let (closed, _, _) = frame(&ctx, &original, vec![]);
+        frame(
+            &ctx,
+            &original,
+            click_events(text_center(&closed, "Alpha")),
+        );
+        let (popup, _, _) = frame(&ctx, &original, vec![]);
+        frame(
+            &ctx,
+            &original,
+            click_events(text_center(&popup, "Bravo")),
+        );
+
+        let replacement = Node::Select {
+            label: "Mode".into(),
+            name: "models.talk".into(),
+            options: vec!["Alpha".into(), "Bravo".into(), "Charlie".into()],
+            value: "Charlie".into(),
+        };
+        let (rendered, _, _) = frame(&ctx, &replacement, vec![]);
+        assert!(rendered.shapes.iter().any(|shape| matches!(
+            &shape.shape,
+            egui::Shape::Text(text) if text.galley.text() == "Charlie"
+        )));
+        assert!(!rendered.shapes.iter().any(|shape| matches!(
             &shape.shape,
             egui::Shape::Text(text) if text.galley.text() == "Bravo"
         )));
