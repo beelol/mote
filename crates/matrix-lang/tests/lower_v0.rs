@@ -178,6 +178,19 @@ fn wrapper_elision_preserves_explicit_columns_and_reading_order() {
 }
 
 #[test]
+fn literal_markup_is_lowered_without_interpretation_or_hidden_nodes() {
+    let (m, s) = fixture();
+    for literal in [
+        "<b>hi</b>",
+        "<script>alert('hi')</script>",
+        "# **bold** _italic_ `code` [link](https://example.com) ![image](asset)",
+    ] {
+        let source = format!("text {}", serde_json::to_string(literal).unwrap());
+        assert_eq!(lower(&source, &m, &s), json!({"type":"text","value":literal}));
+    }
+}
+
+#[test]
 fn collection_rows_expand_with_nearest_row_values_and_item_wrappers() {
     let (m, s) = fixture();
     assert_eq!(lower("list from fixture.models { item { text .name list from .items { item { text .value } } } }", &m, &s), json!({
@@ -651,6 +664,13 @@ fn diagnostic_goldens_cover_every_field_and_keep_json_rejection_behavior() {
     let (m, s) = fixture();
     for case in cases {
         let source = case["source"].as_str().unwrap();
+        if case["boundary"] == "resolver" {
+            let parsed = parse_surface(source).unwrap();
+            assert!(resolve(&parsed, &m, &s).is_err());
+        } else if case["boundary"] == "lowerer" {
+            let parsed = parse_surface(source).unwrap();
+            resolve(&parsed, &m, &s).unwrap();
+        }
         let errors = parse_surface(source)
             .and_then(|parsed| resolve(&parsed, &m, &s))
             .and_then(|resolved| lower_v0(&resolved))

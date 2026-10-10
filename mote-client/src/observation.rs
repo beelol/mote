@@ -119,8 +119,15 @@ impl ObservationHarness {
     }
 
     pub fn frame(&mut self, events: Vec<egui::Event>) -> Vec<DisplayedNode> {
+        self.frame_output(events).0
+    }
+
+    pub fn frame_output(
+        &mut self,
+        events: Vec<egui::Event>,
+    ) -> (Vec<DisplayedNode>, egui::FullOutput) {
         crate::surface::observation::take();
-        let _ = self.ctx.run(
+        let output = self.ctx.run(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -133,7 +140,7 @@ impl ObservationHarness {
                 egui::CentralPanel::default().show(ctx, |ui| self.app.chat_view(ui));
             },
         );
-        crate::surface::observation::take()
+        (crate::surface::observation::take(), output)
     }
 
     pub fn queued(&self) -> Vec<serde_json::Value> {

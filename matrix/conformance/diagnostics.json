@@ -149,5 +149,370 @@
         "hint": "Use the supported v0 subset or a versioned consumer contract"
       }
     ]
+  },
+  {
+    "category": "color",
+    "boundary": "parser",
+    "source": "screen { text \"private-literal\" color \"red\" }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_PARSE_DECLARATION",
+        "severity": "error",
+        "span": {
+          "start": 32,
+          "end": 37
+        },
+        "declaration_path": [
+          "screen[0]",
+          "color[0]"
+        ],
+        "message": "unknown declaration or misplaced modifier",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "size",
+    "boundary": "parser",
+    "source": "screen { text \"private-literal\" size 24 }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_PARSE_DECLARATION",
+        "severity": "error",
+        "span": {
+          "start": 32,
+          "end": 36
+        },
+        "declaration_path": [
+          "screen[0]",
+          "size[0]"
+        ],
+        "message": "unknown declaration or misplaced modifier",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "font",
+    "boundary": "parser",
+    "source": "screen { text \"private-literal\" font \"serif\" }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_PARSE_DECLARATION",
+        "severity": "error",
+        "span": {
+          "start": 32,
+          "end": 36
+        },
+        "declaration_path": [
+          "screen[0]",
+          "font[0]"
+        ],
+        "message": "unknown declaration or misplaced modifier",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "spacing",
+    "boundary": "parser",
+    "source": "screen { col spacing 8 { text \"private-literal\" } }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_PARSE_TOKEN",
+        "severity": "error",
+        "span": {
+          "start": 13,
+          "end": 20
+        },
+        "declaration_path": [
+          "screen[0]",
+          "col[0]"
+        ],
+        "message": "expected a declaration block",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "margin",
+    "boundary": "parser",
+    "source": "screen { text \"private-literal\" margin 8 }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_PARSE_DECLARATION",
+        "severity": "error",
+        "span": {
+          "start": 32,
+          "end": 38
+        },
+        "declaration_path": [
+          "screen[0]",
+          "margin[0]"
+        ],
+        "message": "unknown declaration or misplaced modifier",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "padding",
+    "boundary": "parser",
+    "source": "screen { text \"private-literal\" padding 8 }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_PARSE_DECLARATION",
+        "severity": "error",
+        "span": {
+          "start": 32,
+          "end": 39
+        },
+        "declaration_path": [
+          "screen[0]",
+          "padding[0]"
+        ],
+        "message": "unknown declaration or misplaced modifier",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "secondary",
+    "boundary": "parser",
+    "source": "screen { text \"private-literal\" secondary }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_PARSE_DECLARATION",
+        "severity": "error",
+        "span": {
+          "start": 32,
+          "end": 41
+        },
+        "declaration_path": [
+          "screen[0]",
+          "secondary[0]"
+        ],
+        "message": "unknown declaration or misplaced modifier",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "animation",
+    "boundary": "parser",
+    "source": "screen { text \"private-literal\" animation \"fade\" }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_PARSE_DECLARATION",
+        "severity": "error",
+        "span": {
+          "start": 32,
+          "end": 41
+        },
+        "declaration_path": [
+          "screen[0]",
+          "animation[0]"
+        ],
+        "message": "unknown declaration or misplaced modifier",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "state",
+    "boundary": "parser",
+    "source": "screen { state { value: \"private-literal\" } }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_PARSE_DECLARATION",
+        "severity": "error",
+        "span": {
+          "start": 9,
+          "end": 14
+        },
+        "declaration_path": [
+          "screen[0]",
+          "state[0]"
+        ],
+        "message": "unknown declaration or misplaced modifier",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "update rule",
+    "boundary": "lexer",
+    "source": "screen { text \"private-literal\" models.local_only = false }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_LEX_CHARACTER",
+        "severity": "error",
+        "span": {
+          "start": 50,
+          "end": 51
+        },
+        "declaration_path": [],
+        "message": "character is not part of Matrix source",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "route",
+    "boundary": "parser",
+    "source": "screen { route \"private-literal\" { text \"Next\" } }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_PARSE_DECLARATION",
+        "severity": "error",
+        "span": {
+          "start": 9,
+          "end": 14
+        },
+        "declaration_path": [
+          "screen[0]",
+          "route[0]"
+        ],
+        "message": "unknown declaration or misplaced modifier",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "tracked layout grid",
+    "boundary": "parser",
+    "source": "screen { grid columns [\"1fr\", \"2fr\"] { text \"private-literal\" } }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_PARSE_TOKEN",
+        "severity": "error",
+        "span": {
+          "start": 14,
+          "end": 21
+        },
+        "declaration_path": [
+          "screen[0]",
+          "grid[0]"
+        ],
+        "message": "expected from",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "pixel units",
+    "boundary": "lexer",
+    "source": "screen { field \"private-literal\" models.talk min 12px }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_LEX_NUMBER",
+        "severity": "error",
+        "span": {
+          "start": 49,
+          "end": 53
+        },
+        "declaration_path": [],
+        "message": "invalid or nonfinite JSON number",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "absolute positioning",
+    "boundary": "parser",
+    "source": "screen { col absolute { text \"private-literal\" } }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_PARSE_TOKEN",
+        "severity": "error",
+        "span": {
+          "start": 13,
+          "end": 21
+        },
+        "declaration_path": [
+          "screen[0]",
+          "col[0]"
+        ],
+        "message": "expected a declaration block",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "z-index",
+    "boundary": "lexer",
+    "source": "screen { text \"private-literal\" z-index 1 }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_LEX_NUMBER",
+        "severity": "error",
+        "span": {
+          "start": 33,
+          "end": 34
+        },
+        "declaration_path": [],
+        "message": "invalid or nonfinite JSON number",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "undeclared state read",
+    "boundary": "resolver",
+    "source": "screen { text \"private-literal\" text state.value }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_RESOLVE_PATH",
+        "severity": "error",
+        "span": {
+          "start": 37,
+          "end": 48
+        },
+        "declaration_path": [
+          "screen",
+          "1"
+        ],
+        "message": "Unknown Value path",
+        "hint": null
+      }
+    ]
+  },
+  {
+    "category": "catalog collection grid",
+    "boundary": "lowerer",
+    "source": "screen { grid from model_options { tile { text \"private-literal\" } } }",
+    "private_literal": "private-literal",
+    "diagnostics": [
+      {
+        "code": "E_LOWER_UNSUPPORTED",
+        "severity": "error",
+        "span": {
+          "start": 9,
+          "end": 68
+        },
+        "declaration_path": [
+          "screen",
+          "0"
+        ],
+        "message": "The v0 consumer cannot represent this declaration losslessly",
+        "hint": "Use the supported v0 subset or a versioned consumer contract"
+      }
+    ]
   }
 ]

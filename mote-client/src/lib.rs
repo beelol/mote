@@ -9,3 +9,4 @@ mod surface;
 mod theme;
 
 pub use app::observation::*;
+pub use egui::Shape as PaintedShape;

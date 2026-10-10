@@ -1,50 +1,62 @@
-# Handoff: Matrix candidate display isolation
+# Handoff: Matrix literal and forbidden source semantics
 
 Updated 2026-10-10. Replace this file, never append.
 
 Branch: `main`.
-Task 2 base: `77b58ef`.
-Task 2 commit subject: `test(client): verify committed candidate isolation`.
+Task 3 base: `042a4cc`.
+Task 3 commit subject: `test(matrix): pin literal and forbidden semantics`.
 Preserve untracked `.DS_Store` and `.superpowers/`.
 Do not push.
 
-Task 2 adds a reusable test-only observation harness around the real IPC decoder,
-application reducer, chat view, `surface::draw` and outbound event queue.
-The `test-observation` feature exposes it only for the daemon's development dependency.
-Passive draw hooks observe structural paths, egui namespaces, nodes and painted rectangles.
-They do not add controls or change layout.
+Task 3 adds exact characterization tests.
+No production parser, resolver, lowerer or renderer behavior changed.
+The test-only observation harness now returns egui output as well as displayed nodes.
+The feature-gated test library exposes the shape type for daemon integration tests.
 
-The ten unchanged JSON fixtures cover 1,963 framed byte splits, 1,963 malformed frames
-and 20 malformed complete payloads.
-The daemon action/form regression covers 173 byte prefixes, 297 rejected finalizations
-and 48 single whole-surface switches.
-Candidate-only positions emit nothing on taps or Enter.
-Prior controls retain their sequence, path and exact args.
-The form parses but remains unsupported by v0 lowering.
-No form approximation or consumer metadata was added.
+HTML-looking strings, a script-tag string and Markdown punctuation lower to exact Text nodes.
+The real decoder, reducer, renderer and outbound queue preserve their literal characters.
+The client observes one style section per literal.
+Clicks and Enter create no surface action.
+No URL or clipboard command is emitted on clicks.
 
-Tests exposed two framing defects.
-`EventDecoder` now retains bytes across timeouts, including splits inside UTF-8.
-Malformed complete frames are skipped without invalidating the committed display.
-EOF before a newline is rejected.
-Hard disconnect and resync behavior remain unchanged.
-Each reconnect still reads status and subscribes on the same socket.
-The replay cutoff still suppresses historical Matrix surfaces and clears expired interaction state.
+The checked diagnostic corpus now has 25 cases.
+Its 17 new cases cover forbidden presentation, state, navigation and layout source forms.
+They include an undeclared state read and a valid catalog collection grid.
+Tracked layout syntax rejects at the parser.
+The valid collection grid resolves and retains `E_LOWER_UNSUPPORTED`.
+All diagnostic fields are exact.
+Both whole-source render and final candidate submission preserve the prior source and contract.
+Each of 34 terminal rejections emits one redacted diagnostic without a source literal.
+The real prior Refresh control still renders the prior source in all 34 cases.
+Configuration, packs, ledger and model-request counts stay unchanged.
 
-Task 1 admission contracts, event retention atomicity, diagnostics and source ownership remain intact.
-The sequence and zero-based path still travel outside the v0 Node payload.
-Schema, fixtures and deterministic measurement outputs are unchanged.
-No live model call, model pull, source persistence, remote write or push occurred.
+CandidateStream retains its first terminal prefix rejection.
+Submitting an invalid identifier one byte at a time may therefore name an earlier prefix.
+The exact shared corpus supplies the whole source before finalization.
+It does not claim diagnostic equality across every malformed-source fragmentation.
 
-Verification passed: 9 IPC tests, 67 client tests, 25 focused daemon tests,
-296 workspace tests and all doc tests, workspace clippy, deterministic measurements and diff checks.
-Socket-dependent suites ran with local socket access after sandbox permission failures.
-Evidence: `docs/verification/UI-31.md`, `UI-33.md` and `UI-34.md`.
-The full report is `.superpowers/sdd/2026-10-10-matrix-host-runtime-v0/task-2-report.md`.
+Partial evidence: `docs/verification/UI-13.md`, `UI-21.md`, `UI-23.md`,
+`UI-26.md` and `UI-27.md`.
+All five criteria remain open.
+Markdown, broader theme groups, layout acceptance and host history still need their full clauses.
+README links the evidence without claiming closure.
 
-Next: independently review Task 2, then continue Task 3 in
+Task 1 admission and retention atomicity remain intact.
+Task 2's decoder fixes and UI-31, UI-33 and UI-34 evidence remain unchanged.
+The schema, ten consumer fixtures, nine source fixtures and deterministic measurements are unchanged.
+No live model call, model pull, remote write or push occurred.
+
+Verification passed: 117 Matrix tests, 68 client tests, 62 daemon unit tests and
+two daemon integration tests in the focused run.
+The full workspace run passed 301 tests and all doc tests.
+Workspace clippy, the deterministic measurement check and diff checks passed.
+Socket-dependent suites ran with local socket access.
+
+Next: independently review Task 3, then continue Task 4 in
 `docs/superpowers/plans/2026-10-10-matrix-host-runtime-v0.md`.
-Task 3 pins literal text rendering and forbidden Matrix source semantics.
+Task 4 reconciles interaction state by live structural identity.
+The full Task 3 report is
+`.superpowers/sdd/2026-10-10-matrix-host-runtime-v0/task-3-report.md`.
 
 UI-29 remains partial for full-catalog actions and activation context.
 UI-35 native capture remains pending in `docs/verification/UI-35.md`.

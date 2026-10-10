@@ -98,6 +98,10 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
   Complete validated streaming, inert candidates and stable committed layout are verified in
   [UI-31](docs/verification/UI-31.md), [UI-33](docs/verification/UI-33.md) and
   [UI-34](docs/verification/UI-34.md).
+  Literal rendering and forbidden source semantics have partial v0 evidence in
+  [UI-13](docs/verification/UI-13.md), [UI-21](docs/verification/UI-21.md),
+  [UI-23](docs/verification/UI-23.md), [UI-26](docs/verification/UI-26.md) and
+  [UI-27](docs/verification/UI-27.md). Their full Verify clauses remain open.
 
 - [x] **V0-01** The Cargo workspace builds the `moted` and `mote-client` binaries and the nine crates named in the table, and both `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` pass on the empty project. **Verify:** Run both commands. [§1](docs/rfcs/v0.md#1-workspace) [evidence](docs/verification/V0-01.md)
 - [x] **V0-02** `mote-redact` replaces the same secret patterns and secret keys as Overseer's `redact.rs`, with Overseer's tests carried over. **Verify:** `cargo test -p mote-redact`. [§1](docs/rfcs/v0.md#1-workspace) [evidence](docs/verification/V0-02.md)

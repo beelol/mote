@@ -1633,6 +1633,137 @@ mod approval_dispatch_tests {
     }
 
     #[test]
+    fn forbidden_semantics_corpus_preserves_surface_source_contract_and_refresh() {
+        use mote_client::ObservationHarness;
+        let cases: Vec<Value> = serde_json::from_str(include_str!("../../matrix/conformance/diagnostics.json")).unwrap();
+        let server = mote_testkit::ScriptedServer::start().unwrap();
+        let (data, _) = dirs("forbidden-semantics");
+        let mut daemon = daemon(&data);
+        daemon.client = Ollama::new(server.base_url());
+        daemon.call("matrix.render", json!({"thread":"main", "source":MATRIX_DASHBOARD})).unwrap();
+        let original = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().unwrap();
+        let config_file = std::fs::read(data.join("config.toml")).unwrap();
+        let config = daemon.pipeline_snapshot().unwrap().config;
+        let sources = daemon.matrix_sources.lock().unwrap().clone();
+        let mut harness = ObservationHarness::default();
+        harness.event(&original);
+        let display = harness.frame(vec![]);
+        let secret = "ghp_0123456789abcdefghijklmnopqrstuvwx";
+        let mut checked = 0;
+        for case in cases.iter().filter(|case| case.get("category").is_some()) {
+            let source = case["source"].as_str().unwrap();
+            let literal = case["private_literal"].as_str().unwrap();
+            for streamed in [false, true] {
+                let before = daemon.log.max_seq().unwrap();
+                let committed = daemon.matrix_surfaces.lock().unwrap().clone();
+                let prior_surface = harness.surface();
+                let prior_switches = harness.switches;
+                let mut events = daemon.log.subscribe("main", before).unwrap();
+                let response = if streamed {
+                    candidate(&daemon, "main", secret, source.as_bytes(), false);
+                    assert_eq!(daemon.log.max_seq().unwrap(), before);
+                    assert_eq!(*daemon.matrix_sources.lock().unwrap(), sources);
+                    assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), committed);
+                    candidate(&daemon, "main", secret, b"", true)
+                } else {
+                    daemon.call("matrix.render", json!({"thread":"main", "source":source})).unwrap()
+                };
+                assert_eq!(response[if streamed { "status" } else { "ok" }], if streamed { json!("rejected") } else { json!(false) });
+                assert_eq!(response["diagnostics"], case["diagnostics"], "{} streamed={streamed}", case["category"]);
+                let diagnostic = events.recv_timeout(Duration::from_millis(10)).unwrap();
+                assert_eq!(diagnostic.kind, "ui.diagnostic");
+                let mut expected = json!({"diagnostics":case["diagnostics"]});
+                if streamed { expected["candidate"] = json!("[redacted]"); }
+                assert_eq!(diagnostic.payload, expected);
+                assert_eq!(daemon.log.get(before + 1).unwrap(), Some(diagnostic.clone()));
+                assert_eq!(daemon.log.max_seq().unwrap(), before + 1);
+                assert!(events.recv_timeout(Duration::from_millis(2)).is_none());
+                for value in [&response, &diagnostic.payload] {
+                    assert!(!value.to_string().contains(literal));
+                    assert!(!value.to_string().contains(secret));
+                    assert!(!value.to_string().contains(source));
+                }
+                assert_eq!(*daemon.matrix_sources.lock().unwrap(), sources);
+                assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), committed);
+                assert_eq!(daemon.log.recent_kind_since("ui.surface", i64::MIN, 1).unwrap()[0].payload, original.payload);
+                harness.event(&diagnostic);
+                assert_eq!(harness.surface(), prior_surface);
+                assert_eq!(harness.frame(vec![]), display);
+                assert_eq!(harness.switches, prior_switches);
+                assert!(harness.queued().is_empty());
+                assert_eq!(std::fs::read(data.join("config.toml")).unwrap(), config_file);
+                assert_eq!(daemon.pipeline_snapshot().unwrap().config, config);
+                assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), 0);
+                assert_eq!(daemon.store.lock().unwrap().count_packs().unwrap(), 0);
+                assert!(server.recorded().is_empty());
+
+                let refresh = display.iter().find(|node| matches!(node.node, mote_ui::Node::Action { .. })).unwrap();
+                harness.click(refresh.rect.center());
+                let queued = harness.queued();
+                assert_eq!(queued, vec![json!({"thread":"main", "event":"refresh", "args":{}, "surface_seq":committed["main"].seq,"node_path":[4]})]);
+                daemon.call("ui.event", queued[0].clone()).unwrap();
+                assert_eq!(events.recv_timeout(Duration::from_millis(10)).unwrap().kind, "ui.event");
+                let refreshed = events.recv_timeout(Duration::from_millis(10)).unwrap();
+                assert_eq!(refreshed.kind, "ui.surface");
+                assert_eq!(refreshed.payload, original.payload);
+                assert!(events.recv_timeout(Duration::from_millis(2)).is_none());
+                harness.event(&refreshed);
+                assert_eq!(harness.frame(vec![]), display);
+                assert_eq!(*daemon.matrix_sources.lock().unwrap(), sources);
+                assert_eq!(std::fs::read(data.join("config.toml")).unwrap(), config_file);
+                assert_eq!(daemon.pipeline_snapshot().unwrap().config, config);
+                assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), 0);
+                assert_eq!(daemon.store.lock().unwrap().count_packs().unwrap(), 0);
+                assert!(server.recorded().is_empty());
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 34);
+        println!("17 corpus cases, 34 terminal rejections, 34 prior-source Refresh activations, zero model requests");
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn matrix_literal_strings_reach_the_renderer_as_inert_text() {
+        use mote_client::ObservationHarness;
+        let (data, _) = dirs("literal-rendering");
+        let daemon = daemon(&data);
+        for literal in [
+            "<b>hi</b>",
+            "<script>alert('hi')</script>",
+            "# **bold** _italic_ `code` [link](https://example.com) ![image](asset)",
+        ] {
+            let source = format!("screen {{ text {} }}", serde_json::to_string(literal).unwrap());
+            for streamed in [false, true] {
+                if streamed {
+                    assert_eq!(candidate(&daemon, "main", "literal", source.as_bytes(), true)["status"], "committed");
+                } else {
+                    assert_eq!(daemon.call("matrix.render", json!({"source":source})).unwrap()["ok"], true);
+                }
+                let event = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().unwrap();
+                assert_eq!(event.payload, json!({"surface_id":"matrix", "surface":{"type":"text","value":literal}}));
+                let mut harness = ObservationHarness::default();
+                harness.event(&event);
+                let (display, output) = harness.frame_output(vec![]);
+                assert_eq!(display.len(), 1);
+                assert_eq!(display[0].node, mote_ui::Node::Text { value: literal.into() });
+                assert!(display[0].path.is_empty());
+                let labels: Vec<_> = output.shapes.iter().filter_map(|shape| match &shape.shape {
+                    mote_client::PaintedShape::Text(text) if display[0].rect.contains(text.pos) => Some(text.galley.text()),
+                    _ => None,
+                }).collect();
+                assert_eq!(labels, [literal]);
+                assert!(output.platform_output.commands.is_empty());
+                harness.click(display[0].rect.center());
+                harness.enter();
+                assert!(harness.queued().is_empty());
+                assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), 0);
+            }
+        }
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
     fn matrix_limits_preserve_the_surface_and_refresh_the_prior_source() {
         let oversized = format!("screen {{}}{}", " ".repeat(262_136));
         assert_eq!(oversized.len(), 262_145);

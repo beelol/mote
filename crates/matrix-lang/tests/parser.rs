@@ -467,6 +467,36 @@ fn reports_stable_codes_byte_spans_and_declaration_paths() {
 }
 
 #[test]
+fn forbidden_source_corpus_rejects_at_the_declared_boundary() {
+    use serde_json::{json, Value};
+    let cases: Vec<Value> = serde_json::from_str(include_str!("../../../matrix/conformance/diagnostics.json")).unwrap();
+    let mut checked = 0;
+    for case in cases.iter().filter(|case| case.get("category").is_some()) {
+        checked += 1;
+        let source = case["source"].as_str().unwrap();
+        let errors = match case["boundary"].as_str().unwrap() {
+            "lexer" => matrix_lang::lex(source).unwrap_err(),
+            "parser" => {
+                matrix_lang::lex(source).unwrap();
+                parse_surface(source).unwrap_err()
+            }
+            "resolver" | "lowerer" => {
+                parse_surface(source).unwrap();
+                continue;
+            }
+            boundary => panic!("unknown corpus boundary {boundary}"),
+        };
+        let actual: Vec<_> = errors.iter().map(|error| json!({
+            "code":error.code.as_str(), "severity":"error",
+            "span":{"start":error.span.start,"end":error.span.end},
+            "declaration_path":error.declaration_path, "message":error.message, "hint":error.hint,
+        })).collect();
+        assert_eq!(json!(actual), case["diagnostics"], "{}: {source}", case["category"]);
+    }
+    assert_eq!(checked, 17);
+}
+
+#[test]
 fn enforces_depth_and_node_limits_at_the_boundary() {
     let depth12 = format!("screen {{{}text x{}}}", "col {".repeat(10), "}".repeat(10));
     assert!(parse_surface(&depth12).is_ok());
