@@ -2601,6 +2601,7 @@ dependencies = [
  "mote-localmodel",
  "mote-paths",
  "mote-testkit",
+ "mote-ui",
  "notify",
  "rusqlite",
  "serde",

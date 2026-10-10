@@ -46,9 +46,14 @@ retro-red Atari vector-line identity that materializes elements in as strokes; l
   surface-tree commits plus binding values over the existing IPC event stream and takes `ui.event`
   back. The runtime holds only interaction state and redraws the newest committed surface. The new
   runtime **is** the replacement client.
-- One Rust immediate-mode runtime (Taffy, egui, wgpu, rayon, AccessKit) covers Mac, Pi and the
-  newly added **iPad** target. The JSON tree stays the consumer contract, so a second native
-  consumer (e.g. SwiftUI on iOS) stays possible without changing the language.
+- One Rust immediate-mode runtime (Taffy, egui, wgpu, rayon, AccessKit) covers Mac, Pi and iPad.
+  **Mac-native first (owner, 2026-10-10): get it working on the Mac, then iPad.** The JSON tree
+  stays the consumer contract, so a second native consumer (e.g. SwiftUI on iOS) stays possible
+  without changing the language.
+- **The point is inferred UI (two layers).** A lane infers a surface from the conversation (layer
+  1: model -> matrix source or the JSON tree), the runtime renders it (layer 2). The daemon owns
+  the inference lane + validation; the matrix agent owns the language, the compiler, and the
+  runtime. Both halves meet at the validated tree.
 - Default theme is named **Vector** (thin retro-red Atari vector-line; the direction the owner
   locked). Layout model locked: col/row, header/footer, fill, align, auto-scroll; no
   grid/absolute/z-index/pixels.

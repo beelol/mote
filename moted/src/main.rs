@@ -211,6 +211,23 @@ impl Daemon {
     }
 }
 
+fn validate_surface(surface: &Value) -> (Value, bool) {
+    let bytes = serde_json::to_vec(surface).expect("a JSON value always serializes");
+    let (node, valid) = match mote_ui::validate(&bytes) {
+        Ok(node) => (node, true),
+        Err(diagnostic) => (mote_ui::Node::Text { value: diagnostic.0 }, false),
+    };
+    let node = serde_json::to_value(node).expect("a surface node always serializes");
+    (node, valid)
+}
+
+fn commit_surface(log: &EventLog, thread: &str, surface: &Value) -> Result<Value, RpcError> {
+    let (node, valid) = validate_surface(surface);
+    log.append(thread, "ui.surface", &json!({ "surface": node }))
+        .map_err(|error| RpcError::internal(format!("commit surface: {error}")))?;
+    Ok(json!({ "ok": true, "valid": valid }))
+}
+
 impl Dispatch for Daemon {
     fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
         match method {
@@ -284,6 +301,18 @@ impl Dispatch for Daemon {
                 let event = params.get("event").and_then(|e| e.as_str()).unwrap_or("");
                 self.log.append("main", "ui.event", &json!({ "event": event })).ok();
                 Ok(json!({ "ok": true }))
+            }
+            // Validate a surface tree fail-closed and commit it as a `ui.surface` event on the
+            // thread scope for the renderer to draw. An invalid tree becomes a text node carrying
+            // the diagnostic (v0.md section 12). This is the seam the inferred-UI lane and the
+            // matrix runtime meet at; the tree is the consumer contract.
+            "surface.render" => {
+                let thread =
+                    params.get("thread").and_then(|t| t.as_str()).unwrap_or("main").to_string();
+                let surface = params
+                    .get("surface")
+                    .ok_or_else(|| RpcError::invalid_params("surface.render needs a surface"))?;
+                commit_surface(&self.log, &thread, surface)
             }
             "schedule.add" => {
                 let cron = params.get("cron").and_then(|c| c.as_str()).ok_or_else(|| {
@@ -366,6 +395,49 @@ impl Dispatch for Daemon {
     }
     fn subscribe(&self, scope_id: &str, cursor: i64) -> Option<Subscription> {
         self.log.subscribe(scope_id, cursor).ok()
+    }
+}
+
+#[cfg(test)]
+mod surface_tests {
+    use super::*;
+
+    #[test]
+    fn valid_surface_is_preserved() {
+        let surface = json!({ "type": "text", "value": "Hello" });
+
+        let (node, valid) = validate_surface(&surface);
+
+        assert!(valid);
+        assert_eq!(node, surface);
+    }
+
+    #[test]
+    fn invalid_surface_fails_closed_to_a_diagnostic_text_node() {
+        let surface = json!({ "type": "unknown" });
+
+        let (node, valid) = validate_surface(&surface);
+
+        assert!(!valid);
+        assert_eq!(node["type"], "text");
+        assert!(node["value"].as_str().is_some_and(|value| !value.is_empty()));
+    }
+
+    #[test]
+    fn committing_a_surface_emits_it_on_the_requested_thread() {
+        let log = EventLog::open_in_memory().unwrap();
+        let surface = json!({ "type": "text", "value": "Hello" });
+
+        let response = commit_surface(&log, "thread-7", &surface).unwrap();
+
+        assert_eq!(response, json!({ "ok": true, "valid": true }));
+        let event = log
+            .subscribe("thread-7", 0)
+            .unwrap()
+            .recv_timeout(Duration::from_millis(10))
+            .unwrap();
+        assert_eq!(event.kind, "ui.surface");
+        assert_eq!(event.payload["surface"], surface);
     }
 }
 

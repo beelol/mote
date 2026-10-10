@@ -12,6 +12,7 @@ mote-ipc.workspace = true
 mote-localmodel.workspace = true
 mote-context.workspace = true
 mote-harness.workspace = true
+mote-ui.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 toml.workspace = true
