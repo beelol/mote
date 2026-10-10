@@ -128,6 +128,57 @@ An unknown Action never creates a new untyped event contract.
 
 The v0 tree cannot carry the full catalog, keys, selection or typed Action argument metadata.
 The exact available lowering subset is in [runtime.md](runtime.md).
-The next milestone draws validated v0 trees without changing that schema.
+The first Mac runtime milestone draws all eleven unchanged v0 Node variants.
+It runs as a separate eframe and egui 0.31.0 consumer on winit 0.30.13 without icrate.
+Vector, fixture preview and automated interaction tests are present.
+Visible native screenshots and the live daemon-connected v0 checks remain open because the Mac is locked.
+The evidence and its limits are in `docs/verification/V0-43.md`.
+This milestone does not implement a Matrix parser or keyed reconciliation.
 A future consumer contract revision requires explicit owner approval.
 This boundary does not defer a grammar decision and does not approve UI-00.
+
+## Acceptance reconciliation
+
+Date 2026-10-10.
+The acceptance block in `docs/backlog.md` now follows the Matrix grammar and runtime boundary.
+Every criterion remains unchecked.
+The criteria specify future verification rather than compiler implementation claims.
+The owner gate still controls parser, formatter and compiler work through DEF-04.
+The broader catalog requires a separately approved consumer contract revision.
+Mac delivery comes first.
+Pi and iPad evidence follows explicit target approval.
+Recommended Taffy, wgpu, rayon and AccessKit integration is not claimed as delivered.
+
+These IDs preserve their prior purpose with updated scope and observable verification:
+UI-00, UI-02, UI-03, UI-04, UI-05, UI-08, UI-10, UI-11, UI-13, UI-14, UI-15, UI-16,
+UI-17, UI-18, UI-19, UI-20, UI-22, UI-24, UI-25, UI-26, UI-27, UI-28, UI-29, UI-30,
+UI-33, UI-34, UI-36, UI-37, UI-38, UI-42, UI-43, UI-45 and UI-46.
+The preserved requirements use current host contracts rather than earlier implicit type inference.
+Limits use the current depth, node and byte bounds rather than the earlier row and string limits.
+Selection and keyed state checks wait for the contract that can represent them.
+Grammar export and validity experiments do not authorize a backend or model-policy change.
+Diagnostics remain a future structured interface beyond the existing v0 strings.
+
+The following IDs replace an incompatible requirement with its nearest Matrix requirement.
+
+| ID | Earlier requirement | Reconciled requirement and reason |
+|---|---|---|
+| UI-01 | Compact nested JSON is the only wire form. | Matrix source is the language and the host lowers only its supported subset to the unchanged v0 JSON consumer contract. Source and transport are separate layers. |
+| UI-06 | Every earlier RFC example parses and lowers to a matching tree. | The ten Matrix design cases exercise the frozen grammar, with exact v0 comparisons limited to the documented subset. Most current catalog semantics cannot lower to v0. |
+| UI-07 | A decompiler reconstructs the original source after lowering. | Parsed source and binding references round-trip through authorized formatting. Resolved v0 snapshots discard bindings and cannot reconstruct the full source semantics. A decompiler needs a separate lossless contract. |
+| UI-09 | Names are case invariant. | Names and declaration words are case sensitive, as frozen in the grammar. |
+| UI-12 | Source declarations derive new Action contracts. | Derived argument types are checked against known versioned host Action contracts. Unknown actions cannot create untyped events. |
+| UI-21 | Responsive layout includes tracked grids and table-to-card collapse. | Strict row and col layout, screen anchors, fill and automatic scroll are verified. Grid is a collection. Undeclared layout transformations are not promised. |
+| UI-23 | Style words are the only styling. | One theme owns presentation and motion. Intent words remain only where the grammar allows them. Per-element style and animation declarations are rejected. |
+| UI-31 | Partial JSON renders progressively through open-node metadata. | The current v0 consumer displays complete validated trees. The contract has no open-node keys or partial-tree envelope. |
+| UI-32 | Every newline commits a source node. | Token and brace completion governs Matrix streaming. Newlines have no declaration-ending meaning. Incomplete source cannot replace the committed surface. |
+| UI-35 | Bounded syntax repair accepts a prefix. | Invalid Matrix source is diagnosed and rejected as a whole. Repair, skipped lines and guessed tokens would contradict the frozen fail-closed grammar. |
+| UI-39 | Tauri webview rendering with a CSP. | The first Mac consumer draws all eleven v0 variants in Rust with the delivered eframe and egui dependency path. Native strings do not create a model-reachable web execution surface. |
+| UI-40 | Tauri Channel partial-tree delivery within 50 ms. | A separate Rust process uses the existing IPC stream and ui.event calls, with the Mac arrival-to-display budget and live saved-cursor evidence still required. moted stays headless. |
+| UI-41 | Slint on Pi DRM is the primary language target. | Later approved Rust runtime delivery covers Pi and iPad after Mac. Actual hardware evidence must establish presenter and input support. Stack recommendations alone prove neither. |
+| UI-44 | egui on Pi DRM is a fallback renderer. | An iOS alternative is conditional on the Rust path being impractical and must preserve the approved consumer contract. No competing Pi renderer is silently selected. |
+| UI-47 | Slint per-surface compilation meets 50 ms or is replaced. | Rust runtime preparation has a 50 ms Pi budget without per-surface toolkit compilation, plus the existing 30 fps software-path scrolling floor. Measurements wait for Pi delivery. |
+| UI-48 | Catalog changes update a tree and golden for every element. | Broader lowering requires explicit consumer contract approval and conformance coverage together. Unsupported semantics retain rejection tests instead of invented v0 equivalents. |
+
+The four-item owner confirmation list above is unchanged by this reconciliation.
+No backlog criterion has moved into v0.

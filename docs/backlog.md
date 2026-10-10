@@ -298,56 +298,67 @@ later list. The RFCs and reuse documents these link to remain the reference for 
   - [ ] **CRATE-15** `mote-gateway` reproduces Overseer's Noise vectors and passes the ported pairing, session and exactly-once tests.
   - [ ] **CRATE-16** Overseer on `main` consumes the seven core crates by path with every protocol and TUI test green and an existing database opening.
   - [ ] **CRATE-17** Every crate carries the MIT license and a derivation notice, and the fixtures contain nothing redaction would change.
-- [ ] **[UI language research](docs/rfcs/ui-language.md)**
-  - [ ] **UI-00** The owner reviews the UI language RFC, keeps or changes its wire-format and state-model recommendations, and approves its criteria.
-  - [ ] **UI-01** [tree] Compact nested JSON is the only wire form.
-  - [ ] **UI-02** [tree] The tree schema is generated, not hand-written.
-  - [ ] **UI-03** [tree] Short keys are never used.
-  - [ ] **UI-04** [tree] Token cost is measured in CI.
-  - [ ] **UI-05** [tree] Limits are enforced.
-  - [ ] **UI-06** [lang] Every section 6 example parses, lowers, and matches its tree.
-  - [ ] **UI-07** [lang] The decompiler round-trips.
-  - [ ] **UI-08** [lang] The formatter is idempotent and semantics-preserving.
-  - [ ] **UI-09** [lang] Casing is compiler-invariant.
-  - [ ] **UI-10** [lang] Unknown words and modifiers fail closed.
-  - [ ] **UI-11** [lang] Scope rules are checked.
-  - [ ] **UI-12** [lang] Action contracts are derived from declarations.
-  - [ ] **UI-13** [lang] Strings never carry markup.
-  - [ ] **UI-14** [lang] Grammars are exported and accepted.
-  - [ ] **UI-15** [both] Scrolling is implicit.
-  - [ ] **UI-16** [both] Focus and keyboard work without declarations.
-  - [ ] **UI-17** [both] Touch targets meet the minimum.
-  - [ ] **UI-18** [both] Selection is implicit from `select`.
-  - [ ] **UI-19** [both] Loading, empty, and error states appear without declarations.
-  - [ ] **UI-20** [both] Theme follows the system.
-  - [ ] **UI-21** [both] Responsive layout is implicit.
-  - [ ] **UI-22** [both] Every node has an accessibility role and name.
-  - [ ] **UI-23** [both] Style words are the only styling.
-  - [ ] **UI-24** [both] Validity rate is measured per model and format.
-  - [ ] **UI-25** [both] Interaction state survives re-render.
-  - [ ] **UI-26** [both] No declared store exists.
-  - [ ] **UI-27** [both] No routes exist.
-  - [ ] **UI-28** [both] Built-in actions never reach the model.
-  - [ ] **UI-29** [both] Events are validated against contracts.
-  - [ ] **UI-30** [both] Data-bound nodes update without a model turn.
-  - [ ] **UI-31** [tree] Partial JSON renders progressively.
-  - [ ] **UI-32** [lang] Partial language renders per line.
-  - [ ] **UI-33** [both] Interactive nodes never fire while open.
-  - [ ] **UI-34** [both] Layout is stable during streaming.
-  - [ ] **UI-35** [both] Repair is bounded and visible.
-  - [ ] **UI-36** [both] Retry is one turn with diagnostics.
-  - [ ] **UI-37** [both] Constrained decoding is wired where supported.
-  - [ ] **UI-38** [both] The UI block is last and unconstrained reasoning precedes it.
-  - [ ] **UI-39** [tree] The Tauri renderer has no model-reachable HTML, CSS, or JS.
-  - [ ] **UI-40** [tree] Streaming reaches the webview over a Channel.
-  - [ ] **UI-41** [lang] Slint renders every fixture on the Pi over DRM.
-  - [ ] **UI-42** [lang] Golden parity across targets.
-  - [ ] **UI-43** [both] Headless layout invariants hold.
-  - [ ] **UI-44** [lang] Fallback renderer is proven.
-  - [ ] **UI-45** [both] Diagnostics are stable and machine-readable.
-  - [ ] **UI-46** [lang] Compile time is bounded.
-  - [ ] **UI-47** [lang] Slint compile per surface is bounded or replaced.
-  - [ ] **UI-48** [both] Fixtures are the contract.
+- [ ] **[Matrix source and runtime](matrix/decisions.md)**
+
+  These are future acceptance requirements for owner review.
+  The build contract remains `docs/rfcs/v0.md`.
+  Parser, formatter and compiler work waits for the owner approval gate below.
+  Broader catalog lowering also requires a separately approved consumer contract revision.
+  The first Mac runtime milestone is documented in `matrix/runtime.md` and `docs/verification/V0-43.md`.
+  It consumes all eleven unchanged v0 Node variants with eframe and egui 0.31.0 on winit 0.30.13 without icrate.
+  Fixture preview and automated interaction evidence are available.
+  Visible screenshots and live daemon acceptance remain open because the Mac is locked.
+  Every criterion below remains unchecked.
+
+  - [ ] **UI-00** The owner confirms or explicitly changes the four defaults in `matrix/decisions.md` before approving the Matrix acceptance criteria. **Verify:** record the owner's response against each item in the owner confirmation list and the resulting approved criteria in the gate's evidence file under `docs/verification/`.
+  - [ ] **UI-01** Matrix source lowers on the host to the unchanged compact nested v0 JSON consumer tree within the subset in `matrix/runtime.md`. **Verify:** after compiler approval, lower the nine `matrix/conformance/v0/` fragments against their documented host snapshots and compare canonical JSON with the nine matching unchanged fixtures.
+  - [ ] **UI-02** The interim consumer schema is generated from the existing Rust Node types. **Verify:** run `cargo test -p mote-ui schema_file_matches_generated` and compare two calls to `mote_ui::tree_schema_pretty()` with `schemas/tree.v0.json`.
+  - [ ] **UI-03** The interim consumer tree retains the full existing property names without abbreviation aliases. **Verify:** compare generated schema properties with the v0 allowed-key list and send fixtures using `t`, `c` and `l` to the validator to confirm rejection.
+  - [ ] **UI-04** Source and transport costs are reported separately using reproducible byte and tokenizer measurements. **Verify:** run `sh matrix/tools/measure.sh` twice and compare results with `matrix/measurement.md`; publish a separate report counting host manifests, binding snapshots and IPC envelopes with the same tokenizer and record its environment without treating syntax savings as total transport savings.
+  - [ ] **UI-05** Matrix source and the resolved consumer tree enforce depth 12, 2,000 nodes and 256 KiB per representation before further allocation. **Verify:** after compiler approval, test each bound and its first excess on source and expanded collection snapshots; record rejection diagnostics and prove the previous valid surface remains intact.
+  - [ ] **UI-06** The authorized parser implements the frozen signatures and nesting in `matrix/grammar.md`. **Verify:** after compiler approval, run all ten design cases in `matrix/examples.md`; assert acceptance of cases 1 through 9, scope rejection of case 10 and exact snapshot lowering only for the documented v0 subset.
+  - [ ] **UI-07** Authorized source round trips preserve the parsed declarations and binding references without reconstructing missing semantics from v0 JSON. **Verify:** after formatter approval, assert `parse(fmt(parse(source))) == parse(source)` on the design fixtures and 1,000 generated valid surfaces; document any proposed decompiler as separate work requiring a lossless contract.
+  - [ ] **UI-08** The authorized formatter is idempotent and preserves source semantics. **Verify:** after formatter approval, assert `fmt(fmt(source)) == fmt(source)` and equivalent parsed declarations on every positive fixture and 1,000 generated surfaces; compare lowered JSON before and after formatting for the supported subset.
+  - [ ] **UI-09** Matrix names and declaration words are case sensitive. **Verify:** after parser approval, publish only `CheckIn` in a host manifest and assert that `checkIn` and `check_in` reject while `CheckIn` resolves; reject `Screen` when only `screen` is valid.
+  - [ ] **UI-10** Any unknown syntax or invalid literal rejects the whole Matrix candidate. **Verify:** after parser approval, run negative fixtures for unknown elements, modifiers and icons, duplicate properties, trailing tokens, comments, expressions, control flow, scripts, handlers, timers, raw string newlines, invalid escapes, nonfinite numbers and invalid Unicode; assert diagnostics and an unchanged previous surface.
+  - [ ] **UI-11** References resolve only within the host manifest and the scopes defined in `matrix/grammar.md`. **Verify:** after resolver approval, test unknown paths, relative paths outside a row, outer-row access from nested collections, selection escaping a repeated template and duplicate Field ownership; assert rejection of each and acceptance of the documented parent-block selection scope.
+  - [ ] **UI-12** Source Action arguments are checked against the versioned host-owned contracts. **Verify:** after resolver approval, test named argument shorthand, zero arguments, missing and extra arguments, duplicate names, wrong types and unknown actions; compare accepted resolved values with the manifest and assert that source cannot create a contract.
+  - [ ] **UI-13** Display strings render literally outside the catalog's constrained `md` element. **Verify:** render text containing `<b>hi</b>`, script tags and Markdown punctuation as literal characters; after broader contract approval, exercise the documented Markdown subset and reject raw HTML, embedded images and executable content.
+  - [ ] **UI-14** Any authorized grammar export preserves the frozen Matrix grammar without implying backend support. **Verify:** after export approval, load the generated grammar into its declared offline grammar validator and run the positive and negative conformance corpus; record backend capability checks separately and keep custom grammar generation disabled on the Ollama-only path.
+  - [ ] **UI-15** Overflow creates runtime scrolling without source declarations. **Verify:** render 200 list items and 500 table rows at 800 by 480 and 1280 by 800 on the Mac first; drive each scroll region to its final row and capture clipping and viewport bounds, then repeat on later approved targets.
+  - [ ] **UI-16** Runtime focus and keyboard behavior follows reading order without source handlers. **Verify:** record focus after each Tab and Shift-Tab on the Mac fixture controls and activate an action with Space and Enter; after broader contract approval, test valid form submission, dialog Escape dismissal and collection arrow navigation.
+  - [ ] **UI-17** Every interactive control reserves at least a 48 by 48 logical point hit region. **Verify:** run `cargo test -p mote-client controls_reserve_a_48_point_touch_target` and the padded-edge interaction tests; measure all interactive fixture bounds and test center and edge taps on each later approved touch target.
+  - [ ] **UI-18** Optional selection exposes only the scoped `Option<T>` or `List<T>` contract defined by Matrix. **Verify:** after consumer contract revision, test one and many selection fixtures, action disabling before a single selection, whole-list bulk arguments and rejection of projection across a selected list; verify the resolved activation payloads.
+  - [ ] **UI-19** Bound collections infer loading, empty and failure feedback with the grammar's optional overrides. **Verify:** after consumer contract revision, drive a collection through pending, loaded, zero-row and failed snapshots; capture default feedback, `empty` and `error` overrides and the enclosing-binding target of Retry without claiming live bindings in the current v0 snapshots.
+  - [ ] **UI-20** Vector follows system light and dark appearance without a model turn. **Verify:** run the client's exact palette tests and capture the same native fixture in both system appearances; confirm the colors, red focus, monospace scale, sharp corners, spacing and absence of model traffic against `matrix/themes/vector.md`.
+  - [ ] **UI-21** Layout obeys only `col`, `row`, `header`, `footer`, `fill`, alignment, distribution and automatic scrolling. **Verify:** after broader contract approval, capture wrapping and `nowrap` fixtures at 400 and 1200 logical point widths; test direct-screen anchors and direct-child fill, and reject tracked grids, pixels, absolute positioning and z-index while treating catalog `grid` as a collection.
+  - [ ] **UI-22** The runtime exposes the catalog's accessible roles and required names through platform accessibility. **Verify:** dump AccessKit roles and reading order for the Mac fixtures and compare with role goldens; after broader contract approval, test typed alt text, live status announcements and overlay focus, then compare role trees on approved later consumers.
+  - [ ] **UI-23** One surface theme owns every presentation value and transition. **Verify:** test rejection of per-element color, size, font, spacing, secondary style and animation properties; compare Vector tokens with all element-group renderings after contract revision, including six status meanings and the 180 ms ease-out materialize motion only where identity metadata exists.
+  - [ ] **UI-24** Format validity is measured per approved model before enabling Matrix generation. **Verify:** after parser and experiment approval, run 200 prompts covering the conformance kinds for each permitted local model and report first-try and after-retry syntax, scope, type and lowering validity; require at least 95 percent first-try validity or a supported constrained decoder, with every call in the ledger and no unapproved model pulls.
+  - [ ] **UI-25** Runtime interaction state follows structural identity or approved keyed collection identity across whole-surface replacement. **Verify:** test field edits across frames in the current client; after contract revision, replace surfaces while typing, scrolling and selecting, reorder keyed rows and remove nodes, and assert preservation only for matching identities plus rejection of duplicate or invalid keys without merging separate collections.
+  - [ ] **UI-26** Interaction belongs to the runtime while data and history belong to the host without a source-declared store. **Verify:** after parser approval, reject a `state` block and source update rules; trace Field edits, host Value updates and surface history to their owners, with no model call for a keystroke and no consumer-owned data subscription.
+  - [ ] **UI-27** Surface navigation uses host history and ordinary declared Actions without source routes. **Verify:** after host integration approval, publish a `Show` Action, replace three complete surfaces and invoke Back twice; compare the restored surfaces with history and record one validated Show event, then reject a route declaration.
+  - [ ] **UI-28** The fixed Open, Copy, Back, Dismiss, Retry and Cancel built-ins execute only in their applicable host contexts. **Verify:** after host integration approval, drive each built-in without a model turn; test validated URLs, nearest-overlay dismissal, enclosing-binding Retry, inert unavailable Back, Retry and Cancel, and rejection of built-in shadowing or Dismiss outside an overlay.
+  - [ ] **UI-29** Activation emits validated values in the existing `{"event": name, "args": {...}}` wire shape. **Verify:** after typed host integration approval, capture a valid activation and reject wrong argument types, missing arguments, stale host revision context and unknown node context; assert no forwarded invalid event, no source reference in args and redaction before stored events without adding node keys to v0 JSON.
+  - [ ] **UI-30** Host binding updates resolve and validate a new consumer snapshot without a model turn. **Verify:** after binding integration approval, update a host Value for progress and a list snapshot; inspect resolved JSON and the consumer redraw, confirm no source paths reach text content and no model call occurs, and reject unsupported binding semantics before commitment.
+  - [ ] **UI-31** The v0 consumer stream displays only complete validated JSON trees. **Verify:** cut each unchanged JSON fixture at every byte offset and feed the stream reducer; assert no partial candidate is displayed, malformed candidates preserve the previous tree and the complete valid payload renders without new open-node keys.
+  - [ ] **UI-32** Matrix streaming follows token and brace completion rather than newline completion. **Verify:** after parser approval, cut positive fixtures at every byte offset including within UTF-8 and escaped strings; compare incremental results with complete parsing and assert that no unclosed or invalid candidate replaces the last committed surface.
+  - [ ] **UI-33** Incomplete or rejected candidates cannot produce interactive events. **Verify:** while streaming truncated JSON and, after parser approval, truncated Matrix actions and forms, drive taps and Enter at candidate positions; confirm no candidate event and that existing committed controls retain only their existing contracts.
+  - [ ] **UI-34** The displayed committed surface remains stable while a replacement is incomplete. **Verify:** record bounding boxes and visible node identities while feeding every prefix of a replacement fixture; assert no candidate-induced change before full validation and one whole-surface switch after acceptance.
+  - [ ] **UI-35** Invalid Matrix source is rejected with a visible diagnostic instead of repaired into an accepted surface. **Verify:** after parser approval, truncate strings and braces, insert a stray brace and quote a bare modifier; assert diagnostic artifacts, an unchanged previous surface and no skipped line, invented token or partial commitment.
+  - [ ] **UI-36** A failed candidate permits one diagnostic-bearing retry per turn within the existing three-per-minute surface budget. **Verify:** after retry integration approval, inject two invalid candidates and inspect the retry input for diagnostics and the last valid canonical surface; assert one retry, continued valid display with fallback prose after failure, ledger entries and prose-only handling when the rate budget is exhausted.
+  - [ ] **UI-37** Constrained generation uses only capabilities authorized by the current model policy. **Verify:** capture the permitted Ollama request with its JSON Schema `format`, rerun semantic validation on its output and assert that Matrix grammar generation stays disabled where unsupported; record any later backend activation only after a separate policy change.
+  - [ ] **UI-38** Surface output follows unconstrained prose with constraints scoped to the surface payload. **Verify:** after generation integration approval, inspect the prompt and captured response for one final `matrix` source block or the permitted v0 JSON framing; confirm ordinary prose delivery and that surface constraints do not cover the whole response.
+  - [ ] **UI-39** The first Mac consumer renders all eleven unchanged v0 Node variants in the Rust immediate mode runtime. **Verify:** run `cargo test -p mote-client` and fixture preview for all ten JSON fixtures; inspect native screenshots, confirm eframe and egui 0.31.0 with winit 0.30.13 and no icrate through `cargo tree`, and record that shape tests or process survival alone do not satisfy visible acceptance.
+  - [ ] **UI-40** A separate consumer process receives validated surfaces from headless moted over IPC and returns existing ui.event calls within a 50 ms Mac arrival-to-display budget. **Verify:** on an unlocked Mac, run the client against the daemon, capture an inline surface and action or form event, timestamp IPC arrival and display, and close and reopen from the saved cursor with no duplicates as required by `docs/verification/V0-43.md`.
+  - [ ] **UI-41** Later approved Rust runtime delivery renders the same consumer contract on Raspberry Pi and iPad after the Mac milestone. **Verify:** after target and hardware approval, capture each supported fixture and drive touch input on the actual Pi and iPad; record OS, GPU presenter, input path and contract revision without treating the recommended wgpu stack as delivered target support.
+  - [ ] **UI-42** Approved consumers preserve structural golden parity across targets. **Verify:** compare fixture screenshots, accessible role trees, reading order and wrap points at 800 by 480 and 1280 by 800 in both Vector appearances; record any declared platform rendering tolerance and keep actual native captures distinct from the existing ten test-renderer PNGs.
+  - [ ] **UI-43** Headless runtime layout respects clipping, reading order and minimum hit regions. **Verify:** measure every supported fixture at the two golden viewports and assert no unintended overlapping hit regions, no overflow outside a scroll region and 48 by 48 point control targets; run the same invariant suite for any later approved Taffy layout path.
+  - [ ] **UI-44** An iOS consumer alternative is permitted only after the Rust path is shown impractical and the alternative preserves the approved contract. **Verify:** if an alternative is proposed, record the owner decision and Rust-path evidence; compare its supported fixture renders, events, accessibility and latency with the primary runtime and reject any language or tree divergence.
+  - [ ] **UI-45** Matrix diagnostics have stable machine-readable codes, source spans, paths and hints. **Verify:** after diagnostic implementation approval, compare negative fixtures with diagnostic goldens and validate every output field; assert `E_LOWER_UNSUPPORTED` for catalog features absent from v0 and preserve the existing JSON diagnostic text-node behavior without claiming current v0 diagnostic strings already implement this structure.
+  - [ ] **UI-46** Authorized parsing, checking and supported lowering meets p95 budgets below 2 ms on an M-series Mac and 10 ms on a Pi 5. **Verify:** after compiler approval, benchmark a fixed composed fixture within the approved lowering subset on both machines and record revision, fixture, toolchain, sample count and p95 separately from source measurement results.
+  - [ ] **UI-47** Runtime surface preparation meets a 50 ms Pi budget without per-surface toolkit compilation. **Verify:** after Pi delivery approval, benchmark a fixed composed fixture under the approved consumer contract and record p95 preparation latency plus a ten-minute scroll run sustaining at least 30 fps; record the measured Rust path rather than substituting the earlier Slint compile claim.
+  - [ ] **UI-48** Catalog and consumer contract changes require matching conformance evidence before broader lowering is enabled. **Verify:** record explicit owner approval for a contract revision, update positive and negative source fixtures, resolved-tree expectations, role and render goldens together, and run a consistency check that rejects catalog changes without fixture coverage; preserve rejection of unsupported v0 semantics and the unchanged v0 fixture baseline.
 
 ### Deferred
 
@@ -369,6 +380,6 @@ later list. The RFCs and reuse documents these link to remain the reference for 
   - [ ] **VOICE-10** Speech end to first audio p50 is within the target on each machine.
   - [ ] **VOICE-11** No GPL-3.0 code links into `moted`.
 - [ ] **[UI language compiler](docs/rfcs/ui-language.md)**
-  - [ ] **DEF-04** Starts only after UI-00 and the language criteria it adds are approved.
+  - [ ] **DEF-04** Matrix parser, formatter and compiler implementation starts only after the owner approval gate and the selected language criteria are explicitly approved. **Verify:** compare the owner's recorded gate decision with the activated implementation list; require a separate consumer contract approval before enabling lowering beyond the documented v0 subset.
 - [ ] **[Codex as a think lane option](docs/rfcs/mote.md#open-decisions)**
   - [ ] **DEF-05** The owner approves Codex as a second think lane harness.
