@@ -8,8 +8,10 @@
 use chrono::{TimeZone, Utc};
 use mote_eventlog::EventLog;
 use rusqlite::Connection;
+use serde::Deserialize;
 use serde_json::json;
-use std::path::Path;
+use std::fmt;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 /// Approvals expire after 24 hours.
@@ -25,6 +27,49 @@ pub enum WriteDecision {
     Executed,
     /// Held for approval (outside the data directory).
     Pending(i64),
+}
+
+#[derive(Debug)]
+pub enum ApprovalError {
+    Database(rusqlite::Error),
+    Filesystem(std::io::Error),
+    Payload(serde_json::Error),
+}
+
+impl fmt::Display for ApprovalError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Database(error) => write!(formatter, "approval database: {error}"),
+            Self::Filesystem(error) => write!(formatter, "approval filesystem: {error}"),
+            Self::Payload(error) => write!(formatter, "approval payload: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for ApprovalError {}
+
+impl From<rusqlite::Error> for ApprovalError {
+    fn from(error: rusqlite::Error) -> Self {
+        Self::Database(error)
+    }
+}
+
+impl From<std::io::Error> for ApprovalError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Filesystem(error)
+    }
+}
+
+impl From<serde_json::Error> for ApprovalError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Payload(error)
+    }
+}
+
+#[derive(Deserialize)]
+struct FileWritePayload {
+    path: PathBuf,
+    content: String,
 }
 
 pub struct Watchers {
@@ -106,9 +151,9 @@ impl Watchers {
         path: &Path,
         content: &str,
         now: i64,
-    ) -> rusqlite::Result<WriteDecision> {
-        if is_inside(data_dir, path) {
-            std::fs::write(path, content).ok();
+    ) -> Result<WriteDecision, ApprovalError> {
+        if is_inside(data_dir, path)? {
+            std::fs::write(path, content)?;
             return Ok(WriteDecision::Executed);
         }
         let payload = json!({ "path": path.to_string_lossy(), "content": content }).to_string();
@@ -125,14 +170,19 @@ impl Watchers {
     }
 
     /// Approve an approval, executing its action. Returns whether it executed.
-    pub fn approve(&self, id: i64, now: i64) -> rusqlite::Result<bool> {
+    pub fn approve(&self, id: i64, now: i64) -> Result<bool, ApprovalError> {
         let Some(thread_id) = self.approval_thread(id)? else {
             return Ok(false);
         };
         self.approve_for_thread(id, &thread_id, now)
     }
 
-    pub fn approve_for_thread(&self, id: i64, thread_id: &str, now: i64) -> rusqlite::Result<bool> {
+    pub fn approve_for_thread(
+        &self,
+        id: i64,
+        thread_id: &str,
+        now: i64,
+    ) -> Result<bool, ApprovalError> {
         self.expire_due(now)?;
         let payload = match self.conn.query_row(
             "SELECT payload FROM approvals
@@ -142,12 +192,10 @@ impl Watchers {
         ) {
             Ok(payload) => payload,
             Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(false),
-            Err(error) => return Err(error),
+            Err(error) => return Err(error.into()),
         };
-        let v: serde_json::Value = serde_json::from_str(&payload).unwrap_or(serde_json::Value::Null);
-        if let (Some(p), Some(c)) = (v["path"].as_str(), v["content"].as_str()) {
-            std::fs::write(p, c).ok();
-        }
+        let write: FileWritePayload = serde_json::from_str(&payload)?;
+        std::fs::write(write.path, write.content)?;
         let changed = self.conn.execute(
             "UPDATE approvals SET status='approved'
              WHERE id=?1 AND thread_id=?2 AND status='pending' AND expires_at>=?3",
@@ -214,18 +262,45 @@ impl Watchers {
 
 }
 
-fn is_inside(dir: &Path, path: &Path) -> bool {
-    match (dir.canonicalize(), path.canonicalize()) {
-        (Ok(d), Ok(p)) => p.starts_with(d),
-        // If the target does not exist yet, compare against the lexical parent.
-        _ => path.starts_with(dir),
-    }
+fn is_inside(dir: &Path, path: &Path) -> std::io::Result<bool> {
+    let resolved_dir = dir.canonicalize()?;
+    let resolved_path = match path.canonicalize() {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            match path.symlink_metadata() {
+                Ok(_) => return Err(error),
+                Err(metadata_error)
+                    if metadata_error.kind() != std::io::ErrorKind::NotFound =>
+                {
+                    return Err(metadata_error);
+                }
+                Err(_) => {}
+            }
+            let parent = path.parent().ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "write target has no parent")
+            })?;
+            let filename = path.file_name().ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "write target has no filename")
+            })?;
+            parent.canonicalize()?.join(filename)
+        }
+        Err(error) => return Err(error),
+    };
+    Ok(resolved_path.starts_with(resolved_dir))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    fn temp_root(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "mote-watchers-{name}-{}-{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("unnamed")
+        ))
+    }
 
     #[test]
     fn schedule_fires_at_cron_time() {
@@ -302,5 +377,135 @@ mod tests {
 
         std::fs::remove_dir_all(&data).ok();
         std::fs::remove_dir_all(&out).ok();
+    }
+
+    #[test]
+    fn nonexistent_traversal_target_is_held_for_approval() {
+        let root = temp_root("traversal");
+        let data = root.join("data");
+        let escape = root.join("escape");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::create_dir_all(&escape).unwrap();
+        let target = data.join("..").join("escape").join("note.txt");
+        let w = Watchers::open_in_memory().unwrap();
+
+        let decision = w.request_file_write(&data, "t1", &target, "held", 1_000).unwrap();
+
+        let WriteDecision::Pending(id) = decision else {
+            panic!("traversal target must be pending");
+        };
+        assert_eq!(w.status(id).unwrap(), "pending");
+        assert!(!escape.join("note.txt").exists());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn nonexistent_child_below_symlinked_outside_parent_is_held_for_approval() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_root("symlink-parent");
+        let data = root.join("data");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        symlink(&outside, data.join("linked")).unwrap();
+        let target = data.join("linked").join("note.txt");
+        let w = Watchers::open_in_memory().unwrap();
+
+        let decision = w.request_file_write(&data, "t1", &target, "held", 1_000).unwrap();
+
+        let WriteDecision::Pending(id) = decision else {
+            panic!("symlinked outside target must be pending");
+        };
+        assert_eq!(w.status(id).unwrap(), "pending");
+        assert!(!outside.join("note.txt").exists());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unresolved_existing_symlink_target_fails_closed() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_root("unresolved-symlink");
+        let data = root.join("data");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let outside_target = outside.join("note.txt");
+        let target = data.join("linked-file");
+        symlink(&outside_target, &target).unwrap();
+        let w = Watchers::open_in_memory().unwrap();
+
+        assert!(matches!(
+            w.request_file_write(&data, "t1", &target, "blocked", 1_000),
+            Err(ApprovalError::Filesystem(_))
+        ));
+        assert!(!outside_target.exists());
+        let approvals: i64 =
+            w.conn.query_row("SELECT COUNT(*) FROM approvals", [], |row| row.get(0)).unwrap();
+        assert_eq!(approvals, 0);
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn failed_direct_inside_write_returns_an_error_without_an_approval() {
+        let root = temp_root("inside-failure");
+        let data = root.join("data");
+        let target = data.join("directory-target");
+        std::fs::create_dir_all(&target).unwrap();
+        let w = Watchers::open_in_memory().unwrap();
+
+        assert!(matches!(
+            w.request_file_write(&data, "t1", &target, "nope", 1_000),
+            Err(ApprovalError::Filesystem(_))
+        ));
+        let approvals: i64 =
+            w.conn.query_row("SELECT COUNT(*) FROM approvals", [], |row| row.get(0)).unwrap();
+        assert_eq!(approvals, 0);
+        assert!(target.is_dir());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn failed_approved_outside_write_stays_pending_and_can_be_denied() {
+        let root = temp_root("approved-failure");
+        let data = root.join("data");
+        let outside = root.join("outside");
+        let target = outside.join("directory-target");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        let w = Watchers::open_in_memory().unwrap();
+        let WriteDecision::Pending(id) =
+            w.request_file_write(&data, "t1", &target, "nope", 1_000).unwrap()
+        else {
+            panic!("outside target must be pending");
+        };
+
+        assert!(matches!(w.approve(id, 1_001), Err(ApprovalError::Filesystem(_))));
+        assert_eq!(w.status(id).unwrap(), "pending");
+        assert!(w.deny(id, 1_002).unwrap());
+        assert_eq!(w.status(id).unwrap(), "denied");
+        assert!(target.is_dir());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn malformed_pending_payload_stays_pending_and_can_be_denied() {
+        let w = Watchers::open_in_memory().unwrap();
+        w.conn
+            .execute(
+                "INSERT INTO approvals(thread_id, kind, payload, status, expires_at, created_at)
+                 VALUES('t1', 'file_write', '{not-json', 'pending', 10000, 1000)",
+                [],
+            )
+            .unwrap();
+        let id = w.conn.last_insert_rowid();
+
+        assert!(matches!(w.approve(id, 1_001), Err(ApprovalError::Payload(_))));
+        assert_eq!(w.status(id).unwrap(), "pending");
+        assert!(w.deny(id, 1_002).unwrap());
+        assert_eq!(w.status(id).unwrap(), "denied");
     }
 }

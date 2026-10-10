@@ -611,11 +611,14 @@ impl Dispatch for Daemon {
                     }
                     let watchers = self.watchers.lock().unwrap();
                     let changed = if approve {
-                        watchers.approve_for_thread(id, thread, now_ms())
+                        watchers
+                            .approve_for_thread(id, thread, now_ms())
+                            .map_err(|error| RpcError::internal(error.to_string()))?
                     } else {
-                        watchers.deny_for_thread(id, thread, now_ms())
-                    }
-                    .map_err(|error| RpcError::internal(error.to_string()))?;
+                        watchers
+                            .deny_for_thread(id, thread, now_ms())
+                            .map_err(|error| RpcError::internal(error.to_string()))?
+                    };
                     if changed {
                         self.log
                             .append(thread, "ui.event", &json!({"event":event,"args":args}))
@@ -2353,6 +2356,64 @@ mod approval_dispatch_tests {
         assert!(event.payload.to_string().contains(&format!("deny:{id}")));
         assert!(!target.exists());
 
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn failed_inside_file_write_returns_an_internal_error() {
+        let (data, _) = dirs("inside-write-failure");
+        let target = data.join("directory-target");
+        std::fs::create_dir_all(&target).unwrap();
+        let daemon = daemon(&data);
+
+        let error = daemon
+            .call(
+                "file.write",
+                json!({"thread":"main", "path":target, "content":"nope"}),
+            )
+            .unwrap_err();
+
+        assert_eq!(error.code, codes::INTERNAL);
+        assert!(target.is_dir());
+        assert_eq!(daemon.log.max_seq().unwrap(), 0);
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn failed_approved_file_write_returns_an_internal_error_without_accepting_event() {
+        let (data, outside) = dirs("approved-write-failure");
+        let target = outside.join("directory-target");
+        std::fs::create_dir_all(&target).unwrap();
+        let daemon = daemon(&data);
+        let id = daemon
+            .call(
+                "file.write",
+                json!({"thread":"main", "path":target, "content":"nope"}),
+            )
+            .unwrap()["id"]
+            .as_i64()
+            .unwrap();
+        let before_approval = daemon.log.max_seq().unwrap();
+
+        let error = daemon
+            .call(
+                "ui.event",
+                json!({"thread":"main", "event":format!("approve:{id}")}),
+            )
+            .unwrap_err();
+
+        assert_eq!(error.code, codes::INTERNAL);
+        assert_eq!(daemon.log.max_seq().unwrap(), before_approval);
+        assert_eq!(daemon.watchers.lock().unwrap().status(id).unwrap(), "pending");
+        let denied = daemon
+            .call(
+                "ui.event",
+                json!({"thread":"main", "event":format!("deny:{id}")}),
+            )
+            .unwrap();
+        assert_eq!(denied["denied"], true);
+        assert_eq!(daemon.watchers.lock().unwrap().status(id).unwrap(), "denied");
+        assert!(target.is_dir());
         std::fs::remove_dir_all(data.parent().unwrap()).ok();
     }
 
