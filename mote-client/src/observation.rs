@@ -49,6 +49,9 @@ impl Default for ObservationHarness {
         let (_, ui_event_rx) = mpsc::channel();
         let (turn_tx, turn_rx) = mpsc::channel();
         let (pipeline_tx, pipeline_rx) = mpsc::channel();
+        let (config_tx, config_requests) = mpsc::channel();
+        let (config_results, config_rx) = mpsc::channel();
+        spawn_config_worker(PathBuf::new(), config_requests, config_results);
         let ctx = egui::Context::default();
         crate::theme::install(&ctx);
         Self {
@@ -61,11 +64,15 @@ impl Default for ObservationHarness {
                 stage: 0,
                 tab: 0,
                 config_edits: Default::default(),
+                config_baseline: Default::default(),
                 config_revision: 0,
                 config_edit_revisions: Default::default(),
+                config_pending: false,
+                config_error: None,
+                config_tx,
+                config_rx,
                 pipeline: None,
                 pipeline_loading: false,
-                pipeline_request_revision: 0,
                 pipeline_live_events: Vec::new(),
                 pipeline_tx,
                 pipeline_rx,
@@ -261,6 +268,166 @@ mod layout_tests;
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn populated_pipeline_snapshot() -> PipelineSnapshot {
+        let stages = ["talk", "router", "think", "memory", "ledger"];
+        let events: Vec<_> = stages
+            .iter()
+            .enumerate()
+            .map(|(index, stage)| {
+                let kind = if *stage == "ledger" {
+                    "ledger.marker".to_string()
+                } else {
+                    format!("{stage}.marker")
+                };
+                let mut payload = json!({"marker": format!("now-{stage}")});
+                if *stage == "ledger" {
+                    payload["ledger_id"] = json!(500 + index);
+                }
+                json!({
+                    "seq": 100 + index,
+                    "ts": 5_000 + index,
+                    "scope_id": "main",
+                    "kind": kind,
+                    "payload": payload
+                })
+            })
+            .collect();
+        let numbers: Vec<_> = stages
+            .iter()
+            .enumerate()
+            .map(|(index, stage)| json!({
+                "stage": stage,
+                "calls": 101 + index,
+                "latency_metric": if *stage == "talk" { "first_token" } else { "total" },
+                "latency_samples": 11 + index,
+                "latency_p50_ms": 21 + index,
+                "latency_p95_ms": 31 + index,
+                "prompt_tokens": 41 + index,
+                "completion_tokens": 51 + index,
+                "cost_usd": 0.0,
+                "budget_ms": 61 + index
+            }))
+            .collect();
+        let requests: Vec<_> = stages
+            .iter()
+            .enumerate()
+            .map(|(index, stage)| json!({
+                "seq": 200 + index,
+                "ts": 6_000 + index,
+                "lane": stage,
+                "payload": {"marker": format!("request-{stage}")},
+                "total_latency_ms": 71 + index,
+                "first_token_ms": 81 + index,
+                "status": "ok"
+            }))
+            .collect();
+        PipelineSnapshot::from_value(json!({
+            "generated_at": 5_000,
+            "event_limit": 200,
+            "request_limit": 200,
+            "window_ms": 3_600_000,
+            "config": {
+                "models.local_only": true,
+                "models.talk": "qwen3:4b",
+                "models.router": "qwen3:0.6b",
+                "models.think": "qwen3-coder:30b-64k",
+                "budgets.talk_first_token": 300,
+                "budgets.router": 150,
+                "budgets.think_first_token": 3000,
+                "packs.talk": 600,
+                "packs.think": 8000
+            },
+            "events": events,
+            "numbers": numbers,
+            "requests": requests
+        }))
+        .unwrap()
+    }
+
+    fn rendered_labels(output: &egui::FullOutput) -> Vec<&str> {
+        output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) => Some(text.galley.text()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn click_shell_text(harness: &mut ObservationHarness, label: &str) -> egui::FullOutput {
+        let (_, output) = harness.frame_output(vec![]);
+        let position = output
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == label => {
+                    Some(text.pos + text.galley.rect.center().to_vec2())
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("missing production-shell control {label}"));
+        harness.frame_output(vec![
+            egui::Event::PointerMoved(position),
+            egui::Event::PointerButton {
+                pos: position,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Default::default(),
+            },
+            egui::Event::PointerButton {
+                pos: position,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Default::default(),
+            },
+        ])
+        .1
+    }
+
+    #[test]
+    fn populated_pipeline_shell_exposes_every_stage_and_tab_combination() {
+        let mut harness = ObservationHarness::default();
+        harness.viewport = egui::vec2(1280.0, 800.0);
+        harness.app.install_pipeline_snapshot(populated_pipeline_snapshot());
+        click_shell_text(&mut harness, "Pipeline");
+
+        for (stage_index, stage) in STAGES.iter().enumerate() {
+            click_shell_text(&mut harness, stage);
+            for tab in TABS {
+                let output = click_shell_text(&mut harness, tab);
+                let labels = rendered_labels(&output);
+                let text = labels.join("\n");
+                for label in STAGES.into_iter().chain(TABS) {
+                    assert!(
+                        labels.contains(&label),
+                        "{stage}/{tab} omitted {label}: {text}"
+                    );
+                }
+                match tab {
+                    "Now" => assert!(text.contains(&format!("now-{stage}")), "{stage}/{tab}: {text}"),
+                    "Config" => {
+                        for key in CONFIG_KEYS {
+                            assert!(
+                                labels.contains(&key),
+                                "{stage}/{tab} omitted {key}: {text}"
+                            );
+                        }
+                    }
+                    "Numbers" => assert!(
+                        labels.contains(&(101 + stage_index).to_string().as_str()),
+                        "{stage}/{tab}: {text}"
+                    ),
+                    "Requests" => assert!(
+                        text.contains(&format!("request-{stage}")),
+                        "{stage}/{tab}: {text}"
+                    ),
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
 
     fn surface(seq: i64, node: serde_json::Value) -> Event {
         Event {

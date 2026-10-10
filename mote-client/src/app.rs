@@ -14,6 +14,22 @@ type TurnResult = (LocalMessageId, Result<(), String>);
 type PipelineResult = Result<PipelineSnapshot, String>;
 type UiEventResult = (crate::surface::SurfaceEvent, Result<(), String>);
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ConfigSetRequest {
+    key: String,
+    value: serde_json::Value,
+    revision: u64,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ConfigSetOutcome {
+    request: ConfigSetRequest,
+    result: Result<(), String>,
+}
+
+type ConfigBatch = Vec<ConfigSetRequest>;
+type ConfigBatchResult = Vec<ConfigSetOutcome>;
+
 fn ui_event_params(event: &crate::surface::SurfaceEvent) -> serde_json::Value {
     let mut params = serde_json::json!({
         "thread": "main",
@@ -44,6 +60,46 @@ fn spawn_pipeline_load_with(
 ) {
     std::thread::spawn(move || {
         let _ = tx.send(load());
+    });
+}
+
+fn spawn_config_worker_with(
+    requests: Receiver<ConfigBatch>,
+    results: Sender<ConfigBatchResult>,
+    mut send: impl FnMut(&ConfigSetRequest) -> Result<(), String> + Send + 'static,
+) {
+    std::thread::spawn(move || {
+        while let Ok(batch) = requests.recv() {
+            let outcomes = batch
+                .into_iter()
+                .map(|request| {
+                    let result = send(&request);
+                    ConfigSetOutcome { request, result }
+                })
+                .collect();
+            if results.send(outcomes).is_err() {
+                break;
+            }
+        }
+    });
+}
+
+fn spawn_config_worker(
+    socket: PathBuf,
+    requests: Receiver<ConfigBatch>,
+    results: Sender<ConfigBatchResult>,
+) {
+    spawn_config_worker_with(requests, results, move |request| {
+        let mut client =
+            Client::connect(&socket).map_err(|error| format!("cannot reach daemon: {error}"))?;
+        client
+            .call(
+                "config.set",
+                serde_json::json!({ "key": request.key, "value": request.value }),
+            )
+            .map_err(|error| format!("cannot set {}: {error}", request.key))?
+            .map(|_| ())
+            .map_err(|error| error.message)
     });
 }
 
@@ -147,11 +203,15 @@ pub struct MoteApp {
     stage: usize,
     tab: usize,
     config_edits: std::collections::HashMap<String, String>,
+    config_baseline: std::collections::HashMap<String, String>,
     config_revision: u64,
     config_edit_revisions: std::collections::HashMap<String, u64>,
+    config_pending: bool,
+    config_error: Option<String>,
+    config_tx: Sender<ConfigBatch>,
+    config_rx: Receiver<ConfigBatchResult>,
     pipeline: Option<PipelineSnapshot>,
     pipeline_loading: bool,
-    pipeline_request_revision: u64,
     pipeline_live_events: Vec<Event>,
     pipeline_tx: Sender<PipelineResult>,
     pipeline_rx: Receiver<PipelineResult>,
@@ -174,6 +234,9 @@ impl MoteApp {
         crate::theme::install(&cc.egui_ctx);
         let (turn_tx, turn_rx) = mpsc::channel();
         let (pipeline_tx, pipeline_rx) = mpsc::channel();
+        let (config_tx, config_requests) = mpsc::channel();
+        let (config_results, config_rx) = mpsc::channel();
+        spawn_config_worker(socket.clone(), config_requests, config_results);
         let (ui_event_tx, ui_event_requests) = mpsc::channel();
         let (ui_event_results, ui_event_rx) = mpsc::channel();
         spawn_ui_event_worker(socket.clone(), ui_event_requests, ui_event_results);
@@ -186,11 +249,15 @@ impl MoteApp {
             stage: 0,
             tab: 0,
             config_edits: std::collections::HashMap::new(),
+            config_baseline: std::collections::HashMap::new(),
             config_revision: 0,
             config_edit_revisions: std::collections::HashMap::new(),
+            config_pending: false,
+            config_error: None,
+            config_tx,
+            config_rx,
             pipeline: None,
             pipeline_loading: false,
-            pipeline_request_revision: 0,
             pipeline_live_events: Vec::new(),
             pipeline_tx,
             pipeline_rx,
@@ -202,10 +269,6 @@ impl MoteApp {
             ui_event_rx,
             cursor_path: Some(cursor_path()),
         }
-    }
-
-    fn client(&self) -> std::io::Result<Client> {
-        Client::connect(&self.socket)
     }
 
     fn drain_events(&mut self) {
@@ -223,6 +286,9 @@ impl MoteApp {
                 Ok(snapshot) => self.install_pipeline_snapshot(snapshot),
                 Err(error) => self.status_line = error,
             }
+        }
+        while let Ok(result) = self.config_rx.try_recv() {
+            self.record_config_batch_result(result);
         }
     }
 
@@ -263,15 +329,11 @@ impl MoteApp {
             snapshot.ingest_live(event);
         }
         for key in CONFIG_KEYS {
-            let edited_after_request = self
-                .config_edit_revisions
-                .get(key)
-                .is_some_and(|revision| *revision > self.pipeline_request_revision);
-            if !edited_after_request {
+            if !self.config_edit_revisions.contains_key(key) {
                 if let Some(value) = snapshot.config_edit_value(key) {
-                    self.config_edits.insert(key.into(), value);
+                    self.config_edits.insert(key.into(), value.clone());
+                    self.config_baseline.insert(key.into(), value);
                 }
-                self.config_edit_revisions.remove(key);
             }
         }
         self.pipeline = Some(snapshot);
@@ -283,7 +345,6 @@ impl MoteApp {
             return;
         }
         self.pipeline_loading = true;
-        self.pipeline_request_revision = self.config_revision;
         let socket = self.socket.clone();
         let tx = self.pipeline_tx.clone();
         spawn_pipeline_load_with(tx, move || {
@@ -472,22 +533,25 @@ impl MoteApp {
             return;
         }
         for key in CONFIG_KEYS {
-            let buf = self.config_edits.entry(key.to_string()).or_default();
-            ui.horizontal(|ui| {
+            let mut value = self.config_edits.get(key).cloned().unwrap_or_default();
+            let changed = ui.horizontal(|ui| {
                 ui.label(key);
-                if ui.text_edit_singleline(buf).changed() {
-                    self.config_revision = self.config_revision.saturating_add(1);
-                    self.config_edit_revisions.insert(key.into(), self.config_revision);
-                }
-            });
+                ui.text_edit_singleline(&mut value).changed()
+            }).inner;
+            if changed {
+                self.set_config_edit(key, &value);
+            }
         }
         let clicked = ui
-            .add_enabled_ui(!self.pipeline_loading, |ui| {
+            .add_enabled_ui(!self.pipeline_loading && !self.config_pending, |ui| {
                 crate::surface::button(ui, "Apply").clicked()
             })
             .inner;
         if clicked {
             self.apply_config_edits();
+        }
+        if let Some(error) = &self.config_error {
+            ui.colored_label(ui.visuals().error_fg_color, error);
         }
     }
 
@@ -624,41 +688,103 @@ impl MoteApp {
         });
     }
 
-    fn apply_config(&mut self, key: &str, val: &str) {
-        // Parse the value into the right JSON type.
-        let value: serde_json::Value = if val == "true" || val == "false" {
-            serde_json::json!(val == "true")
-        } else if let Ok(n) = val.parse::<i64>() {
-            serde_json::json!(n)
+    fn set_config_edit(&mut self, key: &str, value: &str) {
+        self.config_edits.insert(key.into(), value.into());
+        self.record_config_edit(key);
+    }
+
+    fn record_config_edit(&mut self, key: &str) {
+        self.config_revision = self.config_revision.saturating_add(1);
+        if self.config_edits.get(key) == self.config_baseline.get(key) {
+            self.config_edit_revisions.remove(key);
         } else {
-            serde_json::json!(val)
-        };
-        if let Ok(mut c) = self.client() {
-            match c.call(
-                "config.set",
-                serde_json::json!({ "key": key, "value": value }),
-            ) {
-                Ok(Ok(_)) => self.status_line = format!("set {key}"),
-                Ok(Err(e)) => self.status_line = format!("{key}: {}", e.message),
-                Err(e) => self.status_line = format!("{e}"),
+            self.config_edit_revisions.insert(key.into(), self.config_revision);
+        }
+    }
+
+    fn parse_config_value(key: &str, text: &str) -> Result<serde_json::Value, String> {
+        match key {
+            "models.local_only" => text
+                .parse::<bool>()
+                .map(serde_json::Value::Bool)
+                .map_err(|_| "expected true or false".into()),
+            "models.talk" | "models.router" | "models.think" => {
+                Ok(serde_json::Value::String(text.into()))
             }
+            "budgets.talk_first_token" | "budgets.router" | "budgets.think_first_token"
+            | "packs.talk" | "packs.think" => text
+                .parse::<i64>()
+                .map(serde_json::Value::from)
+                .map_err(|_| "expected an integer".into()),
+            _ => Err("unknown configuration key".into()),
         }
     }
 
     fn apply_config_edits(&mut self) -> bool {
-        if self.pipeline_loading {
+        if self.pipeline_loading || self.config_pending {
             return false;
         }
-        let edits: Vec<(String, String)> = self
-            .config_edits
-            .iter()
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect();
-        for (key, value) in edits {
-            self.apply_config(&key, &value);
+        let mut batch = Vec::new();
+        let mut errors = Vec::new();
+        for key in CONFIG_KEYS {
+            let Some(&revision) = self.config_edit_revisions.get(key) else {
+                continue;
+            };
+            let text = self.config_edits.get(key).map(String::as_str).unwrap_or_default();
+            match Self::parse_config_value(key, text) {
+                Ok(value) => batch.push(ConfigSetRequest { key: key.into(), value, revision }),
+                Err(error) => errors.push(format!("{key}: {error}")),
+            }
         }
-        self.request_pipeline_snapshot();
+        self.config_error = (!errors.is_empty()).then(|| errors.join("\n"));
+        if batch.is_empty() {
+            return false;
+        }
+        if self.config_tx.send(batch).is_err() {
+            self.config_error = Some("configuration worker stopped".into());
+            return false;
+        }
+        self.config_pending = true;
         true
+    }
+
+    fn record_config_batch_result(&mut self, outcomes: ConfigBatchResult) {
+        self.config_pending = false;
+        let prior_error = self.config_error.take();
+        let mut succeeded = false;
+        let mut errors = Vec::new();
+        for outcome in outcomes {
+            match outcome.result {
+                Ok(()) => {
+                    succeeded = true;
+                    let request = outcome.request;
+                    let still_current = self
+                        .config_edit_revisions
+                        .get(&request.key)
+                        .is_some_and(|revision| *revision == request.revision);
+                    if still_current {
+                        let value = match request.value {
+                            serde_json::Value::String(value) => value,
+                            value => value.to_string(),
+                        };
+                        self.config_edits.insert(request.key.clone(), value.clone());
+                        self.config_baseline.insert(request.key.clone(), value);
+                        self.config_edit_revisions.remove(&request.key);
+                    }
+                }
+                Err(error) => errors.push(format!("{}: {error}", outcome.request.key)),
+            }
+        }
+        self.config_error = if errors.is_empty() {
+            prior_error
+        } else if let Some(prior) = prior_error {
+            Some(format!("{prior}\n{}", errors.join("\n")))
+        } else {
+            Some(errors.join("\n"))
+        };
+        if succeeded {
+            self.request_pipeline_snapshot();
+        }
     }
 }
 
@@ -738,6 +864,9 @@ mod tests {
         let (tx, rx) = std::sync::mpsc::channel();
         let (turn_tx, turn_rx) = std::sync::mpsc::channel();
         let (pipeline_tx, pipeline_rx) = std::sync::mpsc::channel();
+        let (config_tx, config_requests) = std::sync::mpsc::channel();
+        let (config_results, config_rx) = std::sync::mpsc::channel();
+        spawn_config_worker(PathBuf::new(), config_requests, config_results);
         let (ui_event_tx, ui_event_requests) = std::sync::mpsc::channel();
         let (ui_event_results, ui_event_rx) = std::sync::mpsc::channel();
         spawn_ui_event_worker(PathBuf::new(), ui_event_requests, ui_event_results);
@@ -751,11 +880,15 @@ mod tests {
                 stage: 0,
                 tab: 0,
                 config_edits: Default::default(),
+                config_baseline: Default::default(),
                 config_revision: 0,
                 config_edit_revisions: Default::default(),
+                config_pending: false,
+                config_error: None,
+                config_tx,
+                config_rx,
                 pipeline: None,
                 pipeline_loading: false,
-                pipeline_request_revision: 0,
                 pipeline_live_events: Vec::new(),
                 pipeline_tx,
                 pipeline_rx,
@@ -1612,12 +1745,11 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_preserves_only_config_edits_made_after_request_started() {
+    fn snapshot_preserves_dirty_config_edits_until_their_request_succeeds() {
         let (mut app, _tx) = app();
         app.config_edits.insert("models.talk".into(), "before-request".into());
         app.config_edit_revisions.insert("models.talk".into(), 1);
         app.config_revision = 1;
-        app.pipeline_request_revision = 1;
         app.config_edits.insert("models.talk".into(), "after-request".into());
         app.config_revision = 2;
         app.config_edit_revisions.insert("models.talk".into(), 2);
@@ -1625,9 +1757,8 @@ mod tests {
         app.install_pipeline_snapshot(pipeline_snapshot("stale-snapshot"));
 
         assert_eq!(app.config_edits["models.talk"], "after-request");
-        app.pipeline_request_revision = 2;
         app.install_pipeline_snapshot(pipeline_snapshot("fresh-snapshot"));
-        assert_eq!(app.config_edits["models.talk"], "fresh-snapshot");
+        assert_eq!(app.config_edits["models.talk"], "after-request");
     }
 
     #[test]
@@ -1637,7 +1768,6 @@ mod tests {
         app.config_revision = 1;
         app.config_edit_revisions.insert("models.talk".into(), 1);
 
-        app.pipeline_request_revision = app.config_revision;
         app.pipeline_loading = true;
         let applied = app.apply_config_edits();
 
@@ -1645,5 +1775,201 @@ mod tests {
         assert!(app.pipeline_loading);
         assert_eq!(app.config_edits["models.talk"], "edited-model");
         assert!(app.status_line.is_empty());
+    }
+
+    #[test]
+    fn blocked_config_rpc_does_not_block_the_render_thread() {
+        let (request_tx, request_rx) = std::sync::mpsc::channel();
+        let (result_tx, result_rx) = std::sync::mpsc::channel();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let request = ConfigSetRequest {
+            key: "models.talk".into(),
+            value: serde_json::json!("qwen3:0.6b"),
+            revision: 1,
+        };
+        let second = ConfigSetRequest {
+            key: "packs.talk".into(),
+            value: serde_json::json!(700),
+            revision: 2,
+        };
+        spawn_config_worker_with(request_rx, result_tx, move |actual| {
+            started_tx.send(actual.clone()).unwrap();
+            release_rx.recv().unwrap();
+            Ok(())
+        });
+
+        request_tx.send(vec![request.clone(), second.clone()]).unwrap();
+        assert_eq!(
+            started_rx
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .unwrap(),
+            request
+        );
+        assert!(result_rx.try_recv().is_err());
+        release_tx.send(()).unwrap();
+        assert_eq!(
+            started_rx
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .unwrap(),
+            second
+        );
+        assert!(result_rx.try_recv().is_err(), "partial batches must stay hidden");
+        release_tx.send(()).unwrap();
+        assert_eq!(
+            result_rx
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .unwrap(),
+            vec![
+                ConfigSetOutcome { request, result: Ok(()) },
+                ConfigSetOutcome { request: second, result: Ok(()) },
+            ]
+        );
+    }
+
+    #[test]
+    fn apply_queues_only_dirty_typed_values_in_fixed_key_order() {
+        let (mut app, _tx) = app();
+        app.install_pipeline_snapshot(pipeline_snapshot("qwen3:4b"));
+        let (config_tx, config_rx) = std::sync::mpsc::channel();
+        app.config_tx = config_tx;
+
+        app.set_config_edit("packs.think", "9000");
+        app.set_config_edit("models.talk", "qwen3:0.6b");
+        app.set_config_edit("budgets.router", "151");
+        app.set_config_edit("budgets.router", "150");
+        app.set_config_edit("models.local_only", "not-a-boolean");
+        app.set_config_edit("packs.talk", "not-an-integer");
+
+        assert!(app.apply_config_edits());
+        assert!(!app.apply_config_edits(), "a pending batch must not be duplicated");
+        let batch = config_rx.recv().unwrap();
+        assert_eq!(
+            batch,
+            vec![
+                ConfigSetRequest {
+                    key: "models.talk".into(),
+                    value: serde_json::json!("qwen3:0.6b"),
+                    revision: 2,
+                },
+                ConfigSetRequest {
+                    key: "packs.think".into(),
+                    value: serde_json::json!(9000),
+                    revision: 1,
+                },
+            ]
+        );
+        assert!(config_rx.try_recv().is_err());
+        assert!(app.config_error.as_deref().unwrap().contains("models.local_only"));
+        assert!(app.config_error.as_deref().unwrap().contains("packs.talk"));
+        app.record_config_batch_result(
+            batch
+                .into_iter()
+                .map(|request| ConfigSetOutcome { request, result: Ok(()) })
+                .collect(),
+        );
+        assert!(app.config_error.as_deref().unwrap().contains("models.local_only"));
+        assert!(app.config_error.as_deref().unwrap().contains("packs.talk"));
+    }
+
+    #[test]
+    fn edit_then_revert_queues_no_configuration_request() {
+        let (mut app, _tx) = app();
+        app.install_pipeline_snapshot(pipeline_snapshot("qwen3:4b"));
+        let (config_tx, config_rx) = std::sync::mpsc::channel();
+        app.config_tx = config_tx;
+
+        app.set_config_edit("models.talk", "qwen3:0.6b");
+        app.set_config_edit("models.talk", "qwen3:4b");
+
+        assert!(!app.apply_config_edits());
+        assert!(config_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn batch_outcomes_preserve_failures_concurrent_edits_and_error_across_refresh() {
+        let (mut app, _tx) = app();
+        app.install_pipeline_snapshot(pipeline_snapshot("qwen3:4b"));
+        let (config_tx, config_rx) = std::sync::mpsc::channel();
+        app.config_tx = config_tx;
+
+        app.set_config_edit("models.talk", "qwen3:0.6b");
+        app.set_config_edit("models.router", "qwen3:4b");
+        assert!(app.apply_config_edits());
+        let batch = config_rx.recv().unwrap();
+        app.set_config_edit("models.talk", "qwen3-coder:30b-64k");
+
+        app.record_config_batch_result(vec![
+            ConfigSetOutcome { request: batch[0].clone(), result: Ok(()) },
+            ConfigSetOutcome {
+                request: batch[1].clone(),
+                result: Err("model gate rejected router".into()),
+            },
+        ]);
+
+        assert!(!app.config_pending);
+        assert!(app.pipeline_loading, "refresh starts only after the complete batch");
+        assert_eq!(app.config_edits["models.talk"], "qwen3-coder:30b-64k");
+        assert_eq!(app.config_edits["models.router"], "qwen3:4b");
+        assert!(app.config_edit_revisions.contains_key("models.talk"));
+        assert!(app.config_edit_revisions.contains_key("models.router"));
+        assert_eq!(app.config_error.as_deref(), Some("models.router: model gate rejected router"));
+
+        let mut refreshed = pipeline_snapshot("stale-snapshot");
+        refreshed
+            .config
+            .insert("models.think".into(), serde_json::json!("clean-snapshot-value"));
+        app.install_pipeline_snapshot(refreshed);
+        assert_eq!(app.config_edits["models.talk"], "qwen3-coder:30b-64k");
+        assert_eq!(app.config_edits["models.router"], "qwen3:4b");
+        assert_eq!(app.config_error.as_deref(), Some("models.router: model gate rejected router"));
+        assert_eq!(app.config_edits["models.think"], "clean-snapshot-value");
+    }
+
+    #[test]
+    fn all_failed_batch_does_not_start_a_snapshot_refresh() {
+        let (mut app, _tx) = app();
+        app.install_pipeline_snapshot(pipeline_snapshot("qwen3:4b"));
+        app.set_config_edit("models.talk", "too-large-model");
+        let revision = app.config_edit_revisions["models.talk"];
+        app.config_pending = true;
+
+        app.record_config_batch_result(vec![ConfigSetOutcome {
+            request: ConfigSetRequest {
+                key: "models.talk".into(),
+                value: serde_json::json!("too-large-model"),
+                revision,
+            },
+            result: Err("memory gate rejected model".into()),
+        }]);
+
+        assert!(!app.pipeline_loading);
+        assert!(app.config_edit_revisions.contains_key("models.talk"));
+        assert_eq!(app.config_edits["models.talk"], "too-large-model");
+        assert_eq!(
+            app.config_error.as_deref(),
+            Some("models.talk: memory gate rejected model")
+        );
+    }
+
+    #[test]
+    fn successful_current_revision_clears_dirty_state_before_refresh() {
+        let (mut app, _tx) = app();
+        app.install_pipeline_snapshot(pipeline_snapshot("qwen3:4b"));
+        app.set_config_edit("models.talk", "qwen3:0.6b");
+        let revision = app.config_edit_revisions["models.talk"];
+        app.config_pending = true;
+
+        app.record_config_batch_result(vec![ConfigSetOutcome {
+            request: ConfigSetRequest {
+                key: "models.talk".into(),
+                value: serde_json::json!("qwen3:0.6b"),
+                revision,
+            },
+            result: Ok(()),
+        }]);
+
+        assert!(!app.config_edit_revisions.contains_key("models.talk"));
+        assert!(app.pipeline_loading);
     }
 }

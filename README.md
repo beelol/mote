@@ -161,7 +161,11 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
 - [x] **V0-45** A reply that carries a surface renders inline, and a button press arrives at the daemon as `ui.event`. **Verify:** Live run; event log excerpt in the evidence file. [§13](docs/rfcs/v0.md#13-mote-client) [evidence](docs/verification/V0-45.md)
 - [ ] **V0-46** The client follows the system light and dark setting. **Verify:** Two screenshots. [§13](docs/rfcs/v0.md#13-mote-client)
 - [ ] **V0-47** The pipeline screen lists the five stages and each opens Now, Config, Numbers and Requests tabs. **Verify:** Screenshots during a live turn. [§14](docs/rfcs/v0.md#14-pipeline-view)
+  Headless production-shell coverage exercises all 20 stage and tab combinations with populated,
+  stage-distinct content. The live-turn screenshots remain required.
 - [ ] **V0-48** Changing `models.talk` from the Config tab calls `config.set` and the next turn uses the new model. **Verify:** Live run; ledger rows before and after. [§14](docs/rfcs/v0.md#14-pipeline-view)
+  Headless client coverage verifies typed dirty-only background updates, failure preservation and
+  refresh reconciliation. The native Config click remains required.
 - [x] **V0-49** The Requests tab shows every outbound call with a redacted payload and timing. **Verify:** Grep the stored rows for the redaction patterns; none match. [§14](docs/rfcs/v0.md#14-pipeline-view) [evidence](docs/verification/V0-49.md)
 - [ ] **V0-50** Opening the pipeline view adds under 5 ms at p50 to the talk lane. **Verify:** `moted bench talk` with the view closed, then open. [§14](docs/rfcs/v0.md#14-pipeline-view)
 - [x] **V0-51** A `schedules` row fires its prompt into a thread at its cron time. **Verify:** Test with a controlled clock. [§15](docs/rfcs/v0.md#15-watchers-and-approvals) [evidence](docs/verification/V0-51.md)
