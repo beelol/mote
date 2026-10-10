@@ -206,6 +206,7 @@ pub struct MoteApp {
     config_baseline: std::collections::HashMap<String, String>,
     config_revision: u64,
     config_edit_revisions: std::collections::HashMap<String, u64>,
+    config_submitted: std::collections::HashMap<String, ConfigSetRequest>,
     config_pending: bool,
     config_error: Option<String>,
     config_tx: Sender<ConfigBatch>,
@@ -252,6 +253,7 @@ impl MoteApp {
             config_baseline: std::collections::HashMap::new(),
             config_revision: 0,
             config_edit_revisions: std::collections::HashMap::new(),
+            config_submitted: std::collections::HashMap::new(),
             config_pending: false,
             config_error: None,
             config_tx,
@@ -695,9 +697,27 @@ impl MoteApp {
 
     fn record_config_edit(&mut self, key: &str) {
         self.config_revision = self.config_revision.saturating_add(1);
-        if self.config_edits.get(key) == self.config_baseline.get(key) {
+        if self.config_submitted.contains_key(key) {
+            self.config_edit_revisions.insert(key.into(), self.config_revision);
+        } else if self.config_edits.get(key) == self.config_baseline.get(key) {
             self.config_edit_revisions.remove(key);
         } else {
+            self.config_edit_revisions.insert(key.into(), self.config_revision);
+        }
+    }
+
+    fn config_value_text(value: &serde_json::Value) -> String {
+        match value {
+            serde_json::Value::String(value) => value.clone(),
+            value => value.to_string(),
+        }
+    }
+
+    fn recompute_config_dirty(&mut self, key: &str) {
+        if self.config_edits.get(key) == self.config_baseline.get(key) {
+            self.config_edit_revisions.remove(key);
+        } else if !self.config_edit_revisions.contains_key(key) {
+            self.config_revision = self.config_revision.saturating_add(1);
             self.config_edit_revisions.insert(key.into(), self.config_revision);
         }
     }
@@ -740,10 +760,14 @@ impl MoteApp {
         if batch.is_empty() {
             return false;
         }
-        if self.config_tx.send(batch).is_err() {
+        if self.config_tx.send(batch.clone()).is_err() {
             self.config_error = Some("configuration worker stopped".into());
             return false;
         }
+        self.config_submitted = batch
+            .into_iter()
+            .map(|request| (request.key.clone(), request))
+            .collect();
         self.config_pending = true;
         true
     }
@@ -754,27 +778,29 @@ impl MoteApp {
         let mut succeeded = false;
         let mut errors = Vec::new();
         for outcome in outcomes {
+            self.config_submitted.remove(&outcome.request.key);
             match outcome.result {
                 Ok(()) => {
                     succeeded = true;
                     let request = outcome.request;
-                    let still_current = self
+                    let value = Self::config_value_text(&request.value);
+                    self.config_baseline.insert(request.key.clone(), value.clone());
+                    let submitted_revision_is_current = self
                         .config_edit_revisions
                         .get(&request.key)
                         .is_some_and(|revision| *revision == request.revision);
-                    if still_current {
-                        let value = match request.value {
-                            serde_json::Value::String(value) => value,
-                            value => value.to_string(),
-                        };
-                        self.config_edits.insert(request.key.clone(), value.clone());
-                        self.config_baseline.insert(request.key.clone(), value);
+                    if submitted_revision_is_current {
+                        self.config_edits.insert(request.key.clone(), value);
                         self.config_edit_revisions.remove(&request.key);
                     }
                 }
-                Err(error) => errors.push(format!("{}: {error}", outcome.request.key)),
+                Err(error) => {
+                    self.recompute_config_dirty(&outcome.request.key);
+                    errors.push(format!("{}: {error}", outcome.request.key));
+                }
             }
         }
+        self.config_submitted.clear();
         self.config_error = if errors.is_empty() {
             prior_error
         } else if let Some(prior) = prior_error {
@@ -883,6 +909,7 @@ mod tests {
                 config_baseline: Default::default(),
                 config_revision: 0,
                 config_edit_revisions: Default::default(),
+                config_submitted: Default::default(),
                 config_pending: false,
                 config_error: None,
                 config_tx,
@@ -1971,5 +1998,43 @@ mod tests {
 
         assert!(!app.config_edit_revisions.contains_key("models.talk"));
         assert!(app.pipeline_loading);
+    }
+
+    #[test]
+    fn edit_back_to_old_baseline_during_apply_survives_successful_refresh() {
+        let (mut app, _tx) = app();
+        app.install_pipeline_snapshot(pipeline_snapshot("qwen3:4b"));
+        let (config_tx, config_rx) = std::sync::mpsc::channel();
+        app.config_tx = config_tx;
+
+        app.set_config_edit("models.talk", "qwen3:0.6b");
+        assert!(app.apply_config_edits());
+        let submitted = config_rx.recv().unwrap();
+        app.set_config_edit("models.talk", "qwen3:4b");
+
+        assert!(
+            app.config_edit_revisions.contains_key("models.talk"),
+            "a post-submit edit must compare against the submitted value"
+        );
+        app.record_config_batch_result(vec![ConfigSetOutcome {
+            request: submitted[0].clone(),
+            result: Ok(()),
+        }]);
+        app.install_pipeline_snapshot(pipeline_snapshot("qwen3:0.6b"));
+        app.pipeline_loading = false;
+
+        assert_eq!(app.config_edits["models.talk"], "qwen3:4b");
+        assert_eq!(app.config_baseline["models.talk"], "qwen3:0.6b");
+        assert!(app.config_edit_revisions.contains_key("models.talk"));
+        assert!(app.apply_config_edits());
+        let follow_up = config_rx.recv().unwrap();
+        assert_eq!(
+            follow_up,
+            vec![ConfigSetRequest {
+                key: "models.talk".into(),
+                value: serde_json::json!("qwen3:4b"),
+                revision: app.config_edit_revisions["models.talk"],
+            }]
+        );
     }
 }

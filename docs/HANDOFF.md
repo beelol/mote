@@ -21,11 +21,16 @@ after the complete batch when at least one key succeeded. Snapshot installation 
 and preserves failed or concurrently edited keys. Configuration errors survive successful snapshot
 installation.
 
+Fix Round 1 tracks every in-flight submitted revision and value separately from dirty edits. If a
+key starts at O, submits A and is edited back to O while A is pending, the successful A response
+advances the confirmed baseline to A without replacing O. The refreshed A snapshot preserves O as
+dirty, and the next Apply submits O.
+
 V0-47 and V0-48 remain open. V0-47 still requires live-turn screenshots of the native Pipeline
 view. V0-48 still requires a native Config click correlated with the already verified before-and-after
 ledger rows.
 
-The focused client suite passes 98 tests. The full workspace passes 380 tests. Workspace clippy and
+The focused client suite passes 99 tests. The full workspace passes 381 tests. Workspace clippy and
 `git diff --check` pass.
 
 No remote write or push occurred.

@@ -67,6 +67,7 @@ impl Default for ObservationHarness {
                 config_baseline: Default::default(),
                 config_revision: 0,
                 config_edit_revisions: Default::default(),
+                config_submitted: Default::default(),
                 config_pending: false,
                 config_error: None,
                 config_tx,
