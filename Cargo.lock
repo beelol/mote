@@ -2444,6 +2444,7 @@ version = "0.0.0"
 dependencies = [
  "chrono",
  "cron",
+ "libc",
  "matrix-lang",
  "model2vec-rs",
  "mote-client",

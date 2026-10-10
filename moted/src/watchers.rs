@@ -10,7 +10,13 @@ use mote_eventlog::EventLog;
 use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::json;
+use std::ffi::{CString, OsString};
 use std::fmt;
+use std::fs::File;
+use std::io::Write;
+use std::os::fd::{AsRawFd, FromRawFd};
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -70,6 +76,12 @@ impl From<serde_json::Error> for ApprovalError {
 struct FileWritePayload {
     path: PathBuf,
     content: String,
+}
+
+struct ResolvedWriteTarget {
+    path: PathBuf,
+    parent: PathBuf,
+    filename: OsString,
 }
 
 pub struct Watchers {
@@ -152,8 +164,41 @@ impl Watchers {
         content: &str,
         now: i64,
     ) -> Result<WriteDecision, ApprovalError> {
-        if is_inside(data_dir, path)? {
-            std::fs::write(path, content)?;
+        self.request_file_write_impl(data_dir, thread_id, path, content, now, || Ok(()))
+    }
+
+    #[cfg(test)]
+    fn request_file_write_with_hook(
+        &self,
+        data_dir: &Path,
+        thread_id: &str,
+        path: &Path,
+        content: &str,
+        now: i64,
+        before_target_open: impl FnOnce() -> std::io::Result<()>,
+    ) -> Result<WriteDecision, ApprovalError> {
+        self.request_file_write_impl(
+            data_dir,
+            thread_id,
+            path,
+            content,
+            now,
+            before_target_open,
+        )
+    }
+
+    fn request_file_write_impl(
+        &self,
+        data_dir: &Path,
+        thread_id: &str,
+        path: &Path,
+        content: &str,
+        now: i64,
+        before_target_open: impl FnOnce() -> std::io::Result<()>,
+    ) -> Result<WriteDecision, ApprovalError> {
+        let resolved = resolve_write_target(path)?;
+        if resolved.path.starts_with(data_dir.canonicalize()?) {
+            write_resolved(&resolved, content, before_target_open)?;
             return Ok(WriteDecision::Executed);
         }
         let payload = json!({ "path": path.to_string_lossy(), "content": content }).to_string();
@@ -183,6 +228,27 @@ impl Watchers {
         thread_id: &str,
         now: i64,
     ) -> Result<bool, ApprovalError> {
+        self.approve_for_thread_impl(id, thread_id, now, || Ok(()))
+    }
+
+    #[cfg(test)]
+    fn approve_for_thread_with_hook(
+        &self,
+        id: i64,
+        thread_id: &str,
+        now: i64,
+        before_target_open: impl FnOnce() -> std::io::Result<()>,
+    ) -> Result<bool, ApprovalError> {
+        self.approve_for_thread_impl(id, thread_id, now, before_target_open)
+    }
+
+    fn approve_for_thread_impl(
+        &self,
+        id: i64,
+        thread_id: &str,
+        now: i64,
+        before_target_open: impl FnOnce() -> std::io::Result<()>,
+    ) -> Result<bool, ApprovalError> {
         self.expire_due(now)?;
         let payload = match self.conn.query_row(
             "SELECT payload FROM approvals
@@ -195,7 +261,8 @@ impl Watchers {
             Err(error) => return Err(error.into()),
         };
         let write: FileWritePayload = serde_json::from_str(&payload)?;
-        std::fs::write(write.path, write.content)?;
+        let resolved = resolve_write_target(&write.path)?;
+        write_resolved(&resolved, &write.content, before_target_open)?;
         let changed = self.conn.execute(
             "UPDATE approvals SET status='approved'
              WHERE id=?1 AND thread_id=?2 AND status='pending' AND expires_at>=?3",
@@ -262,9 +329,8 @@ impl Watchers {
 
 }
 
-fn is_inside(dir: &Path, path: &Path) -> std::io::Result<bool> {
-    let resolved_dir = dir.canonicalize()?;
-    let resolved_path = match path.canonicalize() {
+fn resolve_write_target(path: &Path) -> std::io::Result<ResolvedWriteTarget> {
+    let resolved = match path.canonicalize() {
         Ok(path) => path,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             match path.symlink_metadata() {
@@ -286,7 +352,104 @@ fn is_inside(dir: &Path, path: &Path) -> std::io::Result<bool> {
         }
         Err(error) => return Err(error),
     };
-    Ok(resolved_path.starts_with(resolved_dir))
+    let parent = resolved.parent().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "write target has no parent")
+    })?;
+    let filename = resolved.file_name().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "write target has no filename")
+    })?;
+    Ok(ResolvedWriteTarget {
+        path: resolved.clone(),
+        parent: parent.to_path_buf(),
+        filename: filename.to_os_string(),
+    })
+}
+
+fn write_resolved(
+    target: &ResolvedWriteTarget,
+    content: &str,
+    before_target_open: impl FnOnce() -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let parent = open_directory(&target.parent)?;
+    let identity = parent.metadata()?;
+    before_target_open()?;
+    let current = open_directory(&target.parent)?;
+    let current_identity = current.metadata()?;
+    if identity.dev() != current_identity.dev() || identity.ino() != current_identity.ino() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "write target parent changed during validation",
+        ));
+    }
+    let name = c_string(&target.filename)?;
+    let descriptor = unsafe {
+        libc::openat(
+            parent.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_WRONLY
+                | libc::O_CREAT
+                | libc::O_TRUNC
+                | libc::O_NOFOLLOW
+                | libc::O_CLOEXEC,
+            0o666,
+        )
+    };
+    if descriptor < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let mut file = unsafe { File::from_raw_fd(descriptor) };
+    file.write_all(content.as_bytes())
+}
+
+fn open_directory(path: &Path) -> std::io::Result<File> {
+    if !path.is_absolute() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "resolved write parent is not absolute",
+        ));
+    }
+    let root = c_string(std::ffi::OsStr::new("/"))?;
+    let descriptor = unsafe {
+        libc::open(
+            root.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if descriptor < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let mut directory = unsafe { File::from_raw_fd(descriptor) };
+    for component in path.components() {
+        use std::path::Component;
+        let Component::Normal(name) = component else {
+            if matches!(component, Component::RootDir) {
+                continue;
+            }
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "resolved write parent contains a non-normal component",
+            ));
+        };
+        let name = c_string(name)?;
+        let descriptor = unsafe {
+            libc::openat(
+                directory.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        if descriptor < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        directory = unsafe { File::from_raw_fd(descriptor) };
+    }
+    Ok(directory)
+}
+
+fn c_string(value: &std::ffi::OsStr) -> std::io::Result<CString> {
+    CString::new(value.as_bytes()).map_err(|_| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "write path contains a NUL byte")
+    })
 }
 
 #[cfg(test)]
@@ -507,5 +670,77 @@ mod tests {
         assert_eq!(w.status(id).unwrap(), "pending");
         assert!(w.deny(id, 1_002).unwrap());
         assert_eq!(w.status(id).unwrap(), "denied");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn parent_swap_after_validation_cannot_redirect_an_inside_write() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_root("inside-parent-swap");
+        let data = root.join("data");
+        let parent = data.join("safe");
+        let parked = data.join("parked");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&parent).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let target = parent.join("note.txt");
+        let redirected = outside.join("note.txt");
+        let w = Watchers::open_in_memory().unwrap();
+
+        let result = w.request_file_write_with_hook(
+            &data,
+            "t1",
+            &target,
+            "blocked",
+            1_000,
+            || {
+                std::fs::rename(&parent, &parked)?;
+                symlink(&outside, &parent)
+            },
+        );
+
+        assert!(matches!(result, Err(ApprovalError::Filesystem(_))));
+        assert!(!redirected.exists());
+        assert!(!parked.join("note.txt").exists());
+        let approvals: i64 =
+            w.conn.query_row("SELECT COUNT(*) FROM approvals", [], |row| row.get(0)).unwrap();
+        assert_eq!(approvals, 0);
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn parent_swap_after_validation_keeps_approved_write_pending() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_root("approved-parent-swap");
+        let data = root.join("data");
+        let parent = root.join("approved");
+        let parked = root.join("parked");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::create_dir_all(&parent).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let target = parent.join("note.txt");
+        let redirected = outside.join("note.txt");
+        let w = Watchers::open_in_memory().unwrap();
+        let WriteDecision::Pending(id) =
+            w.request_file_write(&data, "t1", &target, "blocked", 1_000).unwrap()
+        else {
+            panic!("outside target must be pending");
+        };
+
+        let result = w.approve_for_thread_with_hook(id, "t1", 1_001, || {
+            std::fs::rename(&parent, &parked)?;
+            symlink(&outside, &parent)
+        });
+
+        assert!(matches!(result, Err(ApprovalError::Filesystem(_))));
+        assert!(!redirected.exists());
+        assert!(!parked.join("note.txt").exists());
+        assert_eq!(w.status(id).unwrap(), "pending");
+        assert!(w.deny(id, 1_002).unwrap());
+        std::fs::remove_dir_all(root).ok();
     }
 }
