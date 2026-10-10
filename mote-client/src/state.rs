@@ -32,6 +32,7 @@ pub struct Message {
     pub text: String,
     pub status: Status,
     pub surface: Option<Node>,
+    pub surface_id: Option<String>,
 }
 
 pub struct ChatState {
@@ -67,6 +68,7 @@ impl ChatState {
             text,
             status: Status::Sending,
             surface: None,
+            surface_id: None,
         });
         local_id
     }
@@ -121,6 +123,7 @@ impl ChatState {
                     text: text.into(),
                     status: Status::Delivered,
                     surface: None,
+                    surface_id: None,
                 });
             }
             "talk.delta" => {
@@ -138,6 +141,7 @@ impl ChatState {
                     text: delta.into(),
                     status: Status::Delivered,
                     surface: None,
+                    surface_id: None,
                 });
             }
             "talk.done" => {
@@ -155,17 +159,29 @@ impl ChatState {
                     text: format!("talk unavailable: {reason}"),
                     status: Status::Read,
                     surface: None,
+                    surface_id: None,
                 });
             }
             "ui.surface" => {
                 if let Ok(bytes) = serde_json::to_vec(&ev.payload["surface"]) {
                     if let Ok(node) = mote_ui::validate(&bytes) {
+                        let surface_id = ev.payload["surface_id"].as_str();
+                        if let Some(existing) = surface_id.and_then(|surface_id| {
+                            self.messages.iter_mut().find(|message| {
+                                message.surface_id.as_deref() == Some(surface_id)
+                            })
+                        }) {
+                            existing.surface = Some(node);
+                            existing.status = Status::Read;
+                            return;
+                        }
                         self.messages.push(Message {
                             local_id: None,
                             role: "assistant".into(),
                             text: String::new(),
                             status: Status::Read,
                             surface: Some(node),
+                            surface_id: surface_id.map(str::to_owned),
                         });
                     }
                 }
@@ -196,6 +212,7 @@ mod tests {
             text: text.into(),
             status,
             surface: None,
+            surface_id: None,
         }
     }
 
@@ -290,5 +307,35 @@ mod tests {
         assert_eq!(chat.messages[0].local_id.as_deref(), Some(pending.as_str()));
         assert!(chat.messages[1].status == Status::Delivered);
         assert!(chat.messages[1].local_id.is_none());
+    }
+
+    #[test]
+    fn repeated_surface_identity_replaces_the_existing_dashboard() {
+        let mut chat = ChatState::default();
+        chat.reduce(&event(
+            20,
+            "ui.surface",
+            serde_json::json!({
+                "surface_id":"matrix",
+                "surface":{"type":"text", "value":"first"}
+            }),
+        ));
+        chat.reduce(&event(
+            21,
+            "ui.surface",
+            serde_json::json!({
+                "surface_id":"matrix",
+                "surface":{"type":"text", "value":"second"}
+            }),
+        ));
+
+        assert_eq!(chat.messages.len(), 1);
+        assert_eq!(chat.messages[0].surface_id.as_deref(), Some("matrix"));
+        assert_eq!(
+            chat.messages[0].surface,
+            Some(Node::Text {
+                value: "second".into()
+            })
+        );
     }
 }

@@ -131,26 +131,42 @@ impl Daemon {
         matrix::compile(source, &bindings).map_err(|errors| matrix::diagnostics(&errors))
     }
 
-    fn render_matrix(&self, thread: &str, source: &str, retain: bool) -> Result<Value, RpcError> {
+    fn render_matrix_with_sources(
+        &self,
+        sources: &mut HashMap<String, String>,
+        thread: &str,
+        source: &str,
+        retain: bool,
+    ) -> Result<Value, RpcError> {
         match self.compile_matrix(source) {
             Ok(surface) => {
-                let response = commit_surface(&self.log, thread, &surface)?;
+                let (node, valid) = validate_surface(&surface);
+                self.log
+                    .append(
+                        thread,
+                        "ui.surface",
+                        &json!({"surface":node, "surface_id":"matrix"}),
+                    )
+                    .map_err(|error| RpcError::internal(format!("commit surface: {error}")))?;
                 if retain {
-                    self.matrix_sources
-                        .lock()
-                        .unwrap()
-                        .insert(thread.into(), source.into());
+                    sources.insert(thread.into(), source.into());
                 }
-                Ok(json!({"ok": true, "valid": response["valid"]}))
+                Ok(json!({"ok": true, "valid": valid}))
             }
             Err(diagnostics) => Ok(json!({"ok": false, "diagnostics": diagnostics})),
         }
     }
 
+    fn render_matrix(&self, thread: &str, source: &str, retain: bool) -> Result<Value, RpcError> {
+        let mut sources = self.matrix_sources.lock().unwrap();
+        self.render_matrix_with_sources(&mut sources, thread, source, retain)
+    }
+
     fn refresh_matrix(&self, thread: &str) -> Result<Option<Value>, RpcError> {
-        let source = self.matrix_sources.lock().unwrap().get(thread).cloned();
+        let mut sources = self.matrix_sources.lock().unwrap();
+        let source = sources.get(thread).cloned();
         source
-            .map(|source| self.render_matrix(thread, &source, false))
+            .map(|source| self.render_matrix_with_sources(&mut sources, thread, &source, false))
             .transpose()
     }
 
@@ -695,6 +711,7 @@ mod approval_dispatch_tests {
             .recv_timeout(Duration::from_millis(10))
             .unwrap();
         assert_eq!(event.kind, "ui.surface");
+        assert_eq!(event.payload["surface_id"], "matrix");
         assert_eq!(event.payload["surface"]["type"], "stack");
         assert!(event.payload.to_string().contains("models.local_only"));
         assert!(event.payload.to_string().contains("qwen3:4b"));
@@ -838,6 +855,54 @@ mod approval_dispatch_tests {
             .unwrap_err();
         assert!(error.message.contains("field contract"));
         assert_eq!(daemon.log.max_seq().unwrap(), 0);
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn concurrent_matrix_renders_keep_retained_source_and_refresh_consistent() {
+        let (data, _) = dirs("matrix-concurrent");
+        let daemon = Arc::new(daemon(&data));
+        for iteration in 0..20 {
+            let first = format!("screen {{ text \"first {iteration}\" }}");
+            let second = format!("screen {{ text \"second {iteration}\" }}");
+            let left = daemon.clone();
+            let right = daemon.clone();
+            let left = std::thread::spawn(move || {
+                left.call(
+                    "matrix.render",
+                    json!({"thread":"thread-7", "source":first}),
+                )
+                .unwrap();
+            });
+            let right = std::thread::spawn(move || {
+                right
+                    .call(
+                        "matrix.render",
+                        json!({"thread":"thread-7", "source":second}),
+                    )
+                    .unwrap();
+            });
+            left.join().unwrap();
+            right.join().unwrap();
+        }
+
+        let retained = daemon
+            .matrix_sources
+            .lock()
+            .unwrap()
+            .get("thread-7")
+            .cloned()
+            .unwrap();
+        let expected = daemon.compile_matrix(&retained).unwrap();
+        daemon.refresh_matrix("thread-7").unwrap().unwrap();
+        let latest = daemon
+            .log
+            .recent_kind_since("ui.surface", i64::MIN, 1)
+            .unwrap()
+            .pop()
+            .unwrap();
+        assert_eq!(latest.payload["surface"], expected);
+        assert_eq!(latest.payload["surface_id"], "matrix");
         std::fs::remove_dir_all(data.parent().unwrap()).ok();
     }
 

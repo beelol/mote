@@ -25,7 +25,7 @@ fn preview_status(event: &crate::surface::SurfaceEvent) -> String {
         crate::surface::SurfaceEvent::Action { event } => {
             format!("Preview action: {event}")
         }
-        crate::surface::SurfaceEvent::Change { field, value } => {
+        crate::surface::SurfaceEvent::Change { field, value, .. } => {
             format!("Preview change: {field} = {value}")
         }
     }
@@ -270,10 +270,13 @@ impl MoteApp {
         });
     }
 
-    fn send_ui_event(&mut self, event: &crate::surface::SurfaceEvent) {
-        if let Ok(mut c) = self.client() {
-            let _ = c.call("ui.event", ui_event_params(event));
-        }
+    fn send_ui_event(&mut self, event: &crate::surface::SurfaceEvent) -> Result<(), String> {
+        let mut client = self.client().map_err(|error| format!("cannot reach daemon: {error}"))?;
+        client
+            .call("ui.event", ui_event_params(event))
+            .map_err(|error| format!("cannot send UI event: {error}"))?
+            .map(|_| ())
+            .map_err(|error| format!("{}: {}", error.code, error.message))
     }
 
     fn preview_view(&mut self, ui: &mut egui::Ui) {
@@ -315,7 +318,12 @@ impl MoteApp {
                 }
             });
         for e in clicked {
-            self.send_ui_event(&e);
+            if let Err(error) = self.send_ui_event(&e) {
+                crate::surface::discard_change(ui.ctx(), &e);
+                self.status_line = error;
+            } else {
+                self.status_line.clear();
+            }
         }
 
         ui.separator();
@@ -769,6 +777,7 @@ mod tests {
         let event = crate::surface::SurfaceEvent::Change {
             field: "models.local_only".into(),
             value: serde_json::Value::Bool(true),
+            state_id: egui::Id::NULL,
         };
         assert_eq!(
             ui_event_params(&event),
@@ -785,6 +794,20 @@ mod tests {
             preview_status(&event),
             "Preview change: models.local_only = true"
         );
+    }
+
+    #[test]
+    fn ui_event_connection_failure_is_returned_for_visible_feedback() {
+        let (mut app, _) = app();
+        let error = app
+            .send_ui_event(&crate::surface::SurfaceEvent::Change {
+                field: "models.talk".into(),
+                value: serde_json::json!("qwen3:0.6b"),
+                state_id: egui::Id::NULL,
+            })
+            .unwrap_err();
+
+        assert!(error.contains("cannot reach daemon"));
     }
 
     #[test]

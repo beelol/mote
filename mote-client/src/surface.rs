@@ -9,6 +9,7 @@ pub enum SurfaceEvent {
     Change {
         field: String,
         value: serde_json::Value,
+        state_id: egui::Id,
     },
 }
 
@@ -23,11 +24,21 @@ impl SurfaceEvent {
     pub fn args(&self) -> serde_json::Value {
         match self {
             Self::Action { .. } => serde_json::json!({}),
-            Self::Change { field, value } => {
+            Self::Change { field, value, .. } => {
                 serde_json::json!({ "field": field, "value": value })
             }
         }
     }
+}
+
+pub fn discard_change(ctx: &egui::Context, event: &SurfaceEvent) {
+    let SurfaceEvent::Change { state_id, .. } = event else {
+        return;
+    };
+    ctx.data_mut(|data| {
+        data.remove::<bool>(*state_id);
+        data.remove::<String>(*state_id);
+    });
 }
 
 pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
@@ -94,6 +105,7 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
                 events.push(SurfaceEvent::Change {
                     field: name.clone(),
                     value: serde_json::Value::Bool(edited),
+                    state_id: id,
                 });
             }
             ui.data_mut(|data| data.insert_temp(id, edited));
@@ -127,6 +139,7 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
                                     events.push(SurfaceEvent::Change {
                                         field: name.clone(),
                                         value: serde_json::Value::String(selected.clone()),
+                                        state_id: id,
                                     });
                                 }
                             });
@@ -365,13 +378,11 @@ mod tests {
         assert!(idle.is_empty());
 
         let (_, changed, _) = frame(&ctx, &node, click_events(rect.center()));
-        assert_eq!(
-            changed,
-            vec![SurfaceEvent::Change {
-                field: "preview.enabled".into(),
-                value: serde_json::Value::Bool(false),
-            }]
-        );
+        assert!(matches!(
+            changed.as_slice(),
+            [SurfaceEvent::Change { field, value, .. }]
+                if field == "preview.enabled" && value == &serde_json::Value::Bool(false)
+        ));
 
         let (_, idle_again, _) = frame(&ctx, &node, vec![]);
         assert!(idle_again.is_empty());
@@ -394,13 +405,12 @@ mod tests {
         assert!(opened.is_empty());
         let (popup, _, _) = frame(&ctx, &node, vec![]);
         let (_, selected, _) = frame(&ctx, &node, click_events(text_center(&popup, "Bravo")));
-        assert_eq!(
-            selected,
-            vec![SurfaceEvent::Change {
-                field: "models.talk".into(),
-                value: serde_json::Value::String("Bravo".into()),
-            }]
-        );
+        assert!(matches!(
+            selected.as_slice(),
+            [SurfaceEvent::Change { field, value, .. }]
+                if field == "models.talk"
+                    && value == &serde_json::Value::String("Bravo".into())
+        ));
 
         let (closed, idle_again, _) = frame(&ctx, &node, vec![]);
         assert!(idle_again.is_empty());
@@ -409,6 +419,34 @@ mod tests {
         let (popup, _, _) = frame(&ctx, &node, vec![]);
         let (_, reselected, _) = frame(&ctx, &node, click_events(text_center(&popup, "Bravo")));
         assert!(reselected.is_empty());
+    }
+
+    #[test]
+    fn rejected_select_change_discards_its_optimistic_value() {
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let node = Node::Select {
+            label: "Mode".into(),
+            name: "models.talk".into(),
+            options: vec!["Alpha".into(), "Bravo".into()],
+            value: "Alpha".into(),
+        };
+        let (closed, _, _) = frame(&ctx, &node, vec![]);
+        frame(&ctx, &node, click_events(text_center(&closed, "Alpha")));
+        let (popup, _, _) = frame(&ctx, &node, vec![]);
+        let (_, events, _) = frame(&ctx, &node, click_events(text_center(&popup, "Bravo")));
+        assert_eq!(events.len(), 1);
+
+        discard_change(&ctx, &events[0]);
+        let (reverted, _, _) = frame(&ctx, &node, vec![]);
+        assert!(reverted.shapes.iter().any(|shape| matches!(
+            &shape.shape,
+            egui::Shape::Text(text) if text.galley.text() == "Alpha"
+        )));
+        assert!(!reverted.shapes.iter().any(|shape| matches!(
+            &shape.shape,
+            egui::Shape::Text(text) if text.galley.text() == "Bravo"
+        )));
     }
 
     #[test]
