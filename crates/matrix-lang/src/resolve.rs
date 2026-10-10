@@ -494,6 +494,27 @@ fn template(declaration: &Declaration) -> bool {
     )
 }
 
+fn row_key_bytes(key: &RowKey) -> usize {
+    match key {
+        RowKey::String(value) | RowKey::Integer(value) => value.len(),
+        RowKey::Index(_) => 0,
+    }
+}
+
+fn row_identity_bytes(rows: &[RowIdentity]) -> usize {
+    rows.iter().fold(0usize, |total, row| {
+        total.saturating_add(row_key_bytes(&row.key))
+    })
+}
+
+fn type_name_bytes(ty: &Type) -> usize {
+    match ty {
+        Type::Enum(name) | Type::Record(name) => name.len(),
+        Type::List(item) | Type::Option(item) => type_name_bytes(item),
+        _ => 0,
+    }
+}
+
 impl Resolver<'_> {
     fn collect_owners(
         &mut self,
@@ -840,6 +861,15 @@ impl Resolver<'_> {
         disabled: bool,
     ) -> Checked<ResolvedAction> {
         let name = action.name.value.as_str();
+        self.charge(name.len(), action.name.span, path)?;
+        let target_identity = match name {
+            "Retry" => context.retry.as_ref(),
+            "Dismiss" => context.overlay.as_ref(),
+            _ => None,
+        };
+        if let Some(identity) = target_identity {
+            self.charge(row_identity_bytes(&identity.rows), action.span, path)?;
+        }
         let (contract, target) = match name {
             "Open" => (
                 BTreeMap::from([("url".into(), Type::Url)]),
@@ -897,6 +927,7 @@ impl Resolver<'_> {
         let mut arguments = BTreeMap::new();
         let mut disabled = disabled;
         for argument in &action.arguments {
+            self.charge(argument.name.value.len(), argument.name.span, path)?;
             let expected = contract.get(&argument.name.value).ok_or_else(|| {
                 diagnostic(
                     DiagnosticKind::ResolveAction,
@@ -1249,6 +1280,11 @@ impl Resolver<'_> {
                     "Key must have a stable string or integer type",
                 ));
             }
+            self.charge(
+                key.segments.iter().map(String::len).sum(),
+                key.span,
+                &node.identity.path,
+            )?;
             node.properties.push(Property::Key(key.segments.clone()));
         }
         if let Some(selection) = selection {
@@ -1291,9 +1327,14 @@ impl Resolver<'_> {
                     &node.identity.path,
                 )?;
                 match value.value.as_ref() {
-                    Some(Value::String(v)) => RowKey::String(v.clone()),
+                    Some(Value::String(v)) => {
+                        self.charge(v.len(), key.span, &node.identity.path)?;
+                        RowKey::String(v.clone())
+                    }
                     Some(Value::Number(n)) if n.is_i64() || n.is_u64() => {
-                        RowKey::Integer(n.to_string())
+                        let integer = n.to_string();
+                        self.charge(integer.len(), key.span, &node.identity.path)?;
+                        RowKey::Integer(integer)
                     }
                     _ => {
                         return Err(diagnostic(
@@ -1405,6 +1446,21 @@ impl Resolver<'_> {
             ));
         }
         self.charge(16, declaration.span, path)?;
+        let identity_bytes = row_identity_bytes(&context.rows);
+        self.charge(identity_bytes, declaration.span, path)?;
+        if let Some(field) = control_path(declaration) {
+            let field_bytes = field
+                .segments
+                .iter()
+                .fold(field.segments.len().saturating_sub(1), |total, part| {
+                    total.saturating_add(part.len())
+                });
+            self.charge(
+                field_bytes.saturating_add(identity_bytes),
+                field.span,
+                path,
+            )?;
+        }
         let mut node = ResolvedDeclaration {
             element: element(&declaration.kind),
             identity: NodeIdentity {
@@ -1832,6 +1888,10 @@ impl Resolver<'_> {
             .values()
             .chain(node.action.iter().flat_map(|a| a.arguments.values()))
         {
+            self.charge(type_name_bytes(&value.ty), declaration.span, path)?;
+            if let DisplayFormat::Money { symbol, .. } = &value.format {
+                self.charge(symbol.len(), declaration.span, path)?;
+            }
             let mut raw_size = SizeCounter(0);
             let mut display_size = SizeCounter(0);
             let measured = value

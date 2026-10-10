@@ -284,10 +284,16 @@ impl Budget {
             }
             Progress => {
                 self.charge(r#"{"type":"progress","value":}"#.len(), node)?;
-                let value = raw_value(node, "value")?
+                let original = raw_value(node, "value")?
                     .as_f64()
-                    .ok_or_else(|| unsupported(node))? as f32;
-                serde_json::to_writer(&mut *self, &value).map_err(|_| self.limit(node))?;
+                    .ok_or_else(|| unsupported(node))?;
+                let value = original as f32;
+                let serialized = serde_json::to_string(&value).map_err(|_| unsupported(node))?;
+                if serde_json::from_str::<f64>(&serialized).ok() != Some(original) {
+                    return Err(unsupported(node));
+                }
+                self.write_all(serialized.as_bytes())
+                    .map_err(|_| self.limit(node))?;
                 Node::Progress { value }
             }
             _ => return Err(unsupported(node)),

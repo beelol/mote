@@ -246,6 +246,32 @@ fn determinate_unlabeled_progress_uses_the_existing_progress_node() {
 }
 
 #[test]
+fn progress_rejects_precision_loss_and_underflow_with_source_location() {
+    for number in [0.123456789, 1e-46, 0.999999999] {
+        let (m, mut s) = fixture();
+        s.values.insert("number".into(), json!(number));
+        let parsed = parse_surface("screen { progress value number }").unwrap();
+        let resolved = resolve(&parsed, &m, &s).unwrap();
+        let errors = lower_v0(&resolved).unwrap_err();
+        assert_eq!(errors[0].code.as_str(), "E_LOWER_UNSUPPORTED", "{number}");
+        assert_eq!(errors[0].span, parsed.screen.children()[0].span);
+        assert_eq!(errors[0].declaration_path, ["screen", "0"]);
+    }
+}
+
+#[test]
+fn lossless_progress_preserves_the_serialized_consumer_value() {
+    for number in [0.0, 0.1, 0.125, 0.5, 0.75, 1.0] {
+        let (m, mut s) = fixture();
+        s.values.insert("number".into(), json!(number));
+        assert_eq!(
+            lower("progress value number", &m, &s),
+            json!({"type":"progress","value":number})
+        );
+    }
+}
+
+#[test]
 fn every_unsupported_catalog_element_and_modifier_rejects_with_source_location() {
     let (m, s) = fixture();
     for fragment in [

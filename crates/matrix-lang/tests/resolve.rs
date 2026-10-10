@@ -753,6 +753,120 @@ fn byte_bound_counts_only_retained_resolved_content() {
 }
 
 #[test]
+fn repeated_action_names_are_bounded_before_the_next_name_is_copied() {
+    for (length, accepted) in [(130_000, true), (132_000, false)] {
+        let (mut m, s) = fixture();
+        let name = "A".repeat(length);
+        m.actions.insert(name.clone(), ActionContract::default());
+        let source = format!("screen {{ list from rows {{ item {{ button \"Go\" -> {name} }} }} }}");
+        let result = run(&source, &m, &s);
+        if accepted {
+            let resolved = result.unwrap();
+            for row in &resolved.screen.children[0].rows {
+                assert_eq!(row.children[0].children[0].action.as_ref().unwrap().name, name);
+            }
+        } else {
+            let errors = result.err().expect("repeated names must exceed the byte budget");
+            assert_eq!(errors[0].code.as_str(), "E_RESOLVE_LIMIT");
+            assert_eq!(&source[errors[0].span.start..errors[0].span.end], name);
+            assert_eq!(errors[0].declaration_path, ["screen", "0", "0", "0"]);
+        }
+    }
+}
+
+#[test]
+fn repeated_argument_names_count_toward_the_resolved_byte_limit() {
+    let (mut m, s) = fixture();
+    let argument = "a".repeat(132_000);
+    m.actions.insert("Act".into(), ActionContract {
+        parameters: BTreeMap::from([(argument.clone(), Type::String)]),
+    });
+    let source = format!("screen {{ list from rows {{ item {{ button \"Go\" -> Act{{{argument}: title}} }} }} }}");
+    let errors = run(&source, &m, &s).err().expect("argument names exceed the byte budget");
+    assert_eq!(errors[0].code.as_str(), "E_RESOLVE_LIMIT");
+}
+
+#[test]
+fn repeated_field_paths_count_toward_the_resolved_byte_limit() {
+    let (mut m, s) = fixture();
+    let field = "f".repeat(132_000);
+    m.fields.insert(field.clone(), FieldDefinition {
+        binding: Type::String.into(),
+        initial: json!(""),
+    });
+    let source = format!("screen {{ list from rows {{ item {{ field \"F\" {field} }} }} }}");
+    let errors = run(&source, &m, &s).err().expect("field paths exceed the byte budget");
+    assert_eq!(errors[0].code.as_str(), "E_RESOLVE_LIMIT");
+}
+
+#[test]
+fn repeated_key_paths_count_toward_the_resolved_byte_limit() {
+    let (mut m, mut s) = fixture();
+    let key = "k".repeat(132_000);
+    m.records.get_mut("Child").unwrap().fields.insert(key.clone(), Type::String.into());
+    s.values.get_mut("rows").unwrap()[0]["children"] = json!([]);
+    let source = format!("screen {{ list from rows {{ item {{ list from .children key {key} {{ item {{ text \"x\" }} }} }} }} }}");
+    let errors = run(&source, &m, &s).err().expect("key paths exceed the byte budget");
+    assert_eq!(errors[0].code.as_str(), "E_RESOLVE_LIMIT");
+}
+
+#[test]
+fn repeated_type_names_count_toward_the_resolved_byte_limit() {
+    let (mut m, s) = fixture();
+    let name = "E".repeat(132_000);
+    m.enums.insert(name.clone(), EnumDefinition::new(["open"]));
+    m.values.insert("state".into(), Type::Enum(name).into());
+    let errors = run("screen { list from rows { item { text state } } }", &m, &s)
+        .err().expect("type names exceed the byte budget");
+    assert_eq!(errors[0].code.as_str(), "E_RESOLVE_LIMIT");
+}
+
+#[test]
+fn repeated_row_keys_count_toward_the_resolved_byte_limit() {
+    let (mut m, mut s) = fixture();
+    m.records.get_mut("Row").unwrap().fields.insert("id".into(), Type::String.into());
+    s.values.get_mut("rows").unwrap()[0]["id"] = json!("a".repeat(70_000));
+    s.values.get_mut("rows").unwrap()[1]["id"] = json!("b".repeat(70_000));
+    let errors = run("screen { list from rows key id { item { button \"Go\" -> Refresh } } }", &m, &s)
+        .err().expect("row identities exceed the byte budget");
+    assert_eq!(errors[0].code.as_str(), "E_RESOLVE_LIMIT");
+}
+
+#[test]
+fn action_targets_count_retained_row_keys_toward_the_byte_limit() {
+    let (mut m, mut s) = fixture();
+    m.records.get_mut("Row").unwrap().fields.insert("id".into(), Type::String.into());
+    s.values.get_mut("rows").unwrap().as_array_mut().unwrap().truncate(1);
+    s.values.get_mut("rows").unwrap()[0]["id"] = json!("a".repeat(55_000));
+    let errors = run("screen { list from rows key id { item { dialog \"D\" { button \"Go\" -> Dismiss } } } }", &m, &s)
+        .err().expect("action target identity exceeds the byte budget");
+    assert_eq!(errors[0].code.as_str(), "E_RESOLVE_LIMIT");
+}
+
+#[test]
+fn field_identities_count_retained_row_keys_toward_the_byte_limit() {
+    let (mut m, mut s) = fixture();
+    m.records.get_mut("Row").unwrap().fields.insert("id".into(), Type::String.into());
+    s.values.get_mut("rows").unwrap().as_array_mut().unwrap().truncate(1);
+    s.values.get_mut("rows").unwrap()[0]["id"] = json!("a".repeat(70_000));
+    let errors = run("screen { list from rows key id { item { field \"F\" draft } } }", &m, &s)
+        .err().expect("field identity exceeds the byte budget");
+    assert_eq!(errors[0].code.as_str(), "E_RESOLVE_LIMIT");
+}
+
+#[test]
+fn retained_formatter_symbols_count_toward_the_resolved_byte_limit() {
+    let (mut m, s) = fixture();
+    m.values.get_mut("number").unwrap().display = DisplayFormat::Money {
+        symbol: "s".repeat(70_000),
+        decimals: 2,
+    };
+    let errors = run("screen { list from rows { item { text number } } }", &m, &s)
+        .err().expect("retained formatters exceed the byte budget");
+    assert_eq!(errors[0].code.as_str(), "E_RESOLVE_LIMIT");
+}
+
+#[test]
 fn empty_template_fields_do_not_read_surface_field_edits() {
     let (m, mut s) = fixture();
     s.fields.insert("choice".into(), json!("closed"));

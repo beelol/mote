@@ -78,7 +78,8 @@ fn is_incomplete(error: &Diagnostic, source: &str) -> bool {
         }
         DiagnosticCode::InvalidLiteral if error.span.end == source.len() => {
             source.as_bytes().last().is_some_and(u8::is_ascii_digit)
-                && !source[error.span.start..error.span.end].starts_with('-')
+                && (!source[error.span.start..error.span.end].starts_with('-')
+                    || extendible_negative_max(error, source))
         }
         DiagnosticCode::UnknownDeclaration
         | DiagnosticCode::UnexpectedToken
@@ -219,4 +220,37 @@ fn is_incomplete(error: &Diagnostic, source: &str) -> bool {
         }
         _ => false,
     }
+}
+
+fn extendible_negative_max(error: &Diagnostic, source: &str) -> bool {
+    let Ok(tokens) = lex(source) else {
+        return false;
+    };
+    let tokens = &tokens[..tokens.len() - 1];
+    let [prefix @ .., min_word, min, max_word, max] = tokens else {
+        return false;
+    };
+    let text = |span: Span| &source[span.start..span.end];
+    if min.kind != TokenKind::Number
+        || max.kind != TokenKind::Number
+        || text(min_word.span) != "min"
+        || text(max_word.span) != "max"
+        || max.span != error.span
+        || !crate::decimal::Decimal::from_source(text(min.span))
+            .cmp(&crate::decimal::Decimal::from_source("0"))
+            .is_lt()
+    {
+        return false;
+    }
+    let numeric_control = error.declaration_path.last().is_some_and(|part| {
+        part.starts_with("slider[")
+            || part.starts_with("stepper[")
+            || (part.starts_with("field[")
+                && matches!(prefix, [.., kind, number]
+                    if text(kind.span) == "kind" && text(number.span) == "number"))
+    });
+    numeric_control
+        && text(max.span)
+            .split_once(['e', 'E'])
+            .is_none_or(|(_, exponent)| exponent.starts_with('-'))
 }

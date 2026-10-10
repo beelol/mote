@@ -155,3 +155,54 @@ fn impossible_negative_text_bound_rejects_at_end_of_buffer() {
     let status = stream.push(b"screen { field \"Name\" name min -1");
     assert!(matches!(status, CandidateStatus::Rejected(_)), "{status:?}");
 }
+
+#[test]
+fn signed_decimal_ranges_remain_extendible_at_every_byte() {
+    for control in ["slider", "stepper", "field"] {
+        for (min, max) in [
+            ("-2", "-10e-1"),
+            ("-2.5", "-100.25e-2"),
+            ("-2e-20", "-10E-21"),
+            ("-20", "-1e+1"),
+            ("-0.2", "-0.10"),
+        ] {
+            let kind = if control == "field" { " kind number" } else { "" };
+            let source = format!("screen {{ {control} \"X\" n{kind} min {min} max {max} }}");
+            assert!(parse_surface(&source).is_ok(), "{source}");
+            for cut in 0..source.len() {
+                let mut stream = CandidateStream::new();
+                let status = stream.push(&source.as_bytes()[..cut]);
+                assert!(matches!(status, CandidateStatus::Incomplete), "{source}, cut {cut}: {status:?}");
+                let status = stream.push(&source.as_bytes()[cut..]);
+                assert!(matches!(status, CandidateStatus::Complete(_)), "{source}, cut {cut}: {status:?}");
+            }
+            let mut stream = CandidateStream::new();
+            for (index, byte) in source.bytes().enumerate() {
+                let status = stream.push(&[byte]);
+                assert!(
+                    if index + 1 == source.len() {
+                        matches!(status, CandidateStatus::Complete(_))
+                    } else {
+                        matches!(status, CandidateStatus::Incomplete)
+                    },
+                    "{source}, byte {index}: {status:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn impossible_negative_numeric_constraints_reject_at_end_of_buffer() {
+    for source in [
+        "screen { field \"X\" n max -1",
+        "screen { field \"X\" n min -2 max -10",
+        "screen { slider \"X\" n min 0 max -1",
+        "screen { slider \"X\" n min -2 max -10e1",
+        "screen { slider \"X\" n min -2 max -1 step -1",
+        "screen { stepper \"X\" n step -1",
+    ] {
+        let status = CandidateStream::new().push(source.as_bytes());
+        assert!(matches!(status, CandidateStatus::Rejected(_)), "{source}: {status:?}");
+    }
+}
