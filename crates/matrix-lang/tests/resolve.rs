@@ -7,6 +7,38 @@ use matrix_lang::{parse_surface, resolve, BindingSnapshot, Manifest, ResolvedSur
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
+struct AllocationProbe;
+
+thread_local! {
+    static ALLOCATION_PROBE: std::cell::Cell<(usize, usize)> = const { std::cell::Cell::new((0, 0)) };
+}
+
+unsafe impl std::alloc::GlobalAlloc for AllocationProbe {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        let _ = ALLOCATION_PROBE.try_with(|probe| {
+            let (size, count) = probe.get();
+            if size != 0 && layout.size() == size {
+                probe.set((size, count + 1));
+            }
+        });
+        std::alloc::GlobalAlloc::alloc(&std::alloc::System, layout)
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
+        std::alloc::GlobalAlloc::dealloc(&std::alloc::System, ptr, layout);
+    }
+}
+
+#[global_allocator]
+static ALLOCATOR: AllocationProbe = AllocationProbe;
+
+fn count_allocations<T>(size: usize, f: impl FnOnce() -> T) -> (T, usize) {
+    ALLOCATION_PROBE.with(|probe| probe.set((size, 0)));
+    let result = f();
+    let count = ALLOCATION_PROBE.with(|probe| probe.replace((0, 0)).1);
+    (result, count)
+}
+
 fn fixture() -> (Manifest, BindingSnapshot) {
     let mut manifest = Manifest::default();
     manifest
@@ -602,6 +634,271 @@ fn expansion_bounds_reject_before_returning_partial_surfaces() {
             .code
             .as_str(),
         "E_RESOLVE_LIMIT"
+    );
+}
+
+#[test]
+fn expanded_nodes_accept_2000_and_reject_2001() {
+    let (m, mut s) = fixture();
+    let row = s.values["rows"][0].clone();
+    s.values.insert("rows".into(), json!(vec![row; 999]));
+    let accepted = run("screen { list from rows { item { text .name } } }", &m, &s).unwrap();
+    assert_eq!(accepted.screen.children[0].rows.len(), 999);
+    assert!(accepted.screen.children[0]
+        .rows
+        .iter()
+        .all(|r| r.children.len() == 1 && r.children[0].children.len() == 1));
+    let source = "screen { list from rows { item { text .name } } divider }";
+    let error = &run(source, &m, &s).unwrap_err()[0];
+    assert_eq!(error.code.as_str(), "E_RESOLVE_LIMIT");
+    assert_eq!(error.declaration_path, ["screen", "1"]);
+    assert_eq!(&source[error.span.start..error.span.end], "divider");
+}
+
+#[test]
+fn expanded_declaration_depth_accepts_12_and_rejects_synthetic_13() {
+    let (m, s) = fixture();
+    let source = format!(
+        "screen {{ list from rows {{ item {{ {}text .name{} }} }} }}",
+        "col {".repeat(8),
+        "}".repeat(8)
+    );
+    let mut parsed = parse_surface(&source).unwrap();
+    assert!(resolve(&parsed, &m, &s).is_ok());
+    let mut leaf = &mut parsed.screen;
+    for _ in 0..11 {
+        leaf = match &mut leaf.kind {
+            matrix_lang::DeclarationKind::Screen(c) => &mut c.children[0],
+            matrix_lang::DeclarationKind::Item(c) => &mut c[0],
+            matrix_lang::DeclarationKind::List(c) => &mut c.children[0],
+            matrix_lang::DeclarationKind::Col { children, .. } => &mut children[0],
+            _ => panic!("expected container"),
+        };
+    }
+    let original = leaf.clone();
+    leaf.kind = matrix_lang::DeclarationKind::Col {
+        alignment: None,
+        distribution: None,
+        children: vec![original],
+    };
+    let span = leaf.span;
+    let error = &resolve(&parsed, &m, &s).unwrap_err()[0];
+    assert_eq!(error.code.as_str(), "E_RESOLVE_LIMIT");
+    assert_eq!(error.declaration_path.len(), 13);
+    assert_eq!(error.span, span);
+}
+
+#[test]
+fn retained_resolved_bytes_accept_262144_and_reject_262145() {
+    let (m, mut s) = fixture();
+    for (size, accepted) in [(262_110, true), (262_111, false)] {
+        s.values.insert("title".into(), json!("x".repeat(size)));
+        let result = run("screen { text title }", &m, &s);
+        if accepted {
+            assert_eq!(
+                result.unwrap().screen.children[0].values["text"]
+                    .display
+                    .as_ref()
+                    .unwrap()
+                    .len(),
+                262_110
+            );
+        } else {
+            let error = &result.unwrap_err()[0];
+            assert_eq!(error.code.as_str(), "E_RESOLVE_LIMIT");
+            assert_eq!(error.declaration_path, ["screen", "0"]);
+            assert_eq!(error.span, matrix_lang::Span::new(9, 19));
+        }
+    }
+}
+
+#[test]
+fn expanded_retained_bytes_accept_262144_and_reject_262145() {
+    let mut m = Manifest::default();
+    m.records.insert(
+        "R".into(),
+        RecordDefinition {
+            fields: BTreeMap::from([("s".into(), Type::String.into())]),
+        },
+    );
+    m.values.insert(
+        "rows".into(),
+        Type::List(Box::new(Type::Record("R".into()))).into(),
+    );
+    let mut s = BindingSnapshot::default();
+    let parsed = parse_surface("screen { list from rows { item { text .s } } }").unwrap();
+    for (second, accepted) in [(131_022, true), (131_023, false)] {
+        s.values.insert(
+            "rows".into(),
+            json!([{"s":"x".repeat(131_022)}, {"s":"x".repeat(second)}]),
+        );
+        let result = resolve(&parsed, &m, &s);
+        if accepted {
+            let result = result.unwrap();
+            assert_eq!(result.screen.children[0].rows.len(), 2);
+            assert_eq!(
+                result.screen.children[0].rows[1].children[0].children[0].values["text"]
+                    .display
+                    .as_ref()
+                    .unwrap()
+                    .len(),
+                131_022
+            );
+        } else {
+            let error = &result.unwrap_err()[0];
+            assert_eq!(error.code.as_str(), "E_RESOLVE_LIMIT");
+            assert_eq!(error.declaration_path, ["screen", "0", "0", "0"]);
+            assert_eq!(error.span, matrix_lang::Span::new(33, 40));
+        }
+    }
+}
+
+#[test]
+fn retained_formatted_bytes_count_exact_escaped_display_and_money_symbol() {
+    let mut m = Manifest::default();
+    m.enums.insert("E".into(), EnumDefinition::new(["a"]));
+    m.values
+        .insert("value".into(), Type::Enum("E".into()).into());
+    let mut s = BindingSnapshot::default();
+    s.values.insert("value".into(), json!("a"));
+    let parsed = parse_surface("screen { text value }").unwrap();
+    for (suffix, accepted) in [("x", true), ("xx", false)] {
+        m.enums
+            .get_mut("E")
+            .unwrap()
+            .labels
+            .insert("a".into(), format!("{}{suffix}", "\"".repeat(131_054)));
+        assert_eq!(resolve(&parsed, &m, &s).is_ok(), accepted);
+    }
+    m.values.insert(
+        "value".into(),
+        BindingDefinition {
+            ty: Type::Integer,
+            display: DisplayFormat::Money {
+                symbol: "x".repeat(131_054),
+                decimals: 0,
+            },
+        },
+    );
+    for (value, accepted) in [(10, true), (100, false)] {
+        s.values.insert("value".into(), json!(value));
+        assert_eq!(resolve(&parsed, &m, &s).is_ok(), accepted);
+    }
+}
+
+#[test]
+fn aggregate_limit_precedes_retained_literal_copies() {
+    let (m, s) = fixture();
+    let source = format!(
+        "screen {{ text \"{}\" text \"{}\" }}",
+        "x".repeat(131_047),
+        "x".repeat(131_047)
+    );
+    let parsed = parse_surface(&source).unwrap();
+    let (result, allocations) = count_allocations(131_047, || resolve(&parsed, &m, &s));
+    assert_eq!(result.unwrap_err()[0].code.as_str(), "E_RESOLVE_LIMIT");
+    assert_eq!(
+        allocations, 2,
+        "only the first retained raw and display literals may be copied"
+    );
+}
+
+#[test]
+fn aggregate_limit_precedes_retained_literal_list_copy() {
+    let (m, mut s) = fixture();
+    s.values.insert("title".into(), json!("a"));
+    let mut parsed = parse_surface(&format!(
+        "screen {{ steps stages [\"a\", \"{}\"] current title }}",
+        "x".repeat(131_038)
+    ))
+    .unwrap();
+    let matrix_lang::DeclarationKind::Screen(screen) = &mut parsed.screen.kind else {
+        panic!("screen")
+    };
+    screen.children.push(screen.children[0].clone());
+    let (result, allocations) = count_allocations(131_038, || resolve(&parsed, &m, &s));
+    assert_eq!(result.unwrap_err()[0].code.as_str(), "E_RESOLVE_LIMIT");
+    assert_eq!(
+        allocations, 1,
+        "only the first retained stages list may be copied"
+    );
+}
+
+#[test]
+fn aggregate_limit_precedes_retained_formatter_copy() {
+    let (mut m, mut s) = fixture();
+    m.values.insert(
+        "number".into(),
+        BindingDefinition {
+            ty: Type::Integer,
+            display: DisplayFormat::Money {
+                symbol: "x".repeat(65_524),
+                decimals: 0,
+            },
+        },
+    );
+    s.values.insert("number".into(), json!(10));
+    let parsed = parse_surface("screen { text number text number }").unwrap();
+    let (result, allocations) = count_allocations(65_524, || resolve(&parsed, &m, &s));
+    assert_eq!(result.unwrap_err()[0].code.as_str(), "E_RESOLVE_LIMIT");
+    assert_eq!(
+        allocations, 1,
+        "only the first retained formatter symbol may be copied"
+    );
+}
+
+#[test]
+fn aggregate_limit_precedes_retained_string_copies() {
+    let (m, mut s) = fixture();
+    s.values.insert("title".into(), json!("x".repeat(131_047)));
+    let parsed = parse_surface("screen { text title text title }").unwrap();
+    let (result, allocations) = count_allocations(131_047, || resolve(&parsed, &m, &s));
+    assert_eq!(result.unwrap_err()[0].code.as_str(), "E_RESOLVE_LIMIT");
+    assert_eq!(
+        allocations, 2,
+        "only the first raw and display strings may be copied"
+    );
+}
+
+#[test]
+fn aggregate_limit_precedes_retained_bound_list_copy() {
+    let mut m = Manifest::default();
+    m.values
+        .insert("items".into(), Type::List(Box::new(Type::String)).into());
+    m.actions.insert(
+        "Take".into(),
+        ActionContract {
+            parameters: BTreeMap::from([("items".into(), Type::List(Box::new(Type::String)))]),
+        },
+    );
+    let mut s = BindingSnapshot::default();
+    s.values
+        .insert("items".into(), json!(["x".repeat(131_047)]));
+    let parsed =
+        parse_surface("screen { button \"A\" -> Take{items} button \"B\" -> Take{items} }")
+            .unwrap();
+    let (result, allocations) = count_allocations(131_047, || resolve(&parsed, &m, &s));
+    assert_eq!(result.unwrap_err()[0].code.as_str(), "E_RESOLVE_LIMIT");
+    assert_eq!(
+        allocations, 1,
+        "only the first retained list argument may be copied"
+    );
+}
+
+#[test]
+fn aggregate_limit_precedes_retained_property_copy() {
+    let (m, s) = fixture();
+    let source = format!(
+        "screen {{ label \"{}\" label \"{}\" }}",
+        "x".repeat(131_050),
+        "x".repeat(131_050)
+    );
+    let parsed = parse_surface(&source).unwrap();
+    let (result, allocations) = count_allocations(131_050, || resolve(&parsed, &m, &s));
+    assert_eq!(result.unwrap_err()[0].code.as_str(), "E_RESOLVE_LIMIT");
+    assert_eq!(
+        allocations, 1,
+        "only the first retained property may be copied"
     );
 }
 

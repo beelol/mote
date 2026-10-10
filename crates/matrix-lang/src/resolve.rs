@@ -4,6 +4,7 @@ use crate::manifest::*;
 use crate::types::{DisplayFormat, Type};
 use crate::{Diagnostic, DiagnosticCode as DiagnosticKind, Severity, Span};
 use serde_json::Value;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 
@@ -188,6 +189,20 @@ pub struct ResolvedSurface {
 }
 
 type Checked<T> = Result<T, Diagnostic>;
+
+enum OptionSource<'a> {
+    Literal(&'a [StringLiteral]),
+    Reference(&'a Reference),
+}
+
+impl<'a> From<&'a Options> for OptionSource<'a> {
+    fn from(value: &'a Options) -> Self {
+        match value {
+            Options::Literal(values) => Self::Literal(values),
+            Options::Reference(reference) => Self::Reference(reference),
+        }
+    }
+}
 
 fn diagnostic(
     code: DiagnosticKind,
@@ -448,6 +463,7 @@ struct Resolver<'a> {
     owners: BTreeMap<Vec<usize>, BTreeSet<String>>,
     nodes: usize,
     bytes: usize,
+    value_charge_span: Option<Span>,
     seen_selections: BTreeSet<NodeIdentity>,
     seen_fields: BTreeSet<FieldIdentity>,
 }
@@ -515,7 +531,64 @@ fn type_name_bytes(ty: &Type) -> usize {
     }
 }
 
+fn declaration_property_bytes(kind: &DeclarationKind) -> usize {
+    use DeclarationKind::*;
+    let title = |value: &Option<StringLiteral>| value.as_ref().map_or(0, |s| s.value.len());
+    let number = |value: &Option<NumberLiteral>| value.as_ref().map_or(0, |n| n.source.len());
+    match kind {
+        Screen(c) | Section(c) | Form(c) => title(&c.title),
+        Card { title: value, .. } => title(value),
+        Tab { title, .. } | Dialog { title, .. } | Sheet { title, .. } => title.value.len(),
+        Label(text) | Empty(text) | Error { text, .. } | Tooltip { text, .. } => text.value.len(),
+        Stat { label, .. } | Kv { label, .. } | Button { label, .. } | Column { label, .. } => {
+            label.value.len()
+        }
+        Progress { label, .. } => title(label),
+        Field {
+            control,
+            min,
+            max,
+            pattern,
+            ..
+        } => control
+            .label
+            .value
+            .len()
+            .saturating_add(number(min))
+            .saturating_add(number(max))
+            .saturating_add(title(pattern)),
+        Area(c)
+        | Toggle(c)
+        | Check(c)
+        | Time(c)
+        | Search(c)
+        | Segmented { control: c, .. }
+        | Date { control: c, .. } => c.label.value.len(),
+        Choice(c) | Select(c) | Multiselect(c) => c.control.label.value.len(),
+        Slider(c) | Stepper(c) => c
+            .control
+            .label
+            .value
+            .len()
+            .saturating_add(number(&c.min))
+            .saturating_add(number(&c.max))
+            .saturating_add(number(&c.step)),
+        Menu {
+            trigger: MenuTrigger::Label(label),
+            ..
+        } => label.value.len(),
+        _ => 0,
+    }
+}
+
 impl Resolver<'_> {
+    fn without_retention<T>(&mut self, work: impl FnOnce(&mut Self) -> Checked<T>) -> Checked<T> {
+        let span = self.value_charge_span.take();
+        let result = work(self);
+        self.value_charge_span = span;
+        result
+    }
+
     fn collect_owners(
         &mut self,
         declaration: &Declaration,
@@ -588,9 +661,9 @@ impl Resolver<'_> {
         span: Span,
         path: &[usize],
     ) -> Checked<ResolvedValue> {
+        let mut raw_size = SizeCounter(0);
         if let Some(value) = value {
-            let mut size = SizeCounter(0);
-            serde_json::to_writer(&mut size, value).map_err(|_| {
+            serde_json::to_writer(&mut raw_size, value).map_err(|_| {
                 diagnostic(
                     DiagnosticKind::ResolveLimit,
                     span,
@@ -600,8 +673,9 @@ impl Resolver<'_> {
             })?;
         }
         let display = value.and_then(|v| display_value(binding, v, self.manifest));
-        if let Some(display) = &display {
-            if display.len() > MAX_BYTES {
+        let mut display_size = 0;
+        if let Some((prefix, text)) = &display {
+            if prefix.len().saturating_add(text.len()) > MAX_BYTES {
                 return Err(diagnostic(
                     DiagnosticKind::ResolveLimit,
                     span,
@@ -609,19 +683,108 @@ impl Resolver<'_> {
                     "Formatted value exceeds 256 KiB",
                 ));
             }
+            if self.value_charge_span.is_some() {
+                let fail = || {
+                    diagnostic(
+                        DiagnosticKind::ResolveLimit,
+                        self.value_charge_span.unwrap_or(span),
+                        path,
+                        "Resolved value exceeds 256 KiB",
+                    )
+                };
+                let mut prefix_size = SizeCounter(0);
+                let mut text_size = SizeCounter(0);
+                serde_json::to_writer(&mut prefix_size, prefix)
+                    .and_then(|_| serde_json::to_writer(&mut text_size, text))
+                    .map_err(|_| fail())?;
+                display_size = prefix_size.0.saturating_add(text_size.0).saturating_sub(2);
+                if display_size > MAX_BYTES {
+                    return Err(fail());
+                }
+            }
+        }
+        if let Some(declaration_span) = self.value_charge_span {
+            self.charge(type_name_bytes(&binding.ty), declaration_span, path)?;
+            if let DisplayFormat::Money { symbol, .. } = &binding.display {
+                self.charge(symbol.len(), declaration_span, path)?;
+            }
+            self.charge(raw_size.0.max(display_size), declaration_span, path)?;
         }
         Ok(ResolvedValue {
             ty: binding.ty.clone(),
             value: value.cloned(),
-            display,
+            display: display.map(|(prefix, text)| {
+                if prefix.is_empty() {
+                    text.into_owned()
+                } else {
+                    let mut display = String::with_capacity(prefix.len() + text.len());
+                    display.push_str(prefix);
+                    display.push_str(&text);
+                    display
+                }
+            }),
             format: binding.display.clone(),
             requires_selection,
         })
     }
 
-    fn project(
+    fn literal_size(&mut self, values: &[&str], ty: &Type, span: Span, path: &[usize]) -> Checked<()> {
+        let mut size = SizeCounter(0);
+        let measured = if *ty == Type::String {
+            serde_json::to_writer(&mut size, values[0])
+        } else {
+            serde_json::to_writer(&mut size, values)
+        };
+        measured.map_err(|_| {
+            diagnostic(
+                DiagnosticKind::ResolveLimit,
+                span,
+                path,
+                "Resolved value exceeds 256 KiB",
+            )
+        })?;
+        let span = self.value_charge_span.unwrap_or(span);
+        self.charge(type_name_bytes(ty), span, path)?;
+        self.charge(size.0, span, path)
+    }
+
+    fn literal_string(&mut self, literal: &StringLiteral, path: &[usize]) -> Checked<ResolvedValue> {
+        self.literal_size(&[literal.value.as_str()], &Type::String, literal.span, path)?;
+        Ok(ResolvedValue {
+            ty: Type::String,
+            value: Some(Value::String(literal.value.clone())),
+            display: Some(literal.value.clone()),
+            format: DisplayFormat::Canonical,
+            requires_selection: false,
+        })
+    }
+
+    fn literal_list(
         &mut self,
-        mut binding: BindingDefinition,
+        literals: &[StringLiteral],
+        ty: Type,
+        span: Span,
+        path: &[usize],
+    ) -> Checked<ResolvedValue> {
+        let borrowed: Vec<_> = literals.iter().map(|s| s.value.as_str()).collect();
+        self.literal_size(&borrowed, &ty, span, path)?;
+        Ok(ResolvedValue {
+            ty,
+            value: Some(Value::Array(
+                literals
+                    .iter()
+                    .map(|s| Value::String(s.value.clone()))
+                    .collect(),
+            )),
+            display: None,
+            format: DisplayFormat::Canonical,
+            requires_selection: false,
+        })
+    }
+
+    fn project<'b>(
+        &'b mut self,
+        mut binding: &'b BindingDefinition,
         mut value: Option<&Value>,
         segments: &[String],
         required: bool,
@@ -647,11 +810,10 @@ impl Resolver<'_> {
                         path,
                         "Unknown record projection",
                     )
-                })?
-                .clone();
+                })?;
             value = value.and_then(|v| v.get(segment));
         }
-        self.typed(&binding, value, required, span, path)
+        self.typed(binding, value, required, span, path)
     }
 
     fn read(
@@ -673,7 +835,7 @@ impl Resolver<'_> {
                 )
             })?;
             return self.project(
-                BindingDefinition {
+                &BindingDefinition {
                     ty: row.ty.clone(),
                     display: row.format.clone(),
                 },
@@ -714,7 +876,7 @@ impl Resolver<'_> {
                 ));
             };
             return self.project(
-                (**row).clone().into(),
+                &(**row).clone().into(),
                 selected.value.as_ref().filter(|v| !v.is_null()),
                 &segments[1..],
                 selected.requires_selection,
@@ -732,7 +894,7 @@ impl Resolver<'_> {
             let prefix = segments[..split].join(".");
             if let Some(binding) = self.manifest.values.get(&prefix) {
                 return self.project(
-                    binding.clone(),
+                    binding,
                     self.snapshot.values.get(&prefix),
                     &segments[split..],
                     false,
@@ -827,13 +989,7 @@ impl Resolver<'_> {
         string_only: bool,
     ) -> Checked<ResolvedValue> {
         match operand {
-            DisplayOperand::Literal(literal) => self.typed(
-                &Type::String.into(),
-                Some(&Value::String(literal.value.clone())),
-                false,
-                literal.span,
-                path,
-            ),
+            DisplayOperand::Literal(literal) => self.literal_string(literal, path),
             DisplayOperand::Reference(reference) => {
                 let value = self.read(reference, context, path, false)?;
                 self.require(
@@ -1044,7 +1200,9 @@ impl Resolver<'_> {
         let mut found = false;
         for (index, declaration) in declarations.iter().enumerate() {
             let path: Vec<_> = parent.iter().copied().chain([index]).collect();
-            if let Some(selected) = self.selection(declaration, &path, &context)? {
+            if let Some(selected) = self.without_retention(|resolver| {
+                resolver.selection(declaration, &path, &context)
+            })? {
                 if found {
                     return Err(diagnostic(
                         DiagnosticKind::ResolveScope,
@@ -1091,7 +1249,7 @@ impl Resolver<'_> {
     fn options(
         &mut self,
         node: &mut ResolvedDeclaration,
-        options: &Options,
+        options: OptionSource<'_>,
         context: &Context,
         many: bool,
     ) -> Checked<()> {
@@ -1119,14 +1277,8 @@ impl Resolver<'_> {
         };
         let expected = Type::List(Box::new(enum_type.clone()));
         let value = match options {
-            Options::Literal(options) => {
-                let value = Value::Array(
-                    options
-                        .iter()
-                        .map(|s| Value::String(s.value.clone()))
-                        .collect(),
-                );
-                if !valid_value(&expected, &value, self.manifest, 0) {
+            OptionSource::Literal(options) => {
+                if options.iter().any(|s| !self.manifest.enums[name].members.contains(&s.value)) {
                     return Err(diagnostic(
                         DiagnosticKind::ResolveConstraint,
                         node.span,
@@ -1134,15 +1286,14 @@ impl Resolver<'_> {
                         "Option is not in the Field's closed enum",
                     ));
                 }
-                self.typed(
-                    &expected.clone().into(),
-                    Some(&value),
-                    false,
+                self.literal_list(
+                    options,
+                    expected.clone(),
                     node.span,
                     &node.identity.path,
                 )?
             }
-            Options::Reference(reference) => {
+            OptionSource::Reference(reference) => {
                 let value = self.read(reference, context, &node.identity.path, false)?;
                 self.require(
                     &value,
@@ -1259,7 +1410,9 @@ impl Resolver<'_> {
         context: &Context,
     ) -> Checked<()> {
         let (source, key, selection) = collection_parts(declaration).unwrap();
-        let value = self.read(source, context, &node.identity.path, false)?;
+        let value = self.without_retention(|resolver| {
+            resolver.read(source, context, &node.identity.path, false)
+        })?;
         let Type::List(row_type) = &value.ty else {
             return Err(diagnostic(
                 DiagnosticKind::ResolveType,
@@ -1269,14 +1422,16 @@ impl Resolver<'_> {
             ));
         };
         if let Some(key) = key {
-            let key_type = self.project(
-                (**row_type).clone().into(),
-                None,
-                &key.segments,
-                false,
-                key.span,
-                &node.identity.path,
-            )?;
+            let key_type = self.without_retention(|resolver| {
+                resolver.project(
+                    &(**row_type).clone().into(),
+                    None,
+                    &key.segments,
+                    false,
+                    key.span,
+                    &node.identity.path,
+                )
+            })?;
             if !matches!(key_type.ty, Type::String | Type::Integer) {
                 return Err(diagnostic(
                     DiagnosticKind::ResolveKey,
@@ -1323,14 +1478,16 @@ impl Resolver<'_> {
         let mut row_keys = Vec::new();
         for (index, row) in rows.iter().enumerate() {
             let row_key = if let Some(key) = key {
-                let value = self.project(
-                    (**row_type).clone().into(),
-                    Some(row),
-                    &key.segments,
-                    false,
-                    key.span,
-                    &node.identity.path,
-                )?;
+                let value = self.without_retention(|resolver| {
+                    resolver.project(
+                        &(**row_type).clone().into(),
+                        Some(row),
+                        &key.segments,
+                        false,
+                        key.span,
+                        &node.identity.path,
+                    )
+                })?;
                 match value.value.as_ref() {
                     Some(Value::String(v)) => {
                         self.charge(v.len(), key.span, &node.identity.path)?;
@@ -1462,6 +1619,10 @@ impl Resolver<'_> {
                 });
             self.charge(field_bytes, field.span, path)?;
         }
+        self.charge(
+            declaration_property_bytes(&declaration.kind), declaration.span, path,
+        )?;
+        self.value_charge_span = Some(declaration.span);
         let mut node = ResolvedDeclaration {
             element: element(&declaration.kind),
             identity: NodeIdentity {
@@ -1650,7 +1811,7 @@ impl Resolver<'_> {
                 self.control(&mut node, &control.control, context, |_| true)?;
                 self.options(
                     &mut node,
-                    &control.options,
+                    (&control.options).into(),
                     context,
                     matches!(declaration.kind, Multiselect(_)),
                 )?;
@@ -1659,7 +1820,7 @@ impl Resolver<'_> {
                 self.control(&mut node, control, context, |_| true)?;
                 self.options(
                     &mut node,
-                    &Options::Literal(options.clone()),
+                    OptionSource::Literal(options),
                     context,
                     false,
                 )?;
@@ -1807,18 +1968,11 @@ impl Resolver<'_> {
                         "Stages must be unique and match the current value and enum",
                     ));
                 }
-                let stage_values = Value::Array(
-                    stages
-                        .iter()
-                        .map(|s| Value::String(s.value.clone()))
-                        .collect(),
-                );
                 node.values.insert(
                     "stages".into(),
-                    self.typed(
-                        &Type::List(Box::new(Type::String)).into(),
-                        Some(&stage_values),
-                        false,
+                    self.literal_list(
+                        stages,
+                        Type::List(Box::new(Type::String)),
                         declaration.span,
                         path,
                     )?,
@@ -1884,53 +2038,6 @@ impl Resolver<'_> {
         }
         if collection_parts(declaration).is_none() {
             node.children = self.block(declaration.children(), path, &child_context)?;
-        }
-        for value in node
-            .values
-            .values()
-            .chain(node.action.iter().flat_map(|a| a.arguments.values()))
-        {
-            self.charge(type_name_bytes(&value.ty), declaration.span, path)?;
-            if let DisplayFormat::Money { symbol, .. } = &value.format {
-                self.charge(symbol.len(), declaration.span, path)?;
-            }
-            let mut raw_size = SizeCounter(0);
-            let mut display_size = SizeCounter(0);
-            let measured = value
-                .value
-                .as_ref()
-                .map(|v| serde_json::to_writer(&mut raw_size, v))
-                .transpose()
-                .and_then(|_| {
-                    value
-                        .display
-                        .as_ref()
-                        .map(|v| serde_json::to_writer(&mut display_size, v))
-                        .transpose()
-                });
-            if measured.is_err() {
-                return Err(diagnostic(
-                    DiagnosticKind::ResolveLimit,
-                    declaration.span,
-                    path,
-                    "Resolved value exceeds 256 KiB",
-                ));
-            }
-            self.charge(raw_size.0.max(display_size.0), declaration.span, path)?;
-        }
-        for property in &node.properties {
-            let size = match property {
-                Property::Title(s)
-                | Property::Label(s)
-                | Property::Text(s)
-                | Property::Min(s)
-                | Property::Max(s)
-                | Property::Step(s)
-                | Property::Pattern(s) => s.len(),
-                Property::Trigger(MenuTrigger::Label(s)) => s.value.len(),
-                _ => 0,
-            };
-            self.charge(size, declaration.span, path)?;
         }
         Ok(node)
     }
@@ -2002,28 +2109,33 @@ fn element(kind: &DeclarationKind) -> Element {
     }
 }
 
-fn display_value(
-    binding: &BindingDefinition,
-    value: &Value,
-    manifest: &Manifest,
-) -> Option<String> {
+fn display_value<'a>(
+    binding: &'a BindingDefinition,
+    value: &'a Value,
+    manifest: &'a Manifest,
+) -> Option<(&'a str, Cow<'a, str>)> {
     match (&binding.ty, &binding.display) {
         (Type::Enum(name), _) => value.as_str().map(|member| {
-            manifest.enums[name]
-                .labels
-                .get(member)
-                .cloned()
-                .unwrap_or_else(|| member.into())
+            (
+                "",
+                Cow::Borrowed(
+                    manifest.enums[name]
+                        .labels
+                        .get(member)
+                        .map(String::as_str)
+                        .unwrap_or(member),
+                ),
+            )
         }),
         (Type::Number | Type::Integer, DisplayFormat::Fixed { decimals }) => {
-            fixed(value, *decimals)
+            fixed(value, *decimals).map(|v| ("", Cow::Owned(v)))
         }
         (Type::Number | Type::Integer, DisplayFormat::Money { symbol, decimals }) => {
-            fixed(value, *decimals).map(|v| format!("{symbol}{v}"))
+            fixed(value, *decimals).map(|v| (symbol.as_str(), Cow::Owned(v)))
         }
-        (Type::Number | Type::Integer, _) => Some(value.to_string()),
+        (Type::Number | Type::Integer, _) => Some(("", Cow::Owned(value.to_string()))),
         (Type::String | Type::Url | Type::Asset | Type::Date | Type::Time | Type::DateTime, _) => {
-            value.as_str().map(String::from)
+            value.as_str().map(|v| ("", Cow::Borrowed(v)))
         }
         _ => None,
     }
@@ -2055,6 +2167,7 @@ pub fn resolve(
             owners: BTreeMap::new(),
             nodes: 0,
             bytes: 0,
+            value_charge_span: None,
             seen_selections: BTreeSet::new(),
             seen_fields: BTreeSet::new(),
         };

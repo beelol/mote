@@ -794,6 +794,134 @@ mod approval_dispatch_tests {
     }
 
     #[test]
+    fn matrix_limits_preserve_the_surface_and_refresh_the_prior_source() {
+        let oversized = format!("screen {{}}{}", " ".repeat(262_136));
+        assert_eq!(oversized.len(), 262_145);
+        let depth = format!(
+            "screen {{{}text \"x\"{}}}",
+            "col {".repeat(11),
+            "}".repeat(11)
+        );
+        let nodes = format!(
+            "screen {{ {}{} }}",
+            "list from model_options { item { text \"x\" } } ".repeat(285),
+            "text \"x\" ".repeat(5)
+        );
+        let bytes = format!(
+            "screen {{ list from model_options {{ item {{ text \"{}\" }} }} }}",
+            "x".repeat(90_000)
+        );
+        let depth_start = depth.find("text").unwrap();
+        let node_start = nodes.rfind("text").unwrap();
+        let byte_start = bytes.find("text").unwrap();
+        let depth_path: Vec<_> = std::iter::once("screen[0]")
+            .chain(std::iter::repeat_n("col[0]", 11))
+            .chain(["text[0]"])
+            .collect();
+        for (category, source, code, start, end, path, message) in [
+            (
+                "source bytes",
+                oversized,
+                "E_SOURCE_TOO_LONG",
+                0,
+                262_145,
+                json!([]),
+                "Matrix source exceeds 256 KiB",
+            ),
+            (
+                "source depth",
+                depth,
+                "E_PARSE_DEPTH",
+                depth_start,
+                depth_start + 4,
+                json!(depth_path),
+                "declaration depth exceeds 12",
+            ),
+            (
+                "expanded nodes",
+                nodes,
+                "E_RESOLVE_LIMIT",
+                node_start,
+                node_start + 8,
+                json!(["screen", "289"]),
+                "Resolved tree exceeds depth or node limit",
+            ),
+            (
+                "expanded retained bytes",
+                bytes,
+                "E_RESOLVE_LIMIT",
+                byte_start,
+                byte_start + 90_007,
+                json!(["screen", "0", "0", "0"]),
+                "Resolved content exceeds 256 KiB",
+            ),
+        ] {
+            let (data, _) = dirs(category);
+            let daemon = daemon(&data);
+            let prior = "screen { text \"Retained source\" }";
+            assert_eq!(
+                daemon
+                    .call(
+                        "matrix.render",
+                        json!({"thread":"thread-7", "source":prior})
+                    )
+                    .unwrap(),
+                json!({"ok":true,"valid":true})
+            );
+            let mut events = daemon.log.subscribe("thread-7", 1).unwrap();
+            let response = daemon
+                .call(
+                    "matrix.render",
+                    json!({"thread":"thread-7", "source":source}),
+                )
+                .unwrap();
+            assert_eq!(
+                response,
+                json!({"ok":false,"diagnostics":[{
+                    "code":code,"severity":"error","span":{"start":start,"end":end},
+                    "declaration_path":path,"message":message,"hint":null
+                }]}),
+                "{category}"
+            );
+            assert!(
+                events.recv_timeout(Duration::from_millis(2)).is_none(),
+                "{category} replaced the committed surface"
+            );
+            assert_eq!(
+                daemon
+                    .matrix_sources
+                    .lock()
+                    .unwrap()
+                    .get("thread-7")
+                    .map(String::as_str),
+                Some(prior)
+            );
+            let refreshed = daemon
+                .call(
+                    "ui.event",
+                    json!({"thread":"thread-7", "event":"refresh", "args":{}}),
+                )
+                .unwrap();
+            assert_eq!(
+                refreshed,
+                json!({"ok":true,"rendered":{"ok":true,"valid":true}})
+            );
+            assert_eq!(
+                events.recv_timeout(Duration::from_millis(10)).unwrap().kind,
+                "ui.event"
+            );
+            let event = events.recv_timeout(Duration::from_millis(10)).unwrap();
+            assert_eq!(event.kind, "ui.surface");
+            assert_eq!(
+                event.payload,
+                json!({"surface_id":"matrix","surface":{"type":"text","value":"Retained source"}})
+            );
+            assert!(events.recv_timeout(Duration::from_millis(2)).is_none());
+            std::fs::remove_dir_all(data.parent().unwrap()).ok();
+        }
+    }
+
+    #[test]
     fn typed_change_updates_config_and_recompiles_the_retained_source() {
         let (data, _) = dirs("matrix-change");
         let daemon = daemon(&data);

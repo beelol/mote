@@ -406,9 +406,10 @@ fn enum_option_labels_are_not_silently_lost() {
 fn compact_json_byte_limit_counts_keys_and_escaped_strings() {
     let (m, mut s) = fixture();
     let overhead = r#"{"type":"field","label":"Name","name":"display_name","value":""}"#.len();
+    assert_eq!(overhead, 64);
     let source = parse_surface("screen { field \"Name\" display_name }").unwrap();
     for escaped in [false, true] {
-        let available = mote_ui::MAX_BYTES - overhead;
+        let available = 262_080;
         let initial = if escaped {
             format!(
                 "{}{}",
@@ -422,11 +423,12 @@ fn compact_json_byte_limit_counts_keys_and_escaped_strings() {
         let resolved = resolve(&source, &m, &s).unwrap();
         let node = lower_v0(&resolved).unwrap();
         let bytes = serde_json::to_vec(&node).unwrap();
-        assert_eq!(bytes.len(), mote_ui::MAX_BYTES);
+        assert_eq!(bytes.len(), 262_144);
         assert_eq!(mote_ui::validate(&bytes).unwrap(), node);
         s.fields
             .insert("display_name".into(), json!(format!("{initial}x")));
         let resolved = resolve(&source, &m, &s).unwrap();
+        assert_eq!(overhead + serde_json::to_string(&format!("{initial}x")).unwrap().len() - 2, 262_145);
         let error = &lower_v0(&resolved).unwrap_err()[0];
         assert_eq!(error.code.as_str(), "E_LOWER_LIMIT");
         assert_eq!(error.declaration_path, ["screen", "0"]);
