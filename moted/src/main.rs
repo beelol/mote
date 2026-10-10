@@ -383,9 +383,6 @@ impl Dispatch for Daemon {
                 let event = params.get("event").and_then(|e| e.as_str()).unwrap_or("");
                 let thread = params.get("thread").and_then(|t| t.as_str()).unwrap_or("main");
                 let args = params.get("args").cloned().unwrap_or_else(|| json!({}));
-                self.log
-                    .append(thread, "ui.event", &json!({ "event": event, "args": args }))
-                    .ok();
                 if event == "change" {
                     let field = args.get("field").and_then(Value::as_str).ok_or_else(|| {
                         RpcError::invalid_params("change needs a string field")
@@ -393,11 +390,10 @@ impl Dispatch for Daemon {
                     let value = args.get("value").ok_or_else(|| {
                         RpcError::invalid_params("change needs a value")
                     })?;
-                    if !matches!(
-                        field,
-                        "models.local_only" | "models.talk" | "models.router" | "models.think"
-                    ) {
-                        return Err(RpcError::invalid_params("change field is not exposed"));
+                    if !matrix::accepts_change(field, value) {
+                        return Err(RpcError::invalid_params(
+                            "change does not match an exposed field contract",
+                        ));
                     }
                     let seq = self
                         .config
@@ -405,13 +401,22 @@ impl Dispatch for Daemon {
                         .unwrap()
                         .set_json(field, value)
                         .map_err(|error| RpcError::invalid_params(error.to_string()))?;
+                    self.log
+                        .append(thread, "ui.event", &json!({ "event": event, "args": args }))
+                        .map_err(|error| RpcError::internal(format!("record UI event: {error}")))?;
                     let rendered = self.refresh_matrix(thread)?;
                     return Ok(json!({"ok": true, "seq": seq, "rendered": rendered}));
                 }
                 if event == "refresh" {
+                    self.log
+                        .append(thread, "ui.event", &json!({ "event": event, "args": args }))
+                        .map_err(|error| RpcError::internal(format!("record UI event: {error}")))?;
                     let rendered = self.refresh_matrix(thread)?;
                     return Ok(json!({"ok": true, "rendered": rendered}));
                 }
+                self.log
+                    .append(thread, "ui.event", &json!({ "event": event, "args": args }))
+                    .ok();
                 if let Some(id) = event
                     .strip_prefix("approve:")
                     .and_then(|id| id.parse::<i64>().ok())
@@ -773,7 +778,19 @@ mod approval_dispatch_tests {
             )
             .unwrap_err();
 
-        assert!(error.message.contains("not exposed"));
+        assert!(error.message.contains("field contract"));
+        assert_eq!(daemon.log.max_seq().unwrap(), 0);
+        let error = daemon
+            .call(
+                "ui.event",
+                json!({
+                    "event":"change",
+                    "args":{"field":"models.talk", "value":"unapproved:latest"}
+                }),
+            )
+            .unwrap_err();
+        assert!(error.message.contains("field contract"));
+        assert_eq!(daemon.log.max_seq().unwrap(), 0);
         std::fs::remove_dir_all(data.parent().unwrap()).ok();
     }
 

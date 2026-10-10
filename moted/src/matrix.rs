@@ -10,6 +10,16 @@ use std::collections::BTreeMap;
 
 const MODELS: [&str; 3] = ["qwen3:4b", "qwen3:0.6b", "qwen3-coder:30b-64k"];
 
+pub fn accepts_change(field: &str, value: &Value) -> bool {
+    match field {
+        "models.local_only" => value.is_boolean(),
+        "models.talk" | "models.router" | "models.think" => value
+            .as_str()
+            .is_some_and(|model| MODELS.contains(&model)),
+        _ => false,
+    }
+}
+
 pub struct HostBindings {
     pub manifest: Manifest,
     pub snapshot: BindingSnapshot,
