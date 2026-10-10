@@ -1,112 +1,35 @@
 # matrix closeout goal
 
 This goal drives the whole UI plan to a state the owner can approve. It is broader than
-[GOAL.md](GOAL.md), which only iterates on design coverage. Copy the block below into a driver. It is
-self contained and does not assume chat history. The end state is `UI-00` ready for an `approve` or a
-short list of explicit changes.
+[GOAL.md](GOAL.md), which only iterates on design coverage. Copy the block below into a driver or
+set it with `/goal`. It is under 4000 characters, self contained, and does not assume chat history.
+The end state is `UI-00` ready for an `approve` or a short list of explicit changes.
 
 ```text
-Close out the whole mote UI plan, from repository state at ~/projects/mote, without chat history.
+Close out the mote UI plan, from ~/projects/mote, no chat history.
 
-Read AGENTS.md first. Then read matrix/README.md, matrix/recipes/README.md, matrix/catalog.md,
-matrix/layout-and-theme.md, matrix/bindings-and-state.md, matrix/runtime.md, matrix/examples.md,
-and matrix/decisions.md. Read docs/handoff/ui-language/README.md for the original scope, and
-docs/backlog.md for the UI-00 through UI-48 block. Read docs/rfcs/renderer.md and
-docs/research/renderer-research.md if they exist.
+Read AGENTS.md, then matrix/ (README, catalog, layout-and-theme, bindings-and-state, runtime, decisions), docs/backlog.md (UI-00..UI-48), and docs/rfcs/renderer.md if present.
 
-What matrix is. matrix is the text syntax a model emits to draw an interface; the text is the
-language. The compact JSON tree in crates/mote-ui is a temporary intermediate and compile target,
-not the language, and may change. The runtime is inferred and animated UI on an immediate mode GUI
-that redraws each frame, built in Rust for speed: Taffy for flexbox layout, egui for the shell,
-wgpu for the GPU draw, rayon for parallel per node measurement, AccessKit for roles. The name is
-matrix, never mote, moted, .mote, or matter. matrix/decisions.md holds the settled decisions and
-the open questions.
+matrix is the text syntax a model emits; the text is the language. The JSON tree in crates/mote-ui is a temporary compile target. Runtime: inferred, animated, immediate mode, Rust (Taffy, egui, wgpu, rayon, AccessKit), a consumer process; moted stays headless and streams the validated tree over IPC. Targets Mac, Pi, iPad. Name is matrix, never mote, moted, .mote, matter.
 
-The outcome. When this goal is done, the owner can read matrix/decisions.md and either answer
-approve or name a small set of explicit changes, without having to resolve any unstated syntax,
-state, rendering, validation, or scope decision. Do not close UI-00; only the owner does.
+Outcome: the owner reads matrix/decisions.md and answers approve or names a few explicit changes, with no unstated decision left. Do not close UI-00; only the owner does.
 
-Do the work in this order, committing and pushing after each step.
+Do in order, commit and push after each:
+1. Finish design coverage: a recipe or worked example in matrix source for every common surface (pull requests, settings, dashboard, calendar as agenda, file browser, notifications, search, profile, kanban, wizard, login, gallery, comments). Start from the question; write only the slice that answers it. Every catalog element has a recipe and an example. A missing word is one proposed catalog change in decisions.md with a reason, never silent.
+2. Materialize the default theme at matrix/themes/vector.md: Vector, thin retro red Atari vector line. Dark base, one red accent, thin strokes not fills, sharp corners, no shadows, mono type scale, tight spacing, six status tones as thin colored strokes, one materialize line on reveal motion with one duration and curve. Render every element group. No new matrix syntax.
+3. Resolve every open question in decisions.md with a decision or recommended default, and freeze the grammar against the conformance suite (declaration shape, binding notation, event and selection notation, row-type ownership). Leave only a short owner list.
+4. Reconcile with the renderer per matrix/runtime.md: consumer process, one Rust runtime for Mac, Pi, iPad, daemon streams the tree; the tree is the consumer contract so a native SwiftUI consumer stays possible on iOS without changing the language. Build the first milestone, a minimal runtime that draws one validated tree from the stream, then ping the daemon session named Mote handoff priorities to swap it in.
+5. Rebuild UI-00..UI-48 in docs/backlog.md to match this architecture. Keep stable ids where meaning survives; record replaced criteria in decisions.md. One sentence plus a full Verify clause each. Group later work: grammar and lowering, bindings and events, streaming and diagnostics, runtime conformance, theme, model validity and tokens. Do not move any into v0. Do not check UI-00.
+6. Write docs/handoff/ui-language/implementation.md for post approval work: criteria to activate, order, owned files, fixtures, commands, stop conditions. It must not claim approval.
+7. Update decisions.md so decisions and open questions are the exact set to approve UI-00, short enough to read once.
 
-1. Finish design coverage. Every common web and app surface an agent would generate has a recipe or
-   a worked example in matrix source: the conformance suite, pull requests, settings, dashboard,
-   calendar as an agenda, file browser, notification inbox, search results, profile, kanban board,
-   multi step wizard, login, media gallery, and a comments thread. Each starts from the question a
-   person asks and writes only the slice that answers it. Every catalog element has a recipe and
-   appears in at least one example. If a surface needs a word the catalog lacks, record one proposed
-   catalog change in matrix/decisions.md with its reason; never silently add a word.
+Do not pull a model or build a compiler until UI-00.
 
-2. Materialize the default theme. Write matrix/themes/vector.md as the full token set for the Vector
-   theme: thin retro red, Atari vector line. Dark base surface, one red accent, thin vector strokes
-   instead of fills, sharp corners, no shadows, a mono type scale, tight but comfortable spacing.
-   Define the six status tones as thin colored strokes, and the one materialize motion, a line on
-   reveal, with one duration and curve the runtime uses for every state transition. Show how it
-   draws every element group in the catalog. It is a general base theme, not a one off, and it needs
-   no new matrix syntax; it fills the theme hook in layout-and-theme.md. Keep layout-and-theme.md
-   and themes pointed at it.
+Locked: one theme per surface, no per element style, no pixels. Bindings only Value, Field, Action. Whole surface replacement; host diffs; model never patches. Fail closed. No expressions, control flow, scripts, timers. Catalog closed. Layout strict: col, row, header, footer, fill, align roles, auto scroll; no grid tracks, absolute, or z-index; new primitives go to the owner.
 
-3. Resolve the open questions. Work through every item under open questions in matrix/decisions.md.
-   Give each a decision or a recommended default with a reason. Freeze the exact matrix grammar
-   against the conformance suite: the declaration shape, the binding notation, the event and
-   selection notation, and whether a surface declares its row types or the host publishes them. Move
-   anything that still needs the owner into a short, explicit list the owner can answer quickly.
+Do not touch docs/rfcs/v0.md, the v0 list in README.md, the v0 fixtures and schema in crates/mote-ui, or production code. Keep matrix design in matrix/. Readable prose per AGENTS.md. Conventional Commits, no AI attribution. Concurrent sessions may commit with git add -A; commit promptly and verify; if contended, use a worktree and PR.
 
-4. Reconcile with the renderer. The runtime is decided in matrix/runtime.md: a consumer process,
-   not daemon code; one Rust immediate mode runtime (Taffy, egui, wgpu, rayon, AccessKit) that is
-   the Mac client and the iPad app and runs standalone on the Pi; the daemon stays headless and
-   streams the validated tree over IPC. Keep matrix/runtime.md consistent with docs/rfcs/renderer.md
-   if it exists: the display list boundary, node identity and keys, animation hints, and the Mac,
-   Pi, and iPad target constraints. Keep the tree as the consumer contract so a second native
-   immediate mode consumer, such as SwiftUI on iOS, stays possible without changing the language.
-   Build the first milestone: a minimal runtime that reads one validated tree from the stream and
-   draws it, then tell the daemon session it can swap it in as the client.
-
-5. Rebuild the acceptance gate. Rewrite the UI-00 through UI-48 block in docs/backlog.md so it
-   matches the matrix architecture: text syntax is the language, the tree is a temporary compile
-   target, the runtime is immediate mode Rust, the catalog is closed, bindings are typed, streaming
-   fails closed. Keep stable ids where the meaning survives, and record every replaced or removed
-   criterion in matrix/decisions.md. Each criterion is one sentence plus a complete Verify clause.
-   Group later implementation into independently verifiable sets: grammar and lowering to the tree,
-   typed bindings and event contracts, streaming parser and diagnostics, runtime conformance,
-   theme, and model validity and token measurements. Do not move any criterion into the v0 list. Do
-   not check UI-00.
-
-6. Prepare the implementation handoff. Write docs/handoff/ui-language/implementation.md for work
-   that starts only after the owner approves UI-00. Name the criteria to move into the active build
-   list, their order, the owned files, the test fixtures, the commands, and the stop conditions. It
-   must not claim approval has happened.
-
-7. Present the decision summary. Update matrix/decisions.md so its decisions and open questions are
-   the exact set the owner confirms to approve UI-00. Keep it short enough to read in one sitting.
-
-Measurement, only when the owner asks. Build a throwaway probe under spikes/ui-language that
-tokenizes the conformance suite in matrix source against the temporary JSON tree, using the
-tokenizer mote already uses. Report token counts and first try validity. Do not pull a model. Do
-not keep the probe as an implementation. Do not build a compiler until the owner approves UI-00.
-
-Boundaries that do not move. One theme per surface, no per element style, no pixels. Three bindings
-only: Value, Field, Action. Whole surface replacement; the host diffs; the model never patches.
-Fail closed on anything unknown. No expressions, control flow, scripts, or timers in matrix. The
-catalog is closed; a model never extends it. The layout model is locked and strict: two containers
-col and row, two anchors header and footer, the fill role, the align roles, and automatic
-scrolling. No grid tracks, no absolute, no z-index. Take any new layout primitive to the owner
-first.
-
-Do not touch these. docs/rfcs/v0.md, the v0 list in README.md, the v0 fixtures and schema under
-crates/mote-ui, and any production code. Do not collide with matter (Next Gen Lang, a separate
-repository) or the mote and moted product names. Keep matrix design inside matrix/, the acceptance
-gate in docs/backlog.md, the implementation handoff in docs/handoff/ui-language/, and a short
-pointer in docs/rfcs/ui-language.md.
-
-Keep the docs super readable, per AGENTS.md: plain declarative sentences, one idea per sentence, no
-em dashes, no emojis. Commit and push after each step. Use Conventional Commits, imperative
-subject, 72 characters, no AI attribution trailers. Concurrent sessions run on this repo and
-sometimes commit with git add -A; stage and commit your work promptly and verify it landed. If
-history is contended, work in a git worktree and open a PR.
-
-Stop when the owner can approve UI-00 from matrix/decisions.md with no unstated decision left, when
-the owner stops you, or when every remaining item needs an owner decision. Say which, and list the
-decisions the owner still owes.
+Stop when the owner can approve UI-00 with no unstated decision, when the owner stops you, or when all remaining items need the owner. Say which, and list the decisions still owed.
 ```
 
 ## What closing out means here
