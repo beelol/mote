@@ -1076,6 +1076,11 @@ impl Resolver<'_> {
     ) -> Checked<()> {
         let (identity, value) = self.field_value(&control.field, context, &node.identity.path)?;
         self.require(&value, allowed, control.field.span, &node.identity.path)?;
+        self.charge(
+            row_identity_bytes(&identity.rows),
+            control.field.span,
+            &node.identity.path,
+        )?;
         node.properties
             .push(Property::Label(control.label.value.clone()));
         node.field = Some(identity);
@@ -1455,11 +1460,7 @@ impl Resolver<'_> {
                 .fold(field.segments.len().saturating_sub(1), |total, part| {
                     total.saturating_add(part.len())
                 });
-            self.charge(
-                field_bytes.saturating_add(identity_bytes),
-                field.span,
-                path,
-            )?;
+            self.charge(field_bytes, field.span, path)?;
         }
         let mut node = ResolvedDeclaration {
             element: element(&declaration.kind),
@@ -1862,6 +1863,7 @@ impl Resolver<'_> {
             Compose { field, action } => {
                 let (identity, value) = self.field_value(field, context, path)?;
                 self.require(&value, |ty| *ty == Type::String, field.span, path)?;
+                self.charge(row_identity_bytes(&identity.rows), field.span, path)?;
                 node.field = Some(identity);
                 node.values.insert("field".into(), value);
                 node.action = Some(self.action(action, context, path, false)?);

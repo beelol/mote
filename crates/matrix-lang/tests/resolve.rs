@@ -855,6 +855,38 @@ fn field_identities_count_retained_row_keys_toward_the_byte_limit() {
 }
 
 #[test]
+fn empty_nested_template_fields_charge_only_their_retained_identity_rows() {
+    let (mut m, mut s) = fixture();
+    m.records
+        .get_mut("Row")
+        .unwrap()
+        .fields
+        .insert("id".into(), Type::String.into());
+    s.values
+        .get_mut("rows")
+        .unwrap()
+        .as_array_mut()
+        .unwrap()
+        .truncate(1);
+    s.values.get_mut("rows").unwrap()[0]["id"] = json!("a".repeat(45_000));
+    s.values.get_mut("rows").unwrap()[0]["children"] = json!([]);
+
+    let result = run(
+        "screen { list from rows key id { item { list from .children { item { field \"F\" draft } } } } }",
+        &m,
+        &s,
+    )
+    .expect("an empty nested template retains no outer rows in its field identity");
+
+    let field = result.screen.children[0].rows[0].children[0].children[0].empty_templates[0]
+        .children[0]
+        .field
+        .as_ref()
+        .unwrap();
+    assert!(field.rows.is_empty());
+}
+
+#[test]
 fn retained_formatter_symbols_count_toward_the_resolved_byte_limit() {
     let (mut m, s) = fixture();
     m.values.get_mut("number").unwrap().display = DisplayFormat::Money {
