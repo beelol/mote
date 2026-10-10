@@ -1,11 +1,11 @@
 # Handoff: Mote closeout
 
-Updated 2026-10-10 01:56 PDT. Replace this file, never append. Delete it when nothing needs
+Updated 2026-10-10 02:02 PDT. Replace this file, never append. Delete it when nothing needs
 transfer. Nothing here assumes chat history.
 
 ## Where
 
-- Branch: `main`. `HEAD` and `origin/main` are `414c0af` before this handoff update.
+- Branch: `main`. `HEAD` and `origin/main` are `5ef7b25` before this handoff update.
 - Contract: `docs/rfcs/v0.md`. Driver goal: `docs/goal-close-out.md`. Matrix plan:
   `matrix/CLOSEOUT.md`.
 - The owner directed this session to drive Mote and delegate Matrix UI work. Do not ask the owner
@@ -19,7 +19,8 @@ transfer. Nothing here assumes chat history.
 - Validated `surface.render` daemon seam and `ui.surface` event: `845eb5e`.
 - First Mac-native Matrix runtime with Vector: `ca89996`, `45c7e68` and `d2f4110`.
 - Acceptance reconciliation for all open UI criteria: `414c0af`.
-- Independent task reviews are clean. The last complete workspace run passed 85 tests with zero
+- Current closeout state: `57c6880`. Streamed text after a surface remains visible: `5ef7b25`.
+- Independent task reviews are clean. The last complete workspace run passed 86 tests with zero
   failures. Clippy with warnings denied, the client build and whitespace checks also passed.
 
 The client uses exact `eframe` and `egui` 0.31.0 with `winit` 0.30.13. It renders all eleven
@@ -39,6 +40,8 @@ must return `E_LOWER_UNSUPPORTED`.
 - UI-00 remains an owner decision. It asks the owner to approve the closed catalog, frozen grammar,
   Vector defaults and the split between Matrix as the future source and the unchanged v0 tree as
   the interim consumer contract. No Matrix compiler work is authorized yet.
+- `docs/handoff/ui-language/implementation.md` defines the post-approval activation order, owned
+  files, fixtures, commands and stop conditions. It does not claim approval.
 
 ## Exact next actions
 

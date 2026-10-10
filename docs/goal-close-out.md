@@ -57,10 +57,10 @@ retro-red Atari vector-line identity that materializes elements in as strokes; l
 - Default theme is named **Vector** (thin retro-red Atari vector-line; the direction the owner
   locked). Layout model locked: col/row, header/footer, fill, align, auto-scroll; no
   grid/absolute/z-index/pixels.
-- **Gate:** the matrix agent is the design session and will NOT build the runtime binary until the
-  owner closes **UI-00**. So the working-GUI path is: owner closes UI-00 -> matrix builds the
-  first-milestone runtime -> it pings this driver -> swap it in as the client. Until then there is
-  no runtime to adopt.
+- **Gate:** the first Mac runtime milestone now exists in `mote-client`. It renders the unchanged
+  v0 tree and does not implement a Matrix parser or compiler. **UI-00** still gates parser,
+  formatter, compiler, broader lowering and any consumer contract revision. Visible native and
+  live daemon-connected acceptance remains open.
 - **Owner stance (2026-10-10):** let matrix keep iterating; the owner is in no rush on UI-00 and
   will close it on their own timeline (or when the matrix agent is done). Do NOT nag the owner
   about UI-00. UI is the last thing, picked up when matrix lands. Work everything else first.
@@ -70,14 +70,14 @@ retro-red Atari vector-line identity that materializes elements in as strokes; l
 - `moted` handles `ui.event` (logs it) and `crates/mote-ui::validate()` is fail-closed (typed
   `Node` or a `Diagnostic`). `mote-client` already consumes `ui.surface` -> `Node` and returns
   `ui.event`; the matrix runtime replaces that client against the same contract.
-- Gap: **no lane emits `ui.surface` yet** — talk/think emit text events only, so a GUI shows chat
-  text, not generative surfaces. Wiring a lane to emit a validated `ui.surface` is the small
-  daemon-side piece to show generative UI once the runtime can draw one. Do this when it adds value
-  and stays in budget; it is not required for a chat-only working window.
+- `surface.render` accepts an explicit candidate, validates it fail-closed and emits `ui.surface`
+  through the event log. No inference lane produces a surface automatically yet. Talk and think
+  still emit text events only. Automatic surface inference remains a separate integration step.
 
 ## Prioritized close-out backlog
 
-Everything except UI comes first. UI is last, picked up only when the matrix runtime lands.
+The first Matrix runtime milestone has landed. The remaining UI work is visible acceptance and
+live integration. Compiler work waits for UI-00.
 
 1. **Think-lane runtime correctness (daemon, doable now).** The persistent server is wired
    (`ThinkServers`); settle session reuse vs fresh-per-turn and the `moted mcp` `file_read` root so
