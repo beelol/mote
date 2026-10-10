@@ -730,6 +730,53 @@ mod approval_dispatch_tests {
     }
 
     #[test]
+    fn every_forbidden_matrix_candidate_preserves_the_committed_surface() {
+        let (data, _) = dirs("matrix-negative-corpus");
+        let daemon = daemon(&data);
+        daemon
+            .call(
+                "matrix.render",
+                json!({"thread":"thread-7", "source": MATRIX_DASHBOARD}),
+            )
+            .unwrap();
+        let mut events = daemon.log.subscribe("thread-7", 1).unwrap();
+        for (category, source) in [
+            ("unknown element", "screen { unknown }") ,
+            ("unknown modifier", "screen { text \"x\" sparkle }") ,
+            ("unknown icon", "screen { icon \"not-fixed\" }") ,
+            ("duplicate property", "screen { row wrap wrap {} }") ,
+            ("trailing token", "screen {} trailing") ,
+            ("comment", "screen { // comment\n }") ,
+            ("expression", "screen { text 1 + 2 }") ,
+            ("control flow", "screen { if condition {} }") ,
+            ("script", "screen { script \"code\" }") ,
+            ("handler", "screen { on click {} }") ,
+            ("timer", "screen { timer 1 }") ,
+            ("raw newline", "screen { text \"first\nsecond\" }") ,
+            ("invalid escape", r#"screen { text "\q" }"#) ,
+            ("nonfinite number", "screen { progress NaN }") ,
+            ("invalid Unicode", "screen { text \"\u{1}\" }") ,
+        ] {
+            let response = daemon
+                .call(
+                    "matrix.render",
+                    json!({"thread":"thread-7", "source":source}),
+                )
+                .unwrap();
+            assert_eq!(response["ok"], false, "accepted {category}: {source}");
+            assert!(
+                response["diagnostics"].as_array().is_some_and(|items| !items.is_empty()),
+                "missing diagnostics for {category}"
+            );
+            assert!(
+                events.recv_timeout(Duration::from_millis(2)).is_none(),
+                "replaced the committed surface for {category}"
+            );
+        }
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
     fn typed_change_updates_config_and_recompiles_the_retained_source() {
         let (data, _) = dirs("matrix-change");
         let daemon = daemon(&data);
