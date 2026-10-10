@@ -63,6 +63,14 @@ fn accepts_all_nine_v0_fragments() {
 }
 
 #[test]
+fn declaration_words_are_case_sensitive() {
+    parse_surface("screen {}").unwrap();
+    let errors = parse_surface("Screen {}").unwrap_err();
+    assert_eq!(errors[0].code.as_str(), "E_PARSE_TOKEN");
+    assert_eq!(errors[0].span, Span::new(0, 6));
+}
+
+#[test]
 fn leaves_manifest_and_scope_checks_to_the_resolver() {
     accept(r#"button "Open" -> Open{url: selected.url}"#);
     accept(r#"text .unknown field "Name" unknown.path button "Go" -> Unknown{x: .anything}"#);

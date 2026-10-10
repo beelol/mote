@@ -127,6 +127,26 @@ fn rejects(source: &str, code: &str) {
 }
 
 #[test]
+fn published_names_are_case_sensitive() {
+    let mut manifest = Manifest::default();
+    manifest.actions.insert("CheckIn".into(), ActionContract::default());
+    let snapshot = BindingSnapshot::default();
+    let result = run(r#"screen { button "Go" -> CheckIn }"#, &manifest, &snapshot).unwrap();
+    let action = result.screen.children[0].action.as_ref().unwrap();
+    assert_eq!(action.name, "CheckIn");
+    assert!(action.arguments.is_empty());
+    for name in ["checkIn", "check_in"] {
+        let source = format!(r#"screen {{ button "Go" -> {name} }}"#);
+        let errors = run(&source, &manifest, &snapshot).unwrap_err();
+        assert_eq!(errors[0].code.as_str(), "E_RESOLVE_ACTION", "{source}");
+        assert_eq!(
+            &source[errors[0].span.start..errors[0].span.end],
+            format!("-> {name}")
+        );
+    }
+}
+
+#[test]
 fn references_contain_validated_values_and_host_display_formats() {
     let (mut m, s) = fixture();
     m.values.get_mut("number").unwrap().display = DisplayFormat::Fixed { decimals: 2 };

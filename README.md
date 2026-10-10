@@ -80,8 +80,10 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
   activated plan. **Verify:** complete every criterion's full Verify clause in `docs/backlog.md` and
   record separate evidence files. [spec](docs/superpowers/specs/2026-10-10-matrix-toolchain.md)
   [plan](docs/superpowers/plans/2026-10-10-matrix-toolchain.md)
-  Verified: [UI-01](docs/verification/UI-01.md), [UI-06](docs/verification/UI-06.md),
-  [UI-08](docs/verification/UI-08.md), [UI-10](docs/verification/UI-10.md),
+  Verified: [UI-01](docs/verification/UI-01.md), [UI-02](docs/verification/UI-02.md),
+  [UI-03](docs/verification/UI-03.md), [UI-06](docs/verification/UI-06.md),
+  [UI-07](docs/verification/UI-07.md), [UI-08](docs/verification/UI-08.md),
+  [UI-09](docs/verification/UI-09.md), [UI-10](docs/verification/UI-10.md),
   [UI-11](docs/verification/UI-11.md),
   [UI-12](docs/verification/UI-12.md) and [UI-45](docs/verification/UI-45.md).
 - [ ] **Matrix host and runtime** Implement UI-13 through UI-31, UI-33 through UI-44 and UI-46

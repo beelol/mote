@@ -139,6 +139,7 @@ pub fn tree_schema_pretty() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::path::{Path, PathBuf};
 
     fn fixtures_dir() -> PathBuf {
@@ -175,6 +176,42 @@ mod tests {
     fn rejects_unknown_key() {
         let d = validate(br#"{"type":"text","value":"x","foo":1}"#).unwrap_err();
         assert!(d.0.contains("unknown key 'foo'"), "{d}");
+    }
+
+    #[test]
+    fn abbreviated_property_aliases_are_rejected() {
+        for (valid, replacement, extra, replacement_diagnostic, extra_diagnostic) in [
+            (
+                r#"{"type":"text","value":"x"}"#,
+                r#"{"t":"text","value":"x"}"#,
+                r#"{"type":"text","value":"x","t":"text"}"#,
+                "missing a string 'type'",
+                "unknown key 't'",
+            ),
+            (
+                r#"{"type":"stack","children":[]}"#,
+                r#"{"type":"stack","c":[]}"#,
+                r#"{"type":"stack","children":[],"c":[]}"#,
+                "unknown key 'c'",
+                "unknown key 'c'",
+            ),
+            (
+                r#"{"type":"action","label":"Go","event":"Go"}"#,
+                r#"{"type":"action","l":"Go","event":"Go"}"#,
+                r#"{"type":"action","label":"Go","event":"Go","l":"Go"}"#,
+                "unknown key 'l'",
+                "unknown key 'l'",
+            ),
+        ] {
+            validate(valid.as_bytes()).unwrap();
+            for (source, expected) in [
+                (replacement, replacement_diagnostic),
+                (extra, extra_diagnostic),
+            ] {
+                let diagnostic = validate(source.as_bytes()).unwrap_err();
+                assert!(diagnostic.0.contains(expected), "{source}: {diagnostic}");
+            }
+        }
     }
 
     #[test]
@@ -242,10 +279,49 @@ mod tests {
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schemas/tree.v0.json");
         let committed = std::fs::read_to_string(&committed_path)
             .expect("schemas/tree.v0.json must exist; run the schema generator");
+        let first = tree_schema_pretty();
+        let second = tree_schema_pretty();
+        assert_eq!(first, second, "schema generation must be deterministic");
         assert_eq!(
             committed.trim_end(),
-            tree_schema_pretty().trim_end(),
+            first.trim_end(),
             "schemas/tree.v0.json drifted from the Rust types; regenerate it"
         );
+    }
+
+    #[test]
+    fn generated_schema_properties_match_v0_allowed_keys() {
+        let schema = tree_schema();
+        let variants = schema["definitions"]["Node"]["oneOf"].as_array().unwrap();
+        let mut properties_by_type = BTreeMap::new();
+        for variant in variants {
+            let properties = variant["properties"].as_object().unwrap();
+            let types = properties["type"]["enum"].as_array().unwrap();
+            assert_eq!(types.len(), 1);
+            let ty = types[0].as_str().unwrap();
+            let keys: BTreeSet<_> = properties.keys().map(String::as_str).collect();
+            assert!(properties_by_type.insert(ty, keys).is_none(), "duplicate {ty}");
+        }
+        let expected: [(&str, &[&str]); 11] = [
+            ("text", &["type", "value"]),
+            ("stack", &["type", "children"]),
+            ("row", &["type", "children"]),
+            ("list", &["type", "children"]),
+            ("table", &["type", "columns", "rows"]),
+            ("field", &["type", "label", "name", "value"]),
+            ("toggle", &["type", "label", "name", "value"]),
+            ("select", &["type", "label", "name", "options", "value"]),
+            ("action", &["type", "label", "event"]),
+            ("progress", &["type", "value"]),
+            ("chat", &["type", "children"]),
+        ];
+        assert_eq!(variants.len(), expected.len());
+        assert_eq!(properties_by_type.len(), expected.len());
+        for (ty, keys) in expected {
+            let expected_keys: BTreeSet<_> = keys.iter().copied().collect();
+            let validator_keys: BTreeSet<_> = allowed_keys(ty).unwrap().iter().copied().collect();
+            assert_eq!(validator_keys, expected_keys, "validator keys for {ty}");
+            assert_eq!(properties_by_type[ty], validator_keys, "schema keys for {ty}");
+        }
     }
 }
