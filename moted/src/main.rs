@@ -9,6 +9,7 @@ mod config;
 mod embed;
 mod gate;
 mod lanes;
+mod matrix;
 mod mcp;
 mod pipeline;
 mod service;
@@ -101,11 +102,58 @@ struct Daemon {
     client: Ollama,
     watchers: Mutex<Watchers>,
     think: Mutex<ThinkServers>,
+    matrix_sources: Mutex<HashMap<String, String>>,
     data_dir: PathBuf,
     started: std::time::Instant,
 }
 
 impl Daemon {
+    fn pipeline_snapshot(&self) -> Result<pipeline::PipelineSnapshot, RpcError> {
+        let config = {
+            let config = self.config.lock().unwrap();
+            pipeline::CONFIG_KEYS
+                .into_iter()
+                .filter_map(|key| {
+                    config.get_json(key).map(|value| (key.to_string(), value))
+                })
+                .collect()
+        };
+        let store = self.store.lock().unwrap();
+        pipeline::build_snapshot(&self.log, &store, config, now_ms())
+            .map_err(|error| RpcError::internal(format!("read pipeline snapshot: {error}")))
+    }
+
+    fn compile_matrix(&self, source: &str) -> Result<Value, Value> {
+        let snapshot = self.pipeline_snapshot().map_err(|error| {
+            json!([{"code":"E_HOST","severity":"error","message":error.message}])
+        })?;
+        let bindings = matrix::host_bindings(&snapshot.config, &snapshot);
+        matrix::compile(source, &bindings).map_err(|errors| matrix::diagnostics(&errors))
+    }
+
+    fn render_matrix(&self, thread: &str, source: &str, retain: bool) -> Result<Value, RpcError> {
+        match self.compile_matrix(source) {
+            Ok(surface) => {
+                let response = commit_surface(&self.log, thread, &surface)?;
+                if retain {
+                    self.matrix_sources
+                        .lock()
+                        .unwrap()
+                        .insert(thread.into(), source.into());
+                }
+                Ok(json!({"ok": true, "valid": response["valid"]}))
+            }
+            Err(diagnostics) => Ok(json!({"ok": false, "diagnostics": diagnostics})),
+        }
+    }
+
+    fn refresh_matrix(&self, thread: &str) -> Result<Option<Value>, RpcError> {
+        let source = self.matrix_sources.lock().unwrap().get(thread).cloned();
+        source
+            .map(|source| self.render_matrix(thread, &source, false))
+            .transpose()
+    }
+
     fn handle_turn(&self, params: &Value) -> Result<Value, RpcError> {
         let thread_id = params
             .get("thread")
@@ -307,20 +355,7 @@ impl Dispatch for Daemon {
                 Ok(json!({ "seq": new_seq }))
             }
             "pipeline.snapshot" => {
-                let config = {
-                    let config = self.config.lock().unwrap();
-                    pipeline::CONFIG_KEYS
-                        .into_iter()
-                        .filter_map(|key| {
-                            config.get_json(key).map(|value| (key.to_string(), value))
-                        })
-                        .collect()
-                };
-                let store = self.store.lock().unwrap();
-                let snapshot = pipeline::build_snapshot(&self.log, &store, config, now_ms())
-                    .map_err(|error| {
-                        RpcError::internal(format!("read pipeline snapshot: {error}"))
-                    })?;
+                let snapshot = self.pipeline_snapshot()?;
                 serde_json::to_value(snapshot)
                     .map_err(|error| RpcError::internal(format!("encode pipeline snapshot: {error}")))
             }
@@ -347,7 +382,36 @@ impl Dispatch for Daemon {
             "ui.event" => {
                 let event = params.get("event").and_then(|e| e.as_str()).unwrap_or("");
                 let thread = params.get("thread").and_then(|t| t.as_str()).unwrap_or("main");
-                self.log.append(thread, "ui.event", &json!({ "event": event })).ok();
+                let args = params.get("args").cloned().unwrap_or_else(|| json!({}));
+                self.log
+                    .append(thread, "ui.event", &json!({ "event": event, "args": args }))
+                    .ok();
+                if event == "change" {
+                    let field = args.get("field").and_then(Value::as_str).ok_or_else(|| {
+                        RpcError::invalid_params("change needs a string field")
+                    })?;
+                    let value = args.get("value").ok_or_else(|| {
+                        RpcError::invalid_params("change needs a value")
+                    })?;
+                    if !matches!(
+                        field,
+                        "models.local_only" | "models.talk" | "models.router" | "models.think"
+                    ) {
+                        return Err(RpcError::invalid_params("change field is not exposed"));
+                    }
+                    let seq = self
+                        .config
+                        .lock()
+                        .unwrap()
+                        .set_json(field, value)
+                        .map_err(|error| RpcError::invalid_params(error.to_string()))?;
+                    let rendered = self.refresh_matrix(thread)?;
+                    return Ok(json!({"ok": true, "seq": seq, "rendered": rendered}));
+                }
+                if event == "refresh" {
+                    let rendered = self.refresh_matrix(thread)?;
+                    return Ok(json!({"ok": true, "rendered": rendered}));
+                }
                 if let Some(id) = event
                     .strip_prefix("approve:")
                     .and_then(|id| id.parse::<i64>().ok())
@@ -387,6 +451,14 @@ impl Dispatch for Daemon {
                     .get("surface")
                     .ok_or_else(|| RpcError::invalid_params("surface.render needs a surface"))?;
                 commit_surface(&self.log, &thread, surface)
+            }
+            "matrix.render" => {
+                let thread = params.get("thread").and_then(Value::as_str).unwrap_or("main");
+                let source = params
+                    .get("source")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| RpcError::invalid_params("matrix.render needs source text"))?;
+                self.render_matrix(thread, source, true)
             }
             "schedule.add" => {
                 let cron = params.get("cron").and_then(|c| c.as_str()).ok_or_else(|| {
@@ -567,6 +639,7 @@ mod approval_dispatch_tests {
             client: Ollama::new("http://127.0.0.1:9"),
             watchers: Mutex::new(Watchers::open_in_memory().unwrap()),
             think: Mutex::new(ThinkServers::new(data_dir.to_path_buf())),
+            matrix_sources: Mutex::new(HashMap::new()),
             data_dir: data_dir.to_path_buf(),
             started: std::time::Instant::now(),
         }
@@ -583,6 +656,125 @@ mod approval_dispatch_tests {
         std::fs::create_dir_all(&data).unwrap();
         std::fs::create_dir_all(&outside).unwrap();
         (data, outside)
+    }
+
+    const MATRIX_DASHBOARD: &str = r#"screen {
+  col {
+    text "Agent dashboard"
+    toggle "Local only" models.local_only
+    select "Talk model" models.talk options model_options
+    list from pipeline.stages {
+      item { row { text .stage text .latency } }
+    }
+    button "Refresh" -> refresh
+  }
+}"#;
+
+    #[test]
+    fn matrix_render_compiles_the_daemon_manifest_and_commits_the_surface() {
+        let (data, _) = dirs("matrix-render");
+        let daemon = daemon(&data);
+
+        let response = daemon
+            .call(
+                "matrix.render",
+                json!({"thread":"thread-7", "source": MATRIX_DASHBOARD}),
+            )
+            .unwrap();
+
+        assert_eq!(response, json!({"ok":true, "valid":true}));
+        let event = daemon
+            .log
+            .subscribe("thread-7", 0)
+            .unwrap()
+            .recv_timeout(Duration::from_millis(10))
+            .unwrap();
+        assert_eq!(event.kind, "ui.surface");
+        assert_eq!(event.payload["surface"]["type"], "stack");
+        assert!(event.payload.to_string().contains("models.local_only"));
+        assert!(event.payload.to_string().contains("qwen3:4b"));
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn invalid_matrix_source_returns_diagnostics_without_replacing_the_surface() {
+        let (data, _) = dirs("matrix-invalid");
+        let daemon = daemon(&data);
+        daemon
+            .call(
+                "matrix.render",
+                json!({"thread":"thread-7", "source": MATRIX_DASHBOARD}),
+            )
+            .unwrap();
+        let mut events = daemon.log.subscribe("thread-7", 1).unwrap();
+
+        let response = daemon
+            .call(
+                "matrix.render",
+                json!({"thread":"thread-7", "source":"screen { slider"}),
+            )
+            .unwrap();
+
+        assert_eq!(response["ok"], false);
+        assert_eq!(response["diagnostics"][0]["severity"], "error");
+        assert!(response["diagnostics"][0]["code"]
+            .as_str()
+            .is_some_and(|code| code.starts_with("E_")));
+        assert!(events.recv_timeout(Duration::from_millis(10)).is_none());
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn typed_change_updates_config_and_recompiles_the_retained_source() {
+        let (data, _) = dirs("matrix-change");
+        let daemon = daemon(&data);
+        daemon
+            .call(
+                "matrix.render",
+                json!({"thread":"thread-7", "source": MATRIX_DASHBOARD}),
+            )
+            .unwrap();
+        let mut events = daemon.log.subscribe("thread-7", 1).unwrap();
+
+        let response = daemon
+            .call(
+                "ui.event",
+                json!({
+                    "thread":"thread-7",
+                    "event":"change",
+                    "args":{"field":"models.local_only", "value":false}
+                }),
+            )
+            .unwrap();
+
+        assert_eq!(response["ok"], true);
+        assert_eq!(
+            daemon.config.lock().unwrap().get_json("models.local_only"),
+            Some(json!(false))
+        );
+        assert_eq!(events.recv_timeout(Duration::from_millis(10)).unwrap().kind, "ui.event");
+        let surface = events.recv_timeout(Duration::from_millis(10)).unwrap();
+        assert_eq!(surface.kind, "ui.surface");
+        let toggle = &surface.payload["surface"]["children"][1];
+        assert_eq!(toggle["name"], "models.local_only");
+        assert_eq!(toggle["value"], false);
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn typed_change_rejects_fields_outside_the_host_manifest() {
+        let (data, _) = dirs("matrix-field");
+        let daemon = daemon(&data);
+
+        let error = daemon
+            .call(
+                "ui.event",
+                json!({"event":"change", "args":{"field":"secret", "value":true}}),
+            )
+            .unwrap_err();
+
+        assert!(error.message.contains("not exposed"));
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
     }
 
     #[test]
@@ -802,6 +994,7 @@ mod turn_event_tests {
             client: Ollama::new(scripted.base_url()),
             watchers: Mutex::new(Watchers::open_in_memory().unwrap()),
             think: Mutex::new(ThinkServers::new(data_dir.clone())),
+            matrix_sources: Mutex::new(HashMap::new()),
             data_dir: data_dir.clone(),
             started: std::time::Instant::now(),
         });
@@ -1028,6 +1221,7 @@ fn run() -> Result<(), i32> {
         client: Ollama::local(),
         watchers: Mutex::new(watchers),
         think: Mutex::new(ThinkServers::new(data.clone())),
+        matrix_sources: Mutex::new(HashMap::new()),
         data_dir: data.clone(),
         started: std::time::Instant::now(),
     });

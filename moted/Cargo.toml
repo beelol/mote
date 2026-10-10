@@ -13,6 +13,7 @@ mote-localmodel.workspace = true
 mote-context.workspace = true
 mote-harness.workspace = true
 mote-ui.workspace = true
+matrix-lang = { path = "../crates/matrix-lang" }
 serde_json.workspace = true
 serde.workspace = true
 toml.workspace = true
