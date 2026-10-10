@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::decimal::Decimal;
 use crate::{ast::*, lex, Diagnostic, DiagnosticCode, Severity, Span, Token, TokenKind};
 
 type ParseResult<T> = Result<T, Diagnostic>;
@@ -593,7 +594,7 @@ impl<'a> Parser<'a> {
                     .is_some_and(|kind| kind.value == FieldKind::Number)
                 {
                     for bound in [min.as_ref(), max.as_ref()].into_iter().flatten() {
-                        if bound.value < 0.0 || bound.value.fract() != 0.0 {
+                        if !Decimal::from_source(&bound.source).is_nonnegative_integer() {
                             return Err(self.error(
                                 DiagnosticCode::InvalidLiteral,
                                 bound.span,
@@ -890,7 +891,10 @@ impl<'a> Parser<'a> {
         step: Option<&NumberLiteral>,
     ) -> ParseResult<()> {
         if let (Some(min), Some(max)) = (min, max) {
-            if min.value > max.value {
+            if Decimal::from_source(&min.source)
+                .cmp(&Decimal::from_source(&max.source))
+                .is_gt()
+            {
                 return Err(self.error(
                     DiagnosticCode::InvalidLiteral,
                     max.span,
@@ -899,7 +903,7 @@ impl<'a> Parser<'a> {
             }
         }
         if let Some(step) = step {
-            if step.value <= 0.0 {
+            if !Decimal::from_source(&step.source).is_positive() {
                 return Err(self.error(
                     DiagnosticCode::InvalidLiteral,
                     step.span,

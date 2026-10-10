@@ -1,4 +1,5 @@
 pub mod ast;
+mod decimal;
 pub mod diagnostic;
 pub mod lexer;
 pub mod parser;

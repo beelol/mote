@@ -306,6 +306,62 @@ fn rejects_invalid_literal_constraints() {
 }
 
 #[test]
+fn rejects_fractional_text_bounds_below_float_precision() {
+    let error = &parse_fragment(r#"field "F" f min 1.0000000000000001"#).unwrap_err()[0];
+    assert_eq!(error.code, DiagnosticCode::InvalidLiteral);
+    assert_eq!(error.span, Span::new(16, 34));
+}
+
+#[test]
+fn rejects_negative_text_bounds_below_float_range() {
+    let error = &parse_fragment(r#"field "F" f min -1e-400"#).unwrap_err()[0];
+    assert_eq!(error.code, DiagnosticCode::InvalidLiteral);
+    assert_eq!(error.span, Span::new(16, 23));
+}
+
+#[test]
+fn rejects_inverted_ranges_above_float_integer_precision() {
+    let error = &parse_fragment(r#"slider "S" s min 9007199254740993 max 9007199254740992"#)
+        .unwrap_err()[0];
+    assert_eq!(error.code, DiagnosticCode::InvalidLiteral);
+    assert_eq!(error.span, Span::new(38, 54));
+}
+
+#[test]
+fn compares_decimal_constraints_without_rounding() {
+    for source in [
+        r#"field "F" f min 1e-400"#,
+        r#"field "F" f max 0.99999999999999999"#,
+        r#"slider "S" s min 1.0000000000000001 max 1"#,
+        r#"slider "S" s min 0 max -1e-400"#,
+        r#"slider "S" s min -1e-400 max -2e-400"#,
+        r#"stepper "S" s step -1e-400"#,
+        r#"stepper "S" s step -0.000e-999"#,
+        r#"slider "S" s min 1e-9999999999999999999999999999 max 1e-10000000000000000000000000000"#,
+        r#"slider "S" s min 0.00101e-9999999999999999999999999999 max 0.01e-10000000000000000000000000000"#,
+    ] {
+        assert_eq!(
+            parse_fragment(source).unwrap_err()[0].code,
+            DiagnosticCode::InvalidLiteral,
+            "{source}"
+        );
+    }
+    for source in [
+        r#"field "F" f min -0.000e-999 max 1.0000000000000000"#,
+        r#"field "F" f min 0.001e3 max 100e-2"#,
+        r#"field "F" f min 9007199254740993 max 9007199254740994"#,
+        r#"field "F" f min 1000e-0000000000000000000000000003 max 1"#,
+        r#"field "F" f min 0e-9999999999999999999999999999 max 0e9999999999999999999999999999"#,
+        r#"slider "S" s min -2e-400 max -1e-400 step 1e-400"#,
+        r#"slider "S" s min 0.001e-9999999999999999999999999999 max 0.01e-10000000000000000000000000000"#,
+        r#"slider "S" s min 1e-10000000000000000000000000000 max 1e-9999999999999999999999999999"#,
+        r#"slider "S" s min 1.01 max 1.1"#,
+    ] {
+        accept(source);
+    }
+}
+
+#[test]
 fn accepts_empty_display_text_without_empty_required_labels() {
     accept(r#"progress label "" tooltip "" { text "" } section "" {}"#);
     for source in [
