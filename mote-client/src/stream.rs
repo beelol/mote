@@ -1,5 +1,5 @@
 use mote_eventlog::Event;
-use mote_ipc::{Client, EventStream};
+use mote_ipc::Client;
 use std::io;
 use std::path::Path;
 use std::sync::mpsc::Sender;
@@ -35,11 +35,12 @@ pub fn run_after_connect(
     run_with(
         cursor,
         |cursor| {
-            let status = Client::connect(path)?.call("status", serde_json::json!({}))?
+            let mut client = Client::connect(path)?;
+            let status = client.call("status", serde_json::json!({}))?
                 .map_err(|error| io::Error::other(error.message))?;
             let replay_through = status["last_seq"].as_i64().filter(|seq| *seq >= 0)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "status has no valid last_seq"))?;
-            Ok((EventStream::connect(path, scope_id, cursor)?, replay_through))
+            Ok((client.subscribe(scope_id, cursor)?, replay_through))
         },
         |stream| {
             if let Some(on_connected) = on_connected.take() {

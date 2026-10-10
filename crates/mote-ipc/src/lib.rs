@@ -277,6 +277,7 @@ fn write_line(writer: &mut UnixStream, value: &Value) -> io::Result<()> {
 
 /// A connected client.
 pub struct Client {
+    path: PathBuf,
     reader: BufReader<UnixStream>,
     writer: UnixStream,
     next_id: u64,
@@ -286,7 +287,7 @@ impl Client {
     pub fn connect(path: &Path) -> io::Result<Client> {
         let writer = UnixStream::connect(path)?;
         let reader = BufReader::new(writer.try_clone()?);
-        Ok(Client { reader, writer, next_id: 1 })
+        Ok(Client { path: path.to_path_buf(), reader, writer, next_id: 1 })
     }
 
     /// Make a unary call.
@@ -308,6 +309,25 @@ impl Client {
             return Ok(Err(RpcError { code, message }));
         }
         Ok(Ok(v.get("result").cloned().unwrap_or(Value::Null)))
+    }
+
+    /// Consume this connection into a subscription without reconnecting. Use `read_event`
+    /// when unary state must be refreshed after a disconnect.
+    pub fn subscribe(mut self, scope_id: &str, cursor: i64) -> io::Result<EventStream> {
+        self.writer.set_read_timeout(Some(Duration::from_millis(200)))?;
+        let request = request_envelope(
+            json!(self.next_id),
+            "events.subscribe",
+            json!({ "scope_id": scope_id, "cursor": cursor }),
+        );
+        write_line(&mut self.writer, &request)?;
+        Ok(EventStream {
+            path: self.path,
+            scope_id: scope_id.to_string(),
+            cursor,
+            reader: self.reader,
+            stream: self.writer,
+        })
     }
 }
 
@@ -546,6 +566,55 @@ mod tests {
         for w in got.windows(2) {
             assert!(w[1] > w[0], "no duplicate, in order: {got:?}");
         }
+    }
+
+    #[test]
+    fn unary_client_transitions_to_subscription_on_the_same_socket() {
+        let path = temp_sock("transition");
+        let listener = UnixListener::bind(&path).unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            let mut reader = BufReader::new(socket.try_clone().unwrap());
+            let status: Value = serde_json::from_slice(&read_frame(&mut reader).unwrap().unwrap()).unwrap();
+            assert_eq!(status["method"], "status");
+            write_line(&mut socket, &success_envelope(status["id"].clone(), json!({"last_seq":5}))).unwrap();
+            let subscribe: Value = serde_json::from_slice(&read_frame(&mut reader).unwrap().unwrap()).unwrap();
+            assert_eq!(subscribe["method"], "events.subscribe");
+            assert_eq!(subscribe["params"], json!({"scope_id":"s","cursor":3}));
+            let event = Event { seq:6, ts:0, scope_id:"s".into(), kind:"test".into(), payload:json!({}) };
+            write_line(&mut socket, &event_envelope(&event)).unwrap();
+        });
+        let mut client = Client::connect(&path).unwrap();
+        assert_eq!(client.call("status", json!({})).unwrap().unwrap()["last_seq"], 5);
+        let mut stream = client.subscribe("s", 3).unwrap();
+        assert_eq!(stream.read_event().unwrap().unwrap().seq, 6);
+        assert_eq!(stream.cursor(), 6);
+        server.join().unwrap();
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn client_transition_cannot_move_to_a_replacement_server() {
+        let path = temp_sock("transition-death");
+        let listener = UnixListener::bind(&path).unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(socket.try_clone().unwrap());
+            let request: Value = serde_json::from_slice(&read_frame(&mut reader).unwrap().unwrap()).unwrap();
+            write_line(&mut socket, &success_envelope(request["id"].clone(), json!({"last_seq":5}))).unwrap();
+        });
+        let mut client = Client::connect(&path).unwrap();
+        assert_eq!(client.call("status", json!({})).unwrap().unwrap()["last_seq"], 5);
+        server.join().unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let replacement = UnixListener::bind(&path).unwrap();
+        replacement.set_nonblocking(true).unwrap();
+        if let Ok(mut stream) = client.subscribe("s", 0) {
+            assert!(stream.read_event().is_err());
+        }
+        assert_eq!(replacement.accept().unwrap_err().kind(), io::ErrorKind::WouldBlock);
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

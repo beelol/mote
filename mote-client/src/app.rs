@@ -833,6 +833,82 @@ mod tests {
     }
 
     #[test]
+    fn restart_between_status_and_subscription_rechecks_the_watermark() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::os::unix::net::UnixListener;
+        use std::time::{Duration, Instant};
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("mote-handshake-{}-{unique}.sock", std::process::id()));
+        let cursor_path = path.with_extension("cursor");
+        let daemon_a = UnixListener::bind(&path).unwrap();
+        let server_path = path.clone();
+        let (finish, finish_rx) = mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let read = |socket: &std::os::unix::net::UnixStream| {
+                socket.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+                let mut line = String::new();
+                BufReader::new(socket.try_clone().unwrap()).read_line(&mut line).unwrap();
+                serde_json::from_str::<serde_json::Value>(&line).unwrap()
+            };
+            let reply = |socket: &mut std::os::unix::net::UnixStream, request: &serde_json::Value, last_seq| {
+                socket.write_all(&mote_ipc::encode_frame(&mote_ipc::success_envelope(request["id"].clone(), serde_json::json!({"last_seq":last_seq}))).unwrap()).unwrap();
+            };
+            let (mut old, _) = daemon_a.accept().unwrap();
+            let status = read(&old);
+            assert_eq!(status["method"], "status");
+            drop(daemon_a);
+            std::fs::remove_file(&server_path).unwrap();
+            let daemon_b = UnixListener::bind(&server_path).unwrap();
+            old.shutdown(std::net::Shutdown::Read).unwrap();
+            reply(&mut old, &status, 5);
+            old.shutdown(std::net::Shutdown::Write).unwrap();
+            drop(old);
+
+            let (mut socket, _) = daemon_b.accept().unwrap();
+            let mut request = read(&socket);
+            let checked_daemon_b = request["method"] == "status";
+            if checked_daemon_b {
+                reply(&mut socket, &request, 6);
+                request = read(&socket);
+            }
+            assert_eq!(request["method"], "events.subscribe");
+            assert_eq!(request["params"]["cursor"], 0);
+            for event in [
+                Event { seq:6, ts:0, scope_id:"main".into(), kind:"ui.surface".into(), payload:serde_json::json!({"surface_id":"matrix","surface":{"type":"action","label":"Expired","event":"refresh"}}) },
+                Event { seq:7, ts:0, scope_id:"main".into(), kind:"turn.user".into(), payload:serde_json::json!({"text":"Replayed chat"}) },
+            ] {
+                socket.write_all(&mote_ipc::encode_frame(&mote_ipc::event_envelope(&event)).unwrap()).unwrap();
+            }
+            finish_rx.recv().unwrap();
+            let event = Event { seq:8, ts:0, scope_id:"main".into(), kind:"talk.done".into(), payload:serde_json::json!({}) };
+            socket.write_all(&mote_ipc::encode_frame(&mote_ipc::event_envelope(&event)).unwrap()).unwrap();
+            checked_daemon_b
+        });
+        let (mut app, tx) = app();
+        app.cursor_path = Some(cursor_path.clone());
+        let stream_path = path.clone();
+        let stream = std::thread::spawn(move || crate::stream::run(&stream_path, "main", 0, tx));
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while load_cursor_from(&cursor_path) < 7 && Instant::now() < deadline {
+            app.drain_events();
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let cursor = load_cursor_from(&cursor_path);
+        let expired_surface = app.chat.messages.iter().any(|message| message.surface_seq == Some(6));
+        let chat_count = app.chat.messages.iter().filter(|message| message.text == "Replayed chat").count();
+        drop(app);
+        finish.send(()).unwrap();
+        stream.join().unwrap();
+        let checked_daemon_b = server.join().unwrap();
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(cursor_path).unwrap();
+        assert_eq!(cursor, 7);
+        assert_eq!(chat_count, 1);
+        assert!(!expired_surface, "daemon B replayed an expired surface above daemon A's watermark");
+        assert!(checked_daemon_b, "subscription used a different daemon lifetime from its watermark");
+    }
+
+    #[test]
     fn reconnect_removes_expired_matrix_controls_and_preserves_chat_and_cursor() {
         use std::io::{BufRead, BufReader, Write};
         use std::time::{Duration, Instant};
@@ -855,6 +931,13 @@ mod tests {
                 let (mut socket, request) = accept();
                 assert_eq!(request["method"], "status", "a connection must establish its replay watermark before subscribing");
                 socket.write_all(&mote_ipc::encode_frame(&mote_ipc::success_envelope(request["id"].clone(), serde_json::json!({"last_seq":last_seq}))).unwrap()).unwrap();
+                socket.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+                let mut line = String::new();
+                let count = BufReader::new(socket.try_clone().unwrap()).read_line(&mut line).unwrap();
+                assert!(count > 0, "status connection closed before subscription");
+                let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+                assert_eq!(request["method"], "events.subscribe");
+                (socket, request)
             };
             let write = |socket: &mut std::os::unix::net::UnixStream, seq, kind: &str, payload| {
                 let event = Event { seq, ts:0, scope_id:"main".into(), kind:kind.into(), payload };
@@ -864,8 +947,7 @@ mod tests {
                 {"type":"toggle","label":"Local only","name":"models.local_only","value":true},
                 {"type":"action","label":"Expired Refresh","event":"refresh"}
             ]}});
-            status(0);
-            let (mut first, request) = accept();
+            let (mut first, request) = status(0);
             assert_eq!(request["method"], "events.subscribe");
             assert_eq!(request["params"]["cursor"], 0);
             let (mut submission, request) = accept();
@@ -877,8 +959,7 @@ mod tests {
             write(&mut first, 3, "ui.surface", surface.clone());
             disconnect_rx.recv().unwrap();
             drop(first);
-            status(5);
-            let (mut second, request) = accept();
+            let (mut second, request) = status(5);
             assert_eq!(request["params"]["cursor"], 3);
             write(&mut second, 1, "turn.user", serde_json::json!({"text":"Keep this chat"}));
             write(&mut second, 3, "ui.surface", surface.clone());
