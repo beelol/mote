@@ -257,6 +257,23 @@ impl MoteApp {
         }
     }
 
+    fn preview_view(&mut self, ui: &mut egui::Ui) {
+        if !self.status_line.is_empty() {
+            crate::theme::caption(ui, &self.status_line);
+        }
+        let mut clicked = Vec::new();
+        egui::ScrollArea::both()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                if let Some(node) = &self.fixture {
+                    crate::surface::draw(ui, node, &mut clicked);
+                }
+            });
+        if let Some(event) = clicked.last() {
+            self.status_line = format!("Preview action: {event}");
+        }
+    }
+
     fn chat_view(&mut self, ui: &mut egui::Ui) {
         let mut clicked: Vec<String> = Vec::new();
         egui::ScrollArea::vertical()
@@ -532,7 +549,7 @@ impl eframe::App for MoteApp {
         self.drain_events();
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
 
-        if let Some(node) = &self.fixture {
+        if self.fixture.is_some() {
             egui::CentralPanel::default()
                 .frame(
                     egui::Frame::new()
@@ -540,15 +557,7 @@ impl eframe::App for MoteApp {
                         .inner_margin(16),
                 )
                 .show(ctx, |ui| {
-                    let mut clicked = Vec::new();
-                    egui::ScrollArea::both()
-                        .show(ui, |ui| crate::surface::draw(ui, node, &mut clicked));
-                    if let Some(event) = clicked.last() {
-                        self.status_line = format!("Preview action: {event}");
-                    }
-                    if !self.status_line.is_empty() {
-                        crate::theme::caption(ui, &self.status_line);
-                    }
+                    self.preview_view(ui);
                 });
             return;
         }
@@ -662,6 +671,63 @@ mod tests {
             "requests": []
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn preview_action_displays_its_event_without_a_daemon() {
+        let (mut app, _) = app();
+        app.fixture = Some(Node::Action {
+            label: "Preview action".into(),
+            event: "gallery.preview".into(),
+        });
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let render = |app: &mut MoteApp, events| {
+            ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(800.0, 600.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| app.preview_view(ui));
+                },
+            )
+        };
+        let first = render(&mut app, vec![]);
+        let pos = first
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == "Preview action" => {
+                    Some(text.pos + text.galley.rect.center().to_vec2())
+                }
+                _ => None,
+            })
+            .expect("action must render");
+        render(
+            &mut app,
+            vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                },
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+        let displayed = render(&mut app, vec![]);
+        assert!(displayed.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Preview action: gallery.preview")));
     }
 
     #[test]
