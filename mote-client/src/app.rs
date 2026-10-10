@@ -75,6 +75,7 @@ const CONFIG_KEYS: [&str; 9] = [
     "packs.talk",
     "packs.think",
 ];
+const LIVE_EVENT_BUFFER_LIMIT: usize = 200;
 
 pub struct MoteApp {
     socket: PathBuf,
@@ -85,8 +86,12 @@ pub struct MoteApp {
     stage: usize,
     tab: usize,
     config_edits: std::collections::HashMap<String, String>,
+    config_revision: u64,
+    config_edit_revisions: std::collections::HashMap<String, u64>,
     pipeline: Option<PipelineSnapshot>,
     pipeline_loading: bool,
+    pipeline_request_revision: u64,
+    pipeline_live_events: Vec<Event>,
     pipeline_tx: Sender<PipelineResult>,
     pipeline_rx: Receiver<PipelineResult>,
     status_line: String,
@@ -115,8 +120,12 @@ impl MoteApp {
             stage: 0,
             tab: 0,
             config_edits: std::collections::HashMap::new(),
+            config_revision: 0,
+            config_edit_revisions: std::collections::HashMap::new(),
             pipeline: None,
             pipeline_loading: false,
+            pipeline_request_revision: 0,
+            pipeline_live_events: Vec::new(),
             pipeline_tx,
             pipeline_rx,
             status_line: String::new(),
@@ -135,9 +144,7 @@ impl MoteApp {
         while let Some(event) =
             apply_next_event(&mut self.chat, &self.rx, self.cursor_path.as_deref())
         {
-            if let Some(snapshot) = &mut self.pipeline {
-                snapshot.ingest_live(event);
-            }
+            self.remember_pipeline_event(event);
         }
         while let Ok((pending, result)) = self.turn_rx.try_recv() {
             self.record_turn_result(pending, result);
@@ -151,11 +158,34 @@ impl MoteApp {
         }
     }
 
-    fn install_pipeline_snapshot(&mut self, snapshot: PipelineSnapshot) {
-        self.config_edits = CONFIG_KEYS
-            .into_iter()
-            .filter_map(|key| snapshot.config_edit_value(key).map(|value| (key.into(), value)))
-            .collect();
+    fn remember_pipeline_event(&mut self, event: Event) {
+        if let Some(snapshot) = &mut self.pipeline {
+            snapshot.ingest_live(event.clone());
+        }
+        if self.pipeline_live_events.iter().any(|existing| existing.seq == event.seq) {
+            return;
+        }
+        self.pipeline_live_events.push(event);
+        self.pipeline_live_events.sort_unstable_by(|left, right| right.seq.cmp(&left.seq));
+        self.pipeline_live_events.truncate(LIVE_EVENT_BUFFER_LIMIT);
+    }
+
+    fn install_pipeline_snapshot(&mut self, mut snapshot: PipelineSnapshot) {
+        for event in self.pipeline_live_events.iter().cloned() {
+            snapshot.ingest_live(event);
+        }
+        for key in CONFIG_KEYS {
+            let edited_after_request = self
+                .config_edit_revisions
+                .get(key)
+                .is_some_and(|revision| *revision > self.pipeline_request_revision);
+            if !edited_after_request {
+                if let Some(value) = snapshot.config_edit_value(key) {
+                    self.config_edits.insert(key.into(), value);
+                }
+                self.config_edit_revisions.remove(key);
+            }
+        }
         self.pipeline = Some(snapshot);
         self.status_line.clear();
     }
@@ -165,6 +195,7 @@ impl MoteApp {
             return;
         }
         self.pipeline_loading = true;
+        self.pipeline_request_revision = self.config_revision;
         let socket = self.socket.clone();
         let tx = self.pipeline_tx.clone();
         spawn_pipeline_load_with(tx, move || {
@@ -309,7 +340,10 @@ impl MoteApp {
             let buf = self.config_edits.entry(key.to_string()).or_default();
             ui.horizontal(|ui| {
                 ui.label(key);
-                ui.text_edit_singleline(buf);
+                if ui.text_edit_singleline(buf).changed() {
+                    self.config_revision = self.config_revision.saturating_add(1);
+                    self.config_edit_revisions.insert(key.into(), self.config_revision);
+                }
             });
         }
         if crate::surface::button(ui, "Apply").clicked() {
@@ -344,7 +378,10 @@ impl MoteApp {
         );
         let events = snapshot.events_for(stage);
         if events.is_empty() {
-            ui.label(format!("No {stage} events were stored in the last hour."));
+            ui.label(format!(
+                "No {stage} row is present in this newest {}-event snapshot.",
+                snapshot.event_limit
+            ));
             return;
         }
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -377,11 +414,27 @@ impl MoteApp {
             ui.label("Calls");
             ui.label(numbers.calls.to_string());
             ui.end_row();
-            ui.label("Latency p50");
-            ui.label(format!("{} ms", numbers.latency_p50_ms));
+            let metric = match numbers.latency_metric.as_str() {
+                "first_token" => "First-token latency",
+                "total" => "Total latency",
+                _ => "Latency",
+            };
+            ui.label(format!("{metric} samples"));
+            ui.label(numbers.latency_samples.to_string());
             ui.end_row();
-            ui.label("Latency p95");
-            ui.label(format!("{} ms", numbers.latency_p95_ms));
+            ui.label(format!("{metric} p50"));
+            ui.label(
+                numbers
+                    .latency_p50_ms
+                    .map_or_else(|| "unavailable".into(), |ms| format!("{ms} ms")),
+            );
+            ui.end_row();
+            ui.label(format!("{metric} p95"));
+            ui.label(
+                numbers
+                    .latency_p95_ms
+                    .map_or_else(|| "unavailable".into(), |ms| format!("{ms} ms")),
+            );
             ui.end_row();
             ui.label("Budget");
             ui.label(numbers.budget_ms.map_or_else(|| "unavailable".into(), |ms| format!("{ms} ms")));
@@ -406,20 +459,31 @@ impl MoteApp {
         };
         let requests = snapshot.requests_for(stage);
         if requests.is_empty() {
-            ui.label(format!("No {stage} outbound requests were stored in the last hour."));
+            ui.label(format!("No retained {stage} outbound requests were found."));
             return;
         }
         crate::theme::caption(
             ui,
-            &format!("Newest {} stored outbound requests.", snapshot.request_limit),
+            &format!(
+                "Retained outbound requests. Storage bound: {} rows.",
+                snapshot.request_limit
+            ),
         );
         egui::ScrollArea::vertical().show(ui, |ui| {
             for request in requests {
                 ui.horizontal(|ui| {
                     ui.strong(format!("#{} {}", request.seq, request.lane));
+                    let timing = match (request.first_token_ms, request.total_latency_ms) {
+                        (Some(first), Some(total)) => {
+                            format!("first token {first} ms · total {total} ms")
+                        }
+                        (None, Some(total)) => format!("total {total} ms"),
+                        _ => "timing unavailable".into(),
+                    };
                     let timing = request
-                        .latency_ms
-                        .map_or_else(|| "latency unavailable".into(), |ms| format!("{ms} ms"));
+                        .status
+                        .as_ref()
+                        .map_or(timing.clone(), |status| format!("{timing} · {status}"));
                     crate::theme::caption(ui, &format!("{} · {timing}", request.ts));
                 });
                 ui.monospace(request.payload.to_string());
@@ -534,8 +598,12 @@ mod tests {
                 stage: 0,
                 tab: 0,
                 config_edits: Default::default(),
+                config_revision: 0,
+                config_edit_revisions: Default::default(),
                 pipeline: None,
                 pipeline_loading: false,
+                pipeline_request_revision: 0,
+                pipeline_live_events: Vec::new(),
                 pipeline_tx,
                 pipeline_rx,
                 status_line: String::new(),
@@ -557,6 +625,30 @@ mod tests {
             payload,
         })
         .unwrap();
+    }
+
+    fn pipeline_snapshot(talk_model: &str) -> PipelineSnapshot {
+        PipelineSnapshot::from_value(serde_json::json!({
+            "generated_at": 5000,
+            "event_limit": 200,
+            "request_limit": 5000,
+            "window_ms": 3600000,
+            "config": {
+                "models.local_only": true,
+                "models.talk": talk_model,
+                "models.router": "qwen3:0.6b",
+                "models.think": "qwen3-coder:30b-64k",
+                "budgets.talk_first_token": 300,
+                "budgets.router": 150,
+                "budgets.think_first_token": 3000,
+                "packs.talk": 600,
+                "packs.think": 8000
+            },
+            "events": [],
+            "numbers": [],
+            "requests": []
+        }))
+        .unwrap()
     }
 
     #[test]
@@ -862,5 +954,62 @@ mod tests {
 
         let snapshot = app.pipeline.as_ref().unwrap();
         assert_eq!(snapshot.events_for("talk")[0].seq, 12);
+    }
+
+    #[test]
+    fn first_snapshot_merges_events_received_while_it_was_loading() {
+        let (mut app, tx) = app();
+        tx.send(Event {
+            seq: 12,
+            ts: 5100,
+            scope_id: "main".into(),
+            kind: "talk.delta".into(),
+            payload: serde_json::json!({"text": "newer than snapshot"}),
+        })
+        .unwrap();
+
+        app.drain_events();
+        assert!(app.pipeline.is_none());
+        app.install_pipeline_snapshot(pipeline_snapshot("qwen3:4b"));
+
+        assert_eq!(app.pipeline.as_ref().unwrap().events_for("talk")[0].seq, 12);
+    }
+
+    #[test]
+    fn refresh_snapshot_cannot_erase_a_newer_live_event() {
+        let (mut app, tx) = app();
+        app.install_pipeline_snapshot(pipeline_snapshot("qwen3:4b"));
+        tx.send(Event {
+            seq: 13,
+            ts: 5200,
+            scope_id: "main".into(),
+            kind: "talk.done".into(),
+            payload: serde_json::json!({"ledger_id": 9}),
+        })
+        .unwrap();
+        app.drain_events();
+
+        app.install_pipeline_snapshot(pipeline_snapshot("qwen3:4b"));
+
+        assert_eq!(app.pipeline.as_ref().unwrap().events_for("talk")[0].seq, 13);
+    }
+
+    #[test]
+    fn snapshot_preserves_only_config_edits_made_after_request_started() {
+        let (mut app, _tx) = app();
+        app.config_edits.insert("models.talk".into(), "before-request".into());
+        app.config_edit_revisions.insert("models.talk".into(), 1);
+        app.config_revision = 1;
+        app.pipeline_request_revision = 1;
+        app.config_edits.insert("models.talk".into(), "after-request".into());
+        app.config_revision = 2;
+        app.config_edit_revisions.insert("models.talk".into(), 2);
+
+        app.install_pipeline_snapshot(pipeline_snapshot("stale-snapshot"));
+
+        assert_eq!(app.config_edits["models.talk"], "after-request");
+        app.pipeline_request_revision = 2;
+        app.install_pipeline_snapshot(pipeline_snapshot("fresh-snapshot"));
+        assert_eq!(app.config_edits["models.talk"], "fresh-snapshot");
     }
 }

@@ -187,6 +187,7 @@ pub struct LedgerEntry {
     pub prompt_tokens: i64,
     pub completion_tokens: i64,
     pub latency_ms: i64,
+    pub latency_kind: String,
     pub cost_usd: f64,
     pub status: String,
 }
@@ -201,6 +202,7 @@ pub struct LedgerRow {
     pub prompt_tokens: i64,
     pub completion_tokens: i64,
     pub latency_ms: i64,
+    pub latency_kind: String,
     pub cost_usd: f64,
     pub status: String,
 }
@@ -241,8 +243,20 @@ impl ContextStore {
                  id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, lane TEXT NOT NULL,
                  model TEXT NOT NULL, pack_id INTEGER NOT NULL, prompt_tokens INTEGER NOT NULL,
                  completion_tokens INTEGER NOT NULL, latency_ms INTEGER NOT NULL,
-                 cost_usd REAL NOT NULL, status TEXT NOT NULL);",
+                 latency_kind TEXT NOT NULL DEFAULT 'unknown', cost_usd REAL NOT NULL,
+                 status TEXT NOT NULL);",
         )?;
+        let has_latency_kind = {
+            let mut stmt = conn.prepare("PRAGMA table_info(ledger)")?;
+            let columns = stmt.query_map([], |row| row.get::<_, String>(1))?;
+            columns.collect::<rusqlite::Result<Vec<_>>>()?.iter().any(|name| name == "latency_kind")
+        };
+        if !has_latency_kind {
+            conn.execute(
+                "ALTER TABLE ledger ADD COLUMN latency_kind TEXT NOT NULL DEFAULT 'unknown'",
+                [],
+            )?;
+        }
         mem::create_tables(&conn)?;
         Ok(Self { conn, clock: Arc::new(now_millis), embedder: Arc::new(mem::HashEmbedder) })
     }
@@ -310,8 +324,8 @@ impl ContextStore {
         let pack_id = self.conn.last_insert_rowid();
         self.conn.execute(
             "INSERT INTO ledger(ts, lane, model, pack_id, prompt_tokens, completion_tokens,
-                 latency_ms, cost_usd, status)
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 latency_ms, latency_kind, cost_usd, status)
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             rusqlite::params![
                 now,
                 entry.lane,
@@ -320,6 +334,7 @@ impl ContextStore {
                 entry.prompt_tokens,
                 entry.completion_tokens,
                 entry.latency_ms,
+                entry.latency_kind,
                 entry.cost_usd,
                 entry.status
             ],
@@ -341,7 +356,7 @@ impl ContextStore {
     pub fn ledger_since(&self, since_ts: i64) -> rusqlite::Result<Vec<LedgerRow>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, ts, lane, model, prompt_tokens, completion_tokens, latency_ms,
-                    cost_usd, status
+                    latency_kind, cost_usd, status
              FROM ledger WHERE ts>=?1 ORDER BY ts DESC, id DESC",
         )?;
         let rows = stmt.query_map([since_ts], |row| {
@@ -353,8 +368,9 @@ impl ContextStore {
                 prompt_tokens: row.get(4)?,
                 completion_tokens: row.get(5)?,
                 latency_ms: row.get(6)?,
-                cost_usd: row.get(7)?,
-                status: row.get(8)?,
+                latency_kind: row.get(7)?,
+                cost_usd: row.get(8)?,
+                status: row.get(9)?,
             })
         })?;
         rows.collect()
@@ -429,6 +445,7 @@ mod tests {
             prompt_tokens: 10,
             completion_tokens: 5,
             latency_ms: 100,
+            latency_kind: "first_token".into(),
             cost_usd: 0.0,
             status: "ok".into(),
         }
@@ -507,6 +524,7 @@ mod tests {
         assert_eq!(rows[1].prompt_tokens, 20);
         assert_eq!(rows[1].completion_tokens, 8);
         assert_eq!(rows[1].latency_ms, 250);
+        assert_eq!(rows[1].latency_kind, "first_token");
         assert_eq!(rows[1].cost_usd, 0.25);
     }
 
@@ -514,5 +532,26 @@ mod tests {
     fn ledger_since_is_empty_without_rows() {
         let store = ContextStore::open_in_memory().unwrap();
         assert!(store.ledger_since(0).unwrap().is_empty());
+    }
+
+    #[test]
+    fn opening_a_legacy_database_adds_unknown_latency_kind() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE ledger(
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, lane TEXT NOT NULL,
+                model TEXT NOT NULL, pack_id INTEGER NOT NULL, prompt_tokens INTEGER NOT NULL,
+                completion_tokens INTEGER NOT NULL, latency_ms INTEGER NOT NULL,
+                cost_usd REAL NOT NULL, status TEXT NOT NULL);
+             INSERT INTO ledger(ts, lane, model, pack_id, prompt_tokens, completion_tokens,
+                 latency_ms, cost_usd, status)
+             VALUES(1, 'talk', 'legacy', 1, 2, 3, 4, 0.0, 'ok');",
+        )
+        .unwrap();
+
+        let store = ContextStore::from_conn(conn).unwrap();
+        let rows = store.ledger_since(0).unwrap();
+
+        assert_eq!(rows[0].latency_kind, "unknown");
     }
 }

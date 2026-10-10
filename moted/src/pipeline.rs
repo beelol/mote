@@ -1,11 +1,11 @@
 use mote_context::{ContextStore, LedgerRow};
-use mote_eventlog::{Event, EventLog};
+use mote_eventlog::{Event, EventLog, RETENTION_LIMIT};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
 pub const PIPELINE_EVENT_LIMIT: usize = 200;
-pub const PIPELINE_REQUEST_LIMIT: usize = 200;
+pub const PIPELINE_REQUEST_LIMIT: usize = RETENTION_LIMIT as usize;
 pub const CONFIG_KEYS: [&str; 9] = [
     "models.local_only",
     "models.talk",
@@ -35,8 +35,10 @@ pub struct PipelineSnapshot {
 pub struct StageNumbers {
     pub stage: String,
     pub calls: usize,
-    pub latency_p50_ms: i64,
-    pub latency_p95_ms: i64,
+    pub latency_metric: String,
+    pub latency_samples: usize,
+    pub latency_p50_ms: Option<i64>,
+    pub latency_p95_ms: Option<i64>,
     pub prompt_tokens: i64,
     pub completion_tokens: i64,
     pub cost_usd: f64,
@@ -49,7 +51,9 @@ pub struct RequestRow {
     pub ts: i64,
     pub lane: String,
     pub payload: Value,
-    pub latency_ms: Option<i64>,
+    pub total_latency_ms: Option<i64>,
+    pub first_token_ms: Option<i64>,
+    pub status: Option<String>,
 }
 
 pub fn build_snapshot(
@@ -62,15 +66,33 @@ pub fn build_snapshot(
     let events = log.recent_since(cutoff, PIPELINE_EVENT_LIMIT)?;
     let ledger = store.ledger_since(cutoff)?;
     let request_events =
-        log.recent_kind_since("model.request", cutoff, PIPELINE_REQUEST_LIMIT)?;
+        log.recent_kind_since("model.request", i64::MIN, PIPELINE_REQUEST_LIMIT)?;
+    let response_events =
+        log.recent_kind_since("model.response", i64::MIN, PIPELINE_REQUEST_LIMIT)?;
+    let responses: BTreeMap<&str, &Value> = response_events
+        .iter()
+        .filter_map(|event| {
+            event.payload["request_id"].as_str().map(|id| (id, &event.payload))
+        })
+        .collect();
     let requests = request_events
         .into_iter()
-        .map(|event| RequestRow {
-            seq: event.seq,
-            ts: event.ts,
-            lane: event.payload["lane"].as_str().unwrap_or("unknown").to_string(),
-            latency_ms: event.payload["latency_ms"].as_i64(),
-            payload: event.payload,
+        .map(|event| {
+            let response = event.payload["request_id"]
+                .as_str()
+                .and_then(|id| responses.get(id).copied());
+            RequestRow {
+                seq: event.seq,
+                ts: event.ts,
+                lane: event.payload["lane"].as_str().unwrap_or("unknown").to_string(),
+                total_latency_ms: response.and_then(|payload| payload["total_ms"].as_i64()),
+                first_token_ms: response
+                    .and_then(|payload| payload["first_token_ms"].as_i64()),
+                status: response
+                    .and_then(|payload| payload["status"].as_str())
+                    .map(str::to_string),
+                payload: event.payload,
+            }
         })
         .collect();
     let numbers = ["talk", "router", "think", "memory", "ledger"]
@@ -98,7 +120,16 @@ fn aggregate(
     if rows.is_empty() {
         return None;
     }
-    let mut latencies: Vec<i64> = rows.iter().map(|row| row.latency_ms).collect();
+    let expected_metric = match stage {
+        "talk" | "think" => Some("first_token"),
+        "router" => Some("total"),
+        _ => None,
+    };
+    let mut latencies: Vec<i64> = rows
+        .iter()
+        .filter(|row| Some(row.latency_kind.as_str()) == expected_metric)
+        .map(|row| row.latency_ms)
+        .collect();
     latencies.sort_unstable();
     let budget_key = match stage {
         "talk" => Some("budgets.talk_first_token"),
@@ -109,8 +140,10 @@ fn aggregate(
     Some(StageNumbers {
         stage: stage.to_string(),
         calls: rows.len(),
-        latency_p50_ms: percentile(&latencies, 50),
-        latency_p95_ms: percentile(&latencies, 95),
+        latency_metric: expected_metric.unwrap_or("unavailable").to_string(),
+        latency_samples: latencies.len(),
+        latency_p50_ms: (!latencies.is_empty()).then(|| percentile(&latencies, 50)),
+        latency_p95_ms: (!latencies.is_empty()).then(|| percentile(&latencies, 95)),
         prompt_tokens: rows.iter().map(|row| row.prompt_tokens).sum(),
         completion_tokens: rows.iter().map(|row| row.completion_tokens).sum(),
         cost_usd: rows.iter().map(|row| row.cost_usd).sum(),
@@ -165,6 +198,7 @@ mod tests {
                     prompt_tokens: prompt,
                     completion_tokens: completion,
                     latency_ms,
+                    latency_kind: "first_token".into(),
                     cost_usd: cost,
                     status: "ok".into(),
                 },
@@ -199,16 +233,26 @@ mod tests {
                 "pipeline",
                 "model.request",
                 &serde_json::json!({
+                    "request_id": "talk-1",
                     "lane": "talk",
-                    "prompt": "sk-abcdefghijklmnopqrstuvwxyz",
-                    "latency_ms": 37
+                    "payload": {"prompt": "sk-abcdefghijklmnopqrstuvwxyz"}
                 }),
             )
             .unwrap();
         log.append(
             "pipeline",
+            "model.response",
+            &serde_json::json!({
+                "request_id": "talk-1", "lane": "talk", "status": "ok",
+                "total_ms": 37, "first_token_ms": 11
+            }),
+        )
+        .unwrap();
+        log.append(
+            "pipeline",
             "model.request",
-            &serde_json::json!({"lane": "router", "prompt": "hello"}),
+            &serde_json::json!({"request_id": "router-1", "lane": "router",
+                "payload": {"prompt": "hello"}}),
         )
         .unwrap();
 
@@ -231,15 +275,19 @@ mod tests {
         assert!(snapshot.events.windows(2).all(|pair| pair[0].seq > pair[1].seq));
         assert_eq!(snapshot.requests.len(), 2);
         assert_eq!(snapshot.requests[0].lane, "router");
-        assert_eq!(snapshot.requests[0].latency_ms, None);
+        assert_eq!(snapshot.requests[0].total_latency_ms, None);
         assert_eq!(snapshot.requests[1].seq, request.seq);
-        assert_eq!(snapshot.requests[1].latency_ms, Some(37));
-        assert_eq!(snapshot.requests[1].payload["prompt"], "[redacted]");
+        assert_eq!(snapshot.requests[1].total_latency_ms, Some(37));
+        assert_eq!(snapshot.requests[1].first_token_ms, Some(11));
+        assert_eq!(snapshot.requests[1].status.as_deref(), Some("ok"));
+        assert_eq!(snapshot.requests[1].payload["payload"]["prompt"], "[redacted]");
 
         let talk = snapshot.numbers.iter().find(|row| row.stage == "talk").unwrap();
         assert_eq!(talk.calls, 4);
-        assert_eq!(talk.latency_p50_ms, 20);
-        assert_eq!(talk.latency_p95_ms, 40);
+        assert_eq!(talk.latency_metric, "first_token");
+        assert_eq!(talk.latency_samples, 4);
+        assert_eq!(talk.latency_p50_ms, Some(20));
+        assert_eq!(talk.latency_p95_ms, Some(40));
         assert_eq!(talk.prompt_tokens, 100);
         assert_eq!(talk.completion_tokens, 10);
         assert!((talk.cost_usd - 1.0).abs() < f64::EPSILON);
@@ -264,9 +312,61 @@ mod tests {
         assert_eq!(snapshot.window_ms, HOUR_MS);
         let talk = snapshot.numbers.iter().find(|row| row.stage == "talk").unwrap();
         assert_eq!(talk.calls, 1);
-        assert_eq!(talk.latency_p50_ms, 25);
+        assert_eq!(talk.latency_p50_ms, Some(25));
         assert_eq!(talk.prompt_tokens, 20);
         assert_eq!(talk.completion_tokens, 2);
         assert!((talk.cost_usd - 0.2).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn numbers_exclude_non_comparable_latency_but_keep_call_totals() {
+        let log = EventLog::open_in_memory().unwrap();
+        let store = ContextStore::open_in_memory().unwrap();
+        store
+            .record(
+                &pack("talk"),
+                &LedgerEntry {
+                    lane: "talk".into(),
+                    model: "qwen3:4b".into(),
+                    prompt_tokens: 7,
+                    completion_tokens: 2,
+                    latency_ms: 900,
+                    latency_kind: "total".into(),
+                    cost_usd: 0.0,
+                    status: "error".into(),
+                },
+            )
+            .unwrap();
+
+        let snapshot = build_snapshot(&log, &store, config(), i64::MAX / 2).unwrap();
+
+        assert!(snapshot.numbers.is_empty(), "the synthetic row is outside the hour");
+        let snapshot = build_snapshot(&log, &store, config(),
+            store.ledger_since(0).unwrap()[0].ts).unwrap();
+        let talk = snapshot.numbers.iter().find(|row| row.stage == "talk").unwrap();
+        assert_eq!(talk.calls, 1);
+        assert_eq!(talk.latency_samples, 0);
+        assert_eq!(talk.latency_p50_ms, None);
+        assert_eq!(talk.latency_p95_ms, None);
+        assert_eq!(talk.prompt_tokens, 7);
+        assert_eq!(talk.budget_ms, Some(300));
+    }
+
+    #[test]
+    fn requests_include_retained_calls_older_than_the_numbers_window() {
+        let log = EventLog::open_in_memory().unwrap();
+        let request = log
+            .append(
+                "pipeline",
+                "model.request",
+                &serde_json::json!({"request_id": "old", "lane": "talk", "payload": {}}),
+            )
+            .unwrap();
+        let store = ContextStore::open_in_memory().unwrap();
+
+        let snapshot = build_snapshot(&log, &store, config(), request.ts + HOUR_MS + 1).unwrap();
+
+        assert_eq!(snapshot.requests.len(), 1);
+        assert_eq!(snapshot.requests[0].payload["request_id"], "old");
     }
 }

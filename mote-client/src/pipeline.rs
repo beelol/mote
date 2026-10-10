@@ -19,8 +19,10 @@ pub struct PipelineSnapshot {
 pub struct StageNumbers {
     pub stage: String,
     pub calls: usize,
-    pub latency_p50_ms: i64,
-    pub latency_p95_ms: i64,
+    pub latency_metric: String,
+    pub latency_samples: usize,
+    pub latency_p50_ms: Option<i64>,
+    pub latency_p95_ms: Option<i64>,
     pub prompt_tokens: i64,
     pub completion_tokens: i64,
     pub cost_usd: f64,
@@ -33,7 +35,9 @@ pub struct RequestRow {
     pub ts: i64,
     pub lane: String,
     pub payload: Value,
-    pub latency_ms: Option<i64>,
+    pub total_latency_ms: Option<i64>,
+    pub first_token_ms: Option<i64>,
+    pub status: Option<String>,
 }
 
 impl PipelineSnapshot {
@@ -87,7 +91,7 @@ fn event_matches_stage(event: &Event, stage: &str) -> bool {
     if stage == "ledger" {
         return event.payload.get("ledger_id").is_some();
     }
-    if event.kind == "model.request" {
+    if event.kind == "model.request" || event.kind == "model.response" {
         return event.payload["lane"].as_str() == Some(stage);
     }
     event.kind.starts_with(&format!("{stage}."))
@@ -125,13 +129,15 @@ mod tests {
                  "payload": {"text": "hello"}}
             ],
             "numbers": [{
-                "stage": "talk", "calls": 2, "latency_p50_ms": 12,
+                "stage": "talk", "calls": 2, "latency_metric": "first_token",
+                "latency_samples": 2, "latency_p50_ms": 12,
                 "latency_p95_ms": 20, "prompt_tokens": 30,
                 "completion_tokens": 7, "cost_usd": 0.0, "budget_ms": 300
             }],
             "requests": [
                 {"seq": 7, "ts": 4700, "lane": "talk",
-                 "payload": {"lane": "talk", "prompt": "[redacted]"}, "latency_ms": null}
+                 "payload": {"lane": "talk", "prompt": "[redacted]"},
+                 "total_latency_ms": 30, "first_token_ms": 12, "status": "ok"}
             ]
         }))
         .unwrap()
@@ -154,7 +160,7 @@ mod tests {
             [9]
         );
         assert!(snapshot.events_for("memory").is_empty());
-        assert_eq!(snapshot.requests_for("talk")[0].latency_ms, None);
+        assert_eq!(snapshot.requests_for("talk")[0].first_token_ms, Some(12));
         assert!(snapshot.requests_for("router").is_empty());
     }
 

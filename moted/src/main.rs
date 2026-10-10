@@ -18,8 +18,8 @@ use charter::{Charter, CharterWatcher};
 use config::ConfigStore;
 use gate::OllamaGate;
 use lanes::{
-    build_think_pack, emit_think, run_turn, ThinkInputs, ThinkOutcome, TalkInputs, TalkOutcome,
-    TALK_BUDGET, THINK_BUDGET,
+    build_think_pack, run_think_model_call, run_turn, ThinkInputs, ThinkOutcome, TalkInputs,
+    TalkOutcome, TALK_BUDGET, THINK_BUDGET,
 };
 use mote_context::ContextStore;
 use mote_harness::OpenCodeServer;
@@ -191,15 +191,28 @@ impl Daemon {
                 let (pack, system, turn) = build_think_pack(&think_inputs, think_budget);
                 let full_model = format!("ollama/{think_model}");
                 let server = self.think.lock().unwrap().get(thread_id, &think_model);
-                match server.and_then(|s| {
-                    let session = s.create_session()?;
-                    let started = std::time::Instant::now();
-                    s.run_turn(&session, &full_model, Some(&system), &turn, THINK_TIMEOUT)
-                        .map(|(events, _first)| (events, started.elapsed().as_millis() as u64))
+                match server.and_then(|server| {
+                    let session = server.create_session()?;
+                    Ok((server, session))
                 }) {
-                    Ok((events, latency_ms)) => {
-                        match emit_think(
-                            &self.log, &store, thread_id, &think_model, &pack, &events, latency_ms,
+                    Ok((server, session)) => {
+                        match run_think_model_call(
+                            &self.log,
+                            &store,
+                            thread_id,
+                            &think_model,
+                            &pack,
+                            &system,
+                            &turn,
+                            || {
+                                server.run_turn(
+                                    &session,
+                                    &full_model,
+                                    Some(&system),
+                                    &turn,
+                                    THINK_TIMEOUT,
+                                )
+                            },
                         ) {
                             ThinkOutcome::Done { ledger_id, pack_id, answer } => {
                                 lanes::record_turn(&store, thread_id, turn_ts, message, &answer);

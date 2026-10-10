@@ -12,10 +12,115 @@ use mote_harness::ThinkEvent;
 use mote_localmodel::{ChatOptions, Ollama};
 use serde::Deserialize;
 use serde_json::json;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Default talk pack budget in tokens.
 pub const TALK_BUDGET: usize = 600;
+
+static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Debug, Clone, Copy)]
+struct CallTiming {
+    total_ms: i64,
+    first_token_ms: Option<i64>,
+}
+
+struct ModelRequest<'a> {
+    log: &'a EventLog,
+    request_id: String,
+    lane: &'a str,
+    model: &'a str,
+    started: Instant,
+}
+
+impl<'a> ModelRequest<'a> {
+    fn begin(
+        log: &'a EventLog,
+        lane: &'a str,
+        model: &'a str,
+        payload: serde_json::Value,
+    ) -> rusqlite::Result<Self> {
+        let epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let counter = REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let request_id = format!("{}-{epoch}-{counter}", std::process::id());
+        log.append(
+            "pipeline",
+            "model.request",
+            &json!({
+                "request_id": request_id,
+                "lane": lane,
+                "model": model,
+                "payload": payload
+            }),
+        )?;
+        Ok(Self { log, request_id, lane, model, started: Instant::now() })
+    }
+
+    fn elapsed_ms(&self) -> i64 {
+        self.started.elapsed().as_millis() as i64
+    }
+
+    fn finish(
+        self,
+        status: &str,
+        first_token: Option<Duration>,
+    ) -> CallTiming {
+        let timing = CallTiming {
+            total_ms: self.elapsed_ms(),
+            first_token_ms: first_token.map(|duration| duration.as_millis() as i64),
+        };
+        let _ = self.log.append(
+            "pipeline",
+            "model.response",
+            &json!({
+                "request_id": self.request_id,
+                "lane": self.lane,
+                "model": self.model,
+                "status": status,
+                "total_ms": timing.total_ms,
+                "first_token_ms": timing.first_token_ms
+            }),
+        );
+        timing
+    }
+}
+
+fn latency_for(timing: CallTiming, expected_first_token: bool) -> (i64, String) {
+    if expected_first_token {
+        timing
+            .first_token_ms
+            .map(|latency| (latency, "first_token".to_string()))
+            .unwrap_or_else(|| (timing.total_ms, "total".to_string()))
+    } else {
+        (timing.total_ms, "total".to_string())
+    }
+}
+
+fn ledger_entry(
+    lane: &str,
+    model: &str,
+    pack: &Pack,
+    completion: &str,
+    timing: CallTiming,
+    expected_first_token: bool,
+    status: &str,
+) -> LedgerEntry {
+    let (latency_ms, latency_kind) = latency_for(timing, expected_first_token);
+    LedgerEntry {
+        lane: lane.into(),
+        model: model.into(),
+        prompt_tokens: pack.token_estimate() as i64,
+        completion_tokens: count_tokens(completion) as i64,
+        latency_ms,
+        latency_kind,
+        cost_usd: 0.0,
+        status: status.into(),
+    }
+}
 
 /// The fixed few-shot prompt for the router, stored in the repo.
 pub const ROUTER_PROMPT: &str = "\
@@ -98,6 +203,58 @@ pub fn route(client: &Ollama, model: &str, num_ctx: u32, message: &str) -> (Rout
     }
 }
 
+struct RouterOutcome {
+    route: Route,
+    reason: String,
+    pack: Pack,
+    timing: CallTiming,
+    status: &'static str,
+}
+
+fn run_router(
+    log: &EventLog,
+    client: &Ollama,
+    model: &str,
+    num_ctx: u32,
+    message: &str,
+) -> Option<RouterOutcome> {
+    let (pack, _) = PackBuilder::new("router")
+        .part(PartKind::Charter, "router_prompt", ROUTER_PROMPT)
+        .part(PartKind::Profile, "profile", "")
+        .part(PartKind::Memory, "memory", "")
+        .part(PartKind::WorkingSet, "working_set", "")
+        .part(PartKind::Turn, "turn", message)
+        .build_with_texts(num_ctx as usize);
+    let messages = json!([
+        { "role": "system", "content": ROUTER_PROMPT },
+        { "role": "user", "content": message }
+    ]);
+    let request = ModelRequest::begin(
+        log,
+        "router",
+        model,
+        json!({ "num_ctx": num_ctx, "messages": messages }),
+    )
+    .ok()?;
+    let verdict = client.chat_structured::<RouterVerdict>(
+        model,
+        messages,
+        router_schema(),
+        num_ctx,
+    );
+    let (route, reason, status) = match verdict {
+        Ok(v) if v.route == "talk" => (Route::Talk, v.reason, "ok"),
+        Ok(v) if v.route == "think" => (Route::Think, v.reason, "ok"),
+        _ => (
+            Route::Think,
+            "invalid or missing verdict; fail-closed to think".to_string(),
+            "error",
+        ),
+    };
+    let timing = request.finish(status, None);
+    Some(RouterOutcome { route, reason, pack, timing, status })
+}
+
 /// The five texts of a talk pack.
 pub struct TalkInputs<'a> {
     pub charter: &'a str,
@@ -178,22 +335,31 @@ pub fn run_talk(
     ]);
     let opts = ChatOptions::new(num_ctx).no_think();
 
-    // Record the outbound call for the pipeline Requests tab. The payload is redacted on storage,
-    // so no secret is ever written.
-    let _ = log.append(
-        "pipeline",
-        "model.request",
-        &json!({ "lane": "talk", "model": model, "num_ctx": num_ctx,
-                 "prompt": format!("{system}\n{user}") }),
-    );
+    let request = match ModelRequest::begin(
+        log,
+        "talk",
+        model,
+        json!({ "num_ctx": num_ctx, "messages": messages }),
+    ) {
+        Ok(request) => request,
+        Err(error) => {
+            let reason = format!("request log failed: {error}");
+            let _ = log.append(thread_id, "talk.unavailable", &json!({ "reason": reason }));
+            return TalkOutcome::Unavailable(reason);
+        }
+    };
 
     let mut answer = String::new();
     let mut handed_off = false;
+    let mut first_token = None;
     let res = client.chat_stream(model, messages, &opts, |chunk| {
         if handed_off {
             return;
         }
         if !chunk.content.is_empty() {
+            if first_token.is_none() {
+                first_token = Some(request.started.elapsed());
+            }
             answer.push_str(&chunk.content);
             let _ = log.append(thread_id, "talk.delta", &json!({ "text": chunk.content }));
         }
@@ -204,6 +370,25 @@ pub fn run_talk(
         }
     });
 
+    let response_status = if res.is_err() {
+        "error"
+    } else if handed_off {
+        "handoff"
+    } else {
+        "ok"
+    };
+    let timing = request.finish(response_status, first_token);
+    let entry = ledger_entry(
+        "talk",
+        model,
+        &pack,
+        &answer,
+        timing,
+        true,
+        response_status,
+    );
+    let recorded = store.record(&pack, &entry);
+
     match res {
         Err(e) => {
             let reason = e.to_string();
@@ -212,18 +397,12 @@ pub fn run_talk(
         }
         Ok(()) => {
             if handed_off {
-                return TalkOutcome::Handoff;
+                return match recorded {
+                    Ok(_) => TalkOutcome::Handoff,
+                    Err(error) => TalkOutcome::Unavailable(format!("ledger write failed: {error}")),
+                };
             }
-            let entry = LedgerEntry {
-                lane: "talk".into(),
-                model: model.into(),
-                prompt_tokens: pack.token_estimate() as i64,
-                completion_tokens: count_tokens(&answer) as i64,
-                latency_ms: 0,
-                cost_usd: 0.0,
-                status: "ok".into(),
-            };
-            match store.record(&pack, &entry) {
+            match recorded {
                 Ok((pack_id, ledger_id)) => {
                     let _ = log.append(
                         thread_id,
@@ -266,7 +445,11 @@ pub fn run_turn(
     let rthread = thread_id.to_string();
     let rhandoff = handoff.clone();
     let router_handle = std::thread::spawn(move || {
-        let (r, reason) = route(&rclient, &rmodel, router_ctx, &rmsg);
+        let outcome = run_router(&rlog, &rclient, &rmodel, router_ctx, &rmsg);
+        let (r, reason) = outcome
+            .as_ref()
+            .map(|outcome| (outcome.route, outcome.reason.clone()))
+            .unwrap_or((Route::Think, "request log failed; fail-closed to think".into()));
         let _ = rlog.append(
             &rthread,
             "router.verdict",
@@ -275,11 +458,23 @@ pub fn run_turn(
         if r == Route::Think {
             rhandoff.store(true, Ordering::Release);
         }
+        outcome
     });
 
     let outcome =
         run_talk(log, store, client, thread_id, talk_model, talk_ctx, inputs, budget, &handoff);
-    let _ = router_handle.join();
+    if let Ok(Some(router)) = router_handle.join() {
+        let entry = ledger_entry(
+            "router",
+            router_model,
+            &router.pack,
+            "",
+            router.timing,
+            false,
+            router.status,
+        );
+        let _ = store.record(&router.pack, &entry);
+    }
     outcome
 }
 
@@ -330,6 +525,74 @@ pub enum ThinkOutcome {
     Failed(String),
 }
 
+/// Instrument the think model boundary, then store exactly one pack and ledger row for the call.
+#[allow(clippy::too_many_arguments)]
+pub fn run_think_model_call<F>(
+    log: &EventLog,
+    store: &ContextStore,
+    thread_id: &str,
+    model: &str,
+    pack: &Pack,
+    system: &str,
+    turn: &str,
+    invoke: F,
+) -> ThinkOutcome
+where
+    F: FnOnce() -> Result<(Vec<ThinkEvent>, Duration), String>,
+{
+    let request = match ModelRequest::begin(
+        log,
+        "think",
+        model,
+        json!({ "system": system, "turn": turn }),
+    ) {
+        Ok(request) => request,
+        Err(error) => {
+            let reason = format!("request log failed: {error}");
+            let _ = log.append(thread_id, "think.failed", &json!({ "reason": reason }));
+            return ThinkOutcome::Failed(reason);
+        }
+    };
+    match invoke() {
+        Ok((events, first_token)) => {
+            let status = if events
+                .iter()
+                .rev()
+                .find_map(|event| match event {
+                    ThinkEvent::Done { ok } => Some(*ok),
+                    _ => None,
+                })
+                .unwrap_or(false)
+            {
+                "ok"
+            } else {
+                "error"
+            };
+            request.finish(status, Some(first_token));
+            emit_think(
+                log,
+                store,
+                thread_id,
+                model,
+                pack,
+                &events,
+                first_token.as_millis() as u64,
+            )
+        }
+        Err(reason) => {
+            let timing = request.finish("error", None);
+            let entry = ledger_entry("think", model, pack, "", timing, true, "error");
+            let _ = store.record(pack, &entry);
+            let _ = log.append(
+                thread_id,
+                "think.failed",
+                &json!({ "reason": reason.clone() }),
+            );
+            ThinkOutcome::Failed(reason)
+        }
+    }
+}
+
 /// Turn the harness's normalized think events into log events and one ledger row. Each `Text`
 /// becomes `think.text`, each tool call and result its own event; the turn ends with one
 /// `think.done` that carries the ledger and pack ids. The answer text drives the completion token
@@ -376,6 +639,7 @@ pub fn emit_think(
         prompt_tokens: pack.token_estimate() as i64,
         completion_tokens: count_tokens(&answer) as i64,
         latency_ms: latency_ms as i64,
+        latency_kind: "first_token".into(),
         cost_usd: 0.0,
         status: if ok { "ok".into() } else { "error".into() },
     };
@@ -451,6 +715,9 @@ mod tests {
         }
         assert!(deltas >= 2, "expected talk.delta events");
         assert_eq!(done_ledger, Some(ledger_id));
+        let rows = store.ledger_since(0).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].latency_kind, "first_token");
     }
 
     #[test]
@@ -500,6 +767,10 @@ mod tests {
             assert_ne!(ev.kind, "talk.done", "no answer when unavailable");
         }
         assert!(saw_unavailable);
+        let rows = store.ledger_since(0).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].status, "error");
+        assert_eq!(rows[0].latency_kind, "total");
         // Only the talk model was ever requested; no fallback model.
         for r in srv.recorded() {
             if r.path == "/api/chat" {
@@ -532,16 +803,59 @@ mod tests {
         );
 
         // The Requests tab reads model.request events on the pipeline scope.
-        let mut found_request = false;
+        let mut request_id = None;
+        let mut response_id = None;
         while let Some(ev) = sub.recv_timeout(Duration::from_millis(50)) {
             if ev.kind == "model.request" {
-                found_request = true;
+                request_id = ev.payload["request_id"].as_str().map(str::to_string);
                 let text = ev.payload.to_string();
                 assert!(!text.contains(secret), "stored request must be redacted: {text}");
                 assert!(text.contains("[redacted]"), "redaction marker expected: {text}");
+            } else if ev.kind == "model.response" {
+                response_id = ev.payload["request_id"].as_str().map(str::to_string);
+                assert!(ev.payload["total_ms"].is_i64() || ev.payload["total_ms"].is_u64());
+                assert!(ev.payload["first_token_ms"].is_i64()
+                    || ev.payload["first_token_ms"].is_u64());
             }
         }
-        assert!(found_request, "an outbound call must be recorded");
+        assert!(request_id.is_some(), "an outbound call must be recorded");
+        assert_eq!(request_id, response_id, "timing must correlate to the request");
+    }
+
+    #[test]
+    fn full_turn_records_talk_and_router_calls_once() {
+        let srv = ScriptedServer::start().unwrap();
+        srv.set_chat_chunks(vec![json!({"message":{"role":"assistant",
+            "content":"{\"route\":\"talk\",\"reason\":\"greeting\"}"},"done":true})
+        .to_string()]);
+        let client = Ollama::new(srv.base_url());
+        let log = EventLog::open_in_memory().unwrap();
+        let store = ContextStore::open_in_memory().unwrap();
+
+        let outcome = run_turn(
+            &log,
+            &store,
+            &client,
+            "t1",
+            "qwen3:4b",
+            32768,
+            "qwen3:0.6b",
+            32768,
+            &inputs("hello"),
+            TALK_BUDGET,
+        );
+
+        assert!(matches!(outcome, TalkOutcome::Done { .. }));
+        let rows = store.ledger_since(0).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows.iter().filter(|row| row.lane == "talk").count(), 1);
+        let router = rows.iter().find(|row| row.lane == "router").unwrap();
+        assert_eq!(router.latency_kind, "total");
+        assert_eq!(store.count_packs().unwrap(), 2);
+        let requests = log.recent_kind_since("model.request", 0, 10).unwrap();
+        let responses = log.recent_kind_since("model.response", 0, 10).unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(responses.len(), 2);
     }
 
     #[test]
@@ -688,6 +1002,89 @@ mod tests {
         assert_eq!(kinds.last(), Some(&"think.done".to_string()), "done is last");
         assert_eq!(kinds.iter().filter(|k| *k == "think.done").count(), 1, "one ledger/done");
         assert_eq!(done_ledger, Some(ledger_id));
+        assert_eq!(store.ledger_since(0).unwrap()[0].latency_kind, "first_token");
+    }
+
+    #[test]
+    fn think_model_boundary_correlates_timing_and_records_failures_once() {
+        let log = EventLog::open_in_memory().unwrap();
+        let store = ContextStore::open_in_memory().unwrap();
+        let (pack, system, turn) = build_think_pack(
+            &ThinkInputs {
+                charter: "be kind",
+                profile: "",
+                memories: "",
+                working_set: "",
+                turn: "inspect the file",
+            },
+            THINK_BUDGET,
+        );
+
+        let result = run_think_model_call(
+            &log,
+            &store,
+            "t1",
+            "qwen3-coder:30b-64k",
+            &pack,
+            &system,
+            &turn,
+            || Err("transport failed".into()),
+        );
+
+        assert!(matches!(result, ThinkOutcome::Failed(_)));
+        assert_eq!(store.count_packs().unwrap(), 1);
+        let rows = store.ledger_since(0).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].status, "error");
+        assert_eq!(rows[0].latency_kind, "total");
+        let requests = log.recent_kind_since("model.request", 0, 10).unwrap();
+        let responses = log.recent_kind_since("model.response", 0, 10).unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(responses.len(), 1);
+        assert_eq!(requests[0].payload["request_id"], responses[0].payload["request_id"]);
+    }
+
+    #[test]
+    fn think_model_boundary_uses_the_harness_first_token_duration() {
+        let log = EventLog::open_in_memory().unwrap();
+        let store = ContextStore::open_in_memory().unwrap();
+        let (pack, system, turn) = build_think_pack(
+            &ThinkInputs {
+                charter: "be kind",
+                profile: "",
+                memories: "",
+                working_set: "",
+                turn: "inspect the file",
+            },
+            THINK_BUDGET,
+        );
+
+        let result = run_think_model_call(
+            &log,
+            &store,
+            "t1",
+            "qwen3-coder:30b-64k",
+            &pack,
+            &system,
+            &turn,
+            || {
+                Ok((
+                    vec![
+                        ThinkEvent::Text { text: "done".into() },
+                        ThinkEvent::Done { ok: true },
+                    ],
+                    Duration::from_millis(42),
+                ))
+            },
+        );
+
+        assert!(matches!(result, ThinkOutcome::Done { .. }));
+        let rows = store.ledger_since(0).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].latency_ms, 42);
+        assert_eq!(rows[0].latency_kind, "first_token");
+        let responses = log.recent_kind_since("model.response", 0, 10).unwrap();
+        assert_eq!(responses[0].payload["first_token_ms"], 42);
     }
 
     #[test]
@@ -718,5 +1115,7 @@ mod tests {
         let first_delta = order.iter().position(|k| k == "talk.delta").unwrap();
         let handoff_pos = order.iter().position(|k| k == "talk.handoff").unwrap();
         assert!(handoff_pos > first_delta);
+        assert_eq!(store.count_packs().unwrap(), 1);
+        assert_eq!(store.count_ledger().unwrap(), 1);
     }
 }
