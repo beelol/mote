@@ -26,11 +26,15 @@ key starts at O, submits A and is edited back to O while A is pending, the succe
 advances the confirmed baseline to A without replacing O. The refreshed A snapshot preserves O as
 dirty, and the next Apply submits O.
 
+Fix Round 2 recomputes dirtiness after the successful baseline advance. If the pending sequence is
+O to submitted A to B to A, the accepted A becomes the confirmed baseline. The visible A becomes
+clean and the next Apply sends nothing. The O to A to O behavior remains dirty.
+
 V0-47 and V0-48 remain open. V0-47 still requires live-turn screenshots of the native Pipeline
 view. V0-48 still requires a native Config click correlated with the already verified before-and-after
 ledger rows.
 
-The focused client suite passes 99 tests. The full workspace passes 381 tests. Workspace clippy and
+The focused client suite passes 100 tests. The full workspace passes 382 tests. Workspace clippy and
 `git diff --check` pass.
 
 No remote write or push occurred.

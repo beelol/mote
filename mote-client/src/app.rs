@@ -791,8 +791,8 @@ impl MoteApp {
                         .is_some_and(|revision| *revision == request.revision);
                     if submitted_revision_is_current {
                         self.config_edits.insert(request.key.clone(), value);
-                        self.config_edit_revisions.remove(&request.key);
                     }
+                    self.recompute_config_dirty(&request.key);
                 }
                 Err(error) => {
                     self.recompute_config_dirty(&outcome.request.key);
@@ -2036,5 +2036,32 @@ mod tests {
                 revision: app.config_edit_revisions["models.talk"],
             }]
         );
+    }
+
+    #[test]
+    fn edit_back_to_submitted_value_during_apply_is_clean_after_success() {
+        let (mut app, _tx) = app();
+        app.install_pipeline_snapshot(pipeline_snapshot("qwen3:4b"));
+        let (config_tx, config_rx) = std::sync::mpsc::channel();
+        app.config_tx = config_tx;
+
+        app.set_config_edit("models.talk", "qwen3:0.6b");
+        assert!(app.apply_config_edits());
+        let submitted = config_rx.recv().unwrap();
+        app.set_config_edit("models.talk", "qwen3-coder:30b-64k");
+        app.set_config_edit("models.talk", "qwen3:0.6b");
+
+        app.record_config_batch_result(vec![ConfigSetOutcome {
+            request: submitted[0].clone(),
+            result: Ok(()),
+        }]);
+        app.install_pipeline_snapshot(pipeline_snapshot("qwen3:0.6b"));
+        app.pipeline_loading = false;
+
+        assert_eq!(app.config_edits["models.talk"], "qwen3:0.6b");
+        assert_eq!(app.config_baseline["models.talk"], "qwen3:0.6b");
+        assert!(!app.config_edit_revisions.contains_key("models.talk"));
+        assert!(!app.apply_config_edits());
+        assert!(config_rx.try_recv().is_err());
     }
 }
