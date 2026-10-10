@@ -57,6 +57,11 @@ fn documented_candidates_remain_incomplete_at_every_extendible_byte() {
                 },
                 "cut={cut} in {surface}: {status:?}"
             );
+            assert!(matches!(
+                stream.push(&surface.as_bytes()[cut..]),
+                CandidateStatus::Complete(_)
+            ));
+            assert_eq!(stream.finalize().unwrap(), parse_surface(&surface).unwrap());
         }
     }
 }
@@ -154,6 +159,40 @@ fn impossible_negative_text_bound_rejects_at_end_of_buffer() {
     let mut stream = CandidateStream::new();
     let status = stream.push(b"screen { field \"Name\" name min -1");
     assert!(matches!(status, CandidateStatus::Rejected(_)), "{status:?}");
+}
+
+#[test]
+fn finalize_rejects_incomplete_syntax_and_utf8_with_exact_diagnostics() {
+    for source in ["", "screen {", "screen { text \"unfinished", "scre"] {
+        let mut stream = CandidateStream::new();
+        assert_eq!(stream.push(source.as_bytes()), CandidateStatus::Incomplete);
+        assert_eq!(stream.finalize(), parse_surface(source));
+    }
+    let mut stream = CandidateStream::new();
+    assert_eq!(stream.push(b"screen { text \"\xc3"), CandidateStatus::Incomplete);
+    let errors = stream.finalize().unwrap_err();
+    assert_eq!(errors[0].code, DiagnosticCode::InvalidCharacter);
+    assert_eq!(errors[0].span, matrix_lang::Span::new(15, 16));
+}
+
+#[test]
+fn finalize_preserves_latched_rejection_even_after_more_input() {
+    for chunks in [
+        vec![b"screen {}".to_vec(), b" garbage".to_vec()],
+        vec![vec![b' '; 256 * 1024], b"x".to_vec()],
+        vec![vec![0xff]],
+    ] {
+        let mut stream = CandidateStream::new();
+        let mut status = CandidateStatus::Incomplete;
+        for chunk in chunks {
+            status = stream.push(&chunk);
+        }
+        let CandidateStatus::Rejected(errors) = status else {
+            panic!("expected rejection");
+        };
+        assert_eq!(stream.push(b"screen {}"), CandidateStatus::Rejected(errors.clone()));
+        assert_eq!(stream.finalize(), Err(errors));
+    }
 }
 
 #[test]

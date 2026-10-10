@@ -103,6 +103,7 @@ struct Daemon {
     watchers: Mutex<Watchers>,
     think: Mutex<ThinkServers>,
     matrix_sources: Mutex<HashMap<String, String>>,
+    matrix_candidates: Mutex<HashMap<(String, String), matrix_lang::CandidateStream>>,
     data_dir: PathBuf,
     started: std::time::Instant,
 }
@@ -139,21 +140,89 @@ impl Daemon {
         retain: bool,
     ) -> Result<Value, RpcError> {
         match self.compile_matrix(source) {
-            Ok(surface) => {
-                let (node, valid) = validate_surface(&surface);
-                self.log
-                    .append(
-                        thread,
-                        "ui.surface",
-                        &matrix::surface_payload(&node),
-                    )
-                    .map_err(|error| RpcError::internal(format!("commit surface: {error}")))?;
-                if retain {
-                    sources.insert(thread.into(), source.into());
-                }
-                Ok(matrix::render_success(valid))
-            }
+            Ok(surface) => self.commit_matrix(sources, thread, &surface, retain.then_some(source)),
             Err(diagnostics) => Ok(json!({"ok": false, "diagnostics": diagnostics})),
+        }
+    }
+
+    fn commit_matrix(
+        &self,
+        sources: &mut HashMap<String, String>,
+        thread: &str,
+        surface: &Value,
+        source: Option<&str>,
+    ) -> Result<Value, RpcError> {
+        let (node, valid) = validate_surface(surface);
+        self.log
+            .append(thread, "ui.surface", &matrix::surface_payload(&node))
+            .map_err(|error| RpcError::internal(format!("commit surface: {error}")))?;
+        if let Some(source) = source {
+            sources.insert(thread.into(), source.into());
+        }
+        Ok(matrix::render_success(valid))
+    }
+
+    fn matrix_candidate(&self, params: &Value) -> Result<Value, RpcError> {
+        use matrix_lang::CandidateStatus;
+
+        let thread = params
+            .get("thread")
+            .and_then(Value::as_str)
+            .ok_or_else(|| RpcError::invalid_params("matrix.candidate needs a thread id"))?;
+        let candidate = params
+            .get("candidate")
+            .and_then(Value::as_str)
+            .ok_or_else(|| RpcError::invalid_params("matrix.candidate needs a candidate id"))?;
+        let finish = params
+            .get("finish")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| RpcError::invalid_params("matrix.candidate needs a finish boolean"))?;
+        let chunk = params
+            .get("chunk")
+            .and_then(Value::as_array)
+            .ok_or_else(|| RpcError::invalid_params("matrix.candidate needs a byte array"))?
+            .iter()
+            .map(|value| {
+                value
+                    .as_u64()
+                    .and_then(|byte| u8::try_from(byte).ok())
+                    .ok_or_else(|| {
+                        RpcError::invalid_params("chunk bytes must be integers from 0 through 255")
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let key = (thread.to_owned(), candidate.to_owned());
+        let mut candidates = self.matrix_candidates.lock().unwrap();
+        let status = candidates.entry(key.clone()).or_default().push(&chunk);
+        if !finish {
+            return Ok(match status {
+                CandidateStatus::Incomplete => json!({"status":"incomplete"}),
+                CandidateStatus::Complete(_) => json!({"status":"complete"}),
+                CandidateStatus::Rejected(errors) => {
+                    json!({"status":"rejected", "diagnostics":matrix::diagnostics(&errors)})
+                }
+            });
+        }
+        let parsed = match candidates.remove(&key).unwrap().finalize() {
+            Ok(parsed) => parsed,
+            Err(errors) => {
+                return Ok(json!({"status":"rejected", "diagnostics":matrix::diagnostics(&errors)}));
+            }
+        };
+        let mut sources = self.matrix_sources.lock().unwrap();
+        let snapshot = self.pipeline_snapshot()?;
+        let bindings = matrix::host_bindings(&snapshot.config, &snapshot);
+        match matrix::compile_surface(&parsed, &bindings) {
+            Ok(surface) => {
+                let source = matrix_lang::format_surface(&parsed);
+                let mut response =
+                    self.commit_matrix(&mut sources, thread, &surface, Some(&source))?;
+                response["status"] = json!("committed");
+                Ok(response)
+            }
+            Err(errors) => {
+                Ok(json!({"status":"rejected", "diagnostics":matrix::diagnostics(&errors)}))
+            }
         }
     }
 
@@ -481,6 +550,7 @@ impl Dispatch for Daemon {
                     .ok_or_else(|| RpcError::invalid_params("matrix.render needs source text"))?;
                 self.render_matrix(thread, source, true)
             }
+            "matrix.candidate" => self.matrix_candidate(&params),
             "schedule.add" => {
                 let cron = params.get("cron").and_then(|c| c.as_str()).ok_or_else(|| {
                     RpcError::invalid_params("schedule.add needs a cron")
@@ -661,6 +731,7 @@ mod approval_dispatch_tests {
             watchers: Mutex::new(Watchers::open_in_memory().unwrap()),
             think: Mutex::new(ThinkServers::new(data_dir.to_path_buf())),
             matrix_sources: Mutex::new(HashMap::new()),
+            matrix_candidates: Mutex::new(HashMap::new()),
             data_dir: data_dir.to_path_buf(),
             started: std::time::Instant::now(),
         }
@@ -715,6 +786,313 @@ mod approval_dispatch_tests {
         assert_eq!(event.payload["surface"]["type"], "stack");
         assert!(event.payload.to_string().contains("models.local_only"));
         assert!(event.payload.to_string().contains("qwen3:4b"));
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    fn candidate(daemon: &Daemon, thread: &str, id: &str, chunk: &[u8], finish: bool) -> Value {
+        daemon
+            .call(
+                "matrix.candidate",
+                json!({
+                    "thread": thread, "candidate": id, "chunk": chunk, "finish": finish
+                }),
+            )
+            .unwrap()
+    }
+
+    fn positive_matrix_sources() -> Vec<String> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../matrix");
+        let mut sources = vec![
+            MATRIX_DASHBOARD.to_owned(),
+            "screen { text \"é\\n\\u263A\\\"\" }".into(),
+            "screen { text \"\\uD83C\\uDF19\" }".into(),
+        ];
+        let mut markdown = vec![std::fs::read_to_string(root.join("examples.md")).unwrap()];
+        for entry in std::fs::read_dir(root.join("recipes")).unwrap() {
+            markdown.push(std::fs::read_to_string(entry.unwrap().path()).unwrap());
+        }
+        for text in markdown {
+            for (index, block) in text.split("```\n").enumerate() {
+                let source = block.trim();
+                if index % 2 == 1 && !source.starts_with('{') && !source.starts_with("PullRequest {") {
+                    sources.push(source.to_owned());
+                }
+            }
+        }
+        for entry in std::fs::read_dir(root.join("conformance/v0")).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_some_and(|ext| ext == "matrix") {
+                sources.push(std::fs::read_to_string(path).unwrap());
+            }
+        }
+        sources
+            .into_iter()
+            .map(|source| {
+                if source.starts_with("screen ") || source.starts_with("screen{") {
+                    source
+                } else {
+                    format!("screen {{ {source} }}")
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn matrix_candidate_every_positive_fixture_byte_split_defers_commit_until_finish() {
+        let (data, _) = dirs("candidate-prefixes");
+        let daemon = daemon(&data);
+        for source in positive_matrix_sources() {
+            let parsed = matrix_lang::parse_surface(&source).unwrap();
+            let expected = daemon.compile_matrix(&source);
+            daemon
+                .call(
+                    "matrix.render",
+                    json!({
+                        "thread":"thread-7", "source":"screen { text \"Prior\" }"
+                    }),
+                )
+                .unwrap();
+            for cut in 0..=source.len() {
+                let before = daemon.log.max_seq().unwrap();
+                let retained = daemon.matrix_sources.lock().unwrap().clone();
+                let prefix = &source.as_bytes()[..cut];
+                let parses = std::str::from_utf8(prefix)
+                    .ok()
+                    .is_some_and(|text| matrix_lang::parse_surface(text).is_ok());
+                let response = candidate(&daemon, "thread-7", "split", prefix, false);
+                assert_eq!(
+                    response["status"],
+                    if parses { "complete" } else { "incomplete" },
+                    "cut {cut}: {source}"
+                );
+                assert_eq!(daemon.log.max_seq().unwrap(), before);
+                assert_eq!(*daemon.matrix_sources.lock().unwrap(), retained);
+                let response = candidate(
+                    &daemon,
+                    "thread-7",
+                    "split",
+                    &source.as_bytes()[cut..],
+                    false,
+                );
+                assert_eq!(response["status"], "complete");
+                assert_eq!(daemon.log.max_seq().unwrap(), before);
+                assert_eq!(*daemon.matrix_sources.lock().unwrap(), retained);
+                let response = candidate(&daemon, "thread-7", "split", b"", true);
+                match &expected {
+                    Ok(surface) => {
+                        assert_eq!(response["status"], "committed");
+                        assert_eq!(response["valid"], true);
+                        assert_eq!(daemon.log.max_seq().unwrap(), before + 1);
+                        let event = daemon
+                            .log
+                            .subscribe("thread-7", before)
+                            .unwrap()
+                            .recv_timeout(Duration::from_millis(10))
+                            .unwrap();
+                        assert_eq!(event.kind, "ui.surface");
+                        assert_eq!(event.payload["surface"], *surface);
+                        assert_eq!(
+                            daemon.matrix_sources.lock().unwrap()["thread-7"],
+                            matrix_lang::format_surface(&parsed)
+                        );
+                    }
+                    Err(diagnostics) => {
+                        assert_eq!(response["status"], "rejected");
+                        assert_eq!(response["diagnostics"], *diagnostics);
+                        assert_eq!(daemon.log.max_seq().unwrap(), before);
+                        assert_eq!(*daemon.matrix_sources.lock().unwrap(), retained);
+                    }
+                }
+            }
+        }
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn matrix_candidate_rejections_preserve_exact_prior_surface_source_and_refresh() {
+        let (data, _) = dirs("candidate-rejections");
+        let daemon = daemon(&data);
+        let prior = "screen { text \"Prior\" }";
+        daemon
+            .call(
+                "matrix.render",
+                json!({"thread":"thread-7", "source":prior}),
+            )
+            .unwrap();
+        for (chunks, code) in [
+            (
+                vec![b"screen { text \"Bad\" }".to_vec(), b" garbage".to_vec()],
+                "E_PARSE_TOKEN",
+            ),
+            (
+                vec![b"screen { text \"Bad".to_vec()],
+                "E_LEX_INCOMPLETE_STRING",
+            ),
+            (
+                vec![b"screen { text \"Bad\"".to_vec()],
+                "E_PARSE_INCOMPLETE",
+            ),
+            (vec![b"screen { text \"\xc3".to_vec()], "E_LEX_CHARACTER"),
+            (
+                vec![vec![b' '; 262_144], b"x".to_vec()],
+                "E_SOURCE_TOO_LONG",
+            ),
+            (vec![b"screen { text missing }".to_vec()], "E_RESOLVE_PATH"),
+            (
+                vec![b"screen { icon \"warning\" }".to_vec()],
+                "E_LOWER_UNSUPPORTED",
+            ),
+        ] {
+            let before = daemon.log.max_seq().unwrap();
+            let mut rejection = None;
+            for chunk in chunks {
+                let response = candidate(&daemon, "thread-7", "bad", &chunk, false);
+                if response["status"] == "rejected" {
+                    rejection = Some(response["diagnostics"].clone());
+                }
+                assert_eq!(daemon.log.max_seq().unwrap(), before);
+                assert_eq!(daemon.matrix_sources.lock().unwrap()["thread-7"], prior);
+            }
+            if let Some(errors) = &rejection {
+                let response = candidate(&daemon, "thread-7", "bad", b"screen {}", false);
+                assert_eq!(response["status"], "rejected");
+                assert_eq!(&response["diagnostics"], errors);
+            }
+            let response = candidate(&daemon, "thread-7", "bad", b"", true);
+            assert_eq!(response["status"], "rejected");
+            assert_eq!(response["diagnostics"][0]["code"], code, "{response}");
+            if let Some(errors) = rejection {
+                assert_eq!(response["diagnostics"], errors);
+            }
+            assert_eq!(daemon.log.max_seq().unwrap(), before);
+            assert_eq!(daemon.matrix_sources.lock().unwrap()["thread-7"], prior);
+            daemon
+                .call(
+                    "ui.event",
+                    json!({"thread":"thread-7", "event":"refresh", "args":{}}),
+                )
+                .unwrap();
+            let event = daemon
+                .log
+                .recent_kind_since("ui.surface", i64::MIN, 1)
+                .unwrap()
+                .pop()
+                .unwrap();
+            assert_eq!(
+                event.payload,
+                json!({"surface_id":"matrix", "surface":{"type":"text","value":"Prior"}})
+            );
+        }
+        assert_eq!(
+            candidate(&daemon, "thread-7", "bad", b"screen { text \"New\" }", true)["status"],
+            "committed"
+        );
+        assert_eq!(
+            candidate(&daemon, "thread-7", "bad", b"", true)["status"],
+            "rejected"
+        );
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn matrix_candidate_ids_and_threads_are_isolated_and_terminal_ids_can_restart() {
+        let (data, _) = dirs("candidate-ids");
+        let daemon = daemon(&data);
+        for (thread, id, text) in [("left", "a", "A"), ("left", "b", "B"), ("right", "a", "C")] {
+            assert_eq!(
+                candidate(
+                    &daemon,
+                    thread,
+                    id,
+                    format!("screen {{ text \"{text}").as_bytes(),
+                    false
+                )["status"],
+                "incomplete"
+            );
+        }
+        assert_eq!(daemon.log.max_seq().unwrap(), 0);
+        for (thread, id, text) in [("left", "b", "B"), ("right", "a", "C"), ("left", "a", "A")] {
+            let before = daemon.log.max_seq().unwrap();
+            assert_eq!(
+                candidate(&daemon, thread, id, b"\" }", true)["status"],
+                "committed"
+            );
+            let event = daemon
+                .log
+                .subscribe(thread, before)
+                .unwrap()
+                .recv_timeout(Duration::from_millis(10))
+                .unwrap();
+            assert_eq!(
+                event.payload,
+                json!({"surface_id":"matrix", "surface":{"type":"text", "value":text}})
+            );
+        }
+        assert_eq!(
+            candidate(&daemon, "left", "a", b"screen { text \"Restart\" }", true)["status"],
+            "committed"
+        );
+        assert_eq!(
+            daemon.matrix_sources.lock().unwrap()["left"],
+            "screen {\n  text \"Restart\"\n}\n"
+        );
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn matrix_candidate_invalid_params_do_not_mutate_the_accumulator() {
+        let (data, _) = dirs("candidate-params");
+        let daemon = daemon(&data);
+        assert_eq!(
+            candidate(&daemon, "main", "a", b"screen { text \"", false)["status"],
+            "incomplete"
+        );
+        for chunk in [
+            json!([-1]),
+            json!([256]),
+            json!([1.5]),
+            json!([1.0]),
+            json!([true]),
+            json!([null]),
+            json!(["x"]),
+            json!("bytes"),
+            json!([65, -1]),
+        ] {
+            let error = daemon
+                .call(
+                    "matrix.candidate",
+                    json!({"thread":"main", "candidate":"a", "chunk":chunk, "finish":true}),
+                )
+                .unwrap_err();
+            assert_eq!(error.code, "invalid_params");
+        }
+        for params in [
+            json!({"candidate":"a", "chunk":[], "finish":false}),
+            json!({"thread":"main", "chunk":[], "finish":false}),
+            json!({"thread":"main", "candidate":"a", "finish":false}),
+            json!({"thread":"main", "candidate":"a", "chunk":[]}),
+            json!({"thread":"main", "candidate":"a", "chunk":[], "finish":"true"}),
+        ] {
+            assert_eq!(
+                daemon.call("matrix.candidate", params).unwrap_err().code,
+                "invalid_params"
+            );
+        }
+        assert_eq!(daemon.log.max_seq().unwrap(), 0);
+        assert_eq!(
+            candidate(&daemon, "main", "a", b"Intact\" }", true)["status"],
+            "committed"
+        );
+        let event = daemon
+            .log
+            .subscribe("main", 0)
+            .unwrap()
+            .recv_timeout(Duration::from_millis(10))
+            .unwrap();
+        assert_eq!(
+            event.payload["surface"],
+            json!({"type":"text", "value":"Intact"})
+        );
         std::fs::remove_dir_all(data.parent().unwrap()).ok();
     }
 
@@ -1252,6 +1630,7 @@ mod turn_event_tests {
             watchers: Mutex::new(Watchers::open_in_memory().unwrap()),
             think: Mutex::new(ThinkServers::new(data_dir.clone())),
             matrix_sources: Mutex::new(HashMap::new()),
+            matrix_candidates: Mutex::new(HashMap::new()),
             data_dir: data_dir.clone(),
             started: std::time::Instant::now(),
         });
@@ -1479,6 +1858,7 @@ fn run() -> Result<(), i32> {
         watchers: Mutex::new(watchers),
         think: Mutex::new(ThinkServers::new(data.clone())),
         matrix_sources: Mutex::new(HashMap::new()),
+        matrix_candidates: Mutex::new(HashMap::new()),
         data_dir: data.clone(),
         started: std::time::Instant::now(),
     });

@@ -31,6 +31,23 @@ impl CandidateStream {
         status
     }
 
+    pub fn finalize(self) -> Result<Surface, Vec<Diagnostic>> {
+        if let Some(errors) = self.rejected {
+            return Err(errors);
+        }
+        let source = std::str::from_utf8(&self.buffer).map_err(|error| {
+            vec![Diagnostic {
+                code: DiagnosticCode::InvalidCharacter,
+                severity: Severity::Error,
+                span: Span::new(error.valid_up_to(), self.buffer.len()),
+                declaration_path: Vec::new(),
+                message: "source is not valid UTF-8".to_owned(),
+                hint: None,
+            }]
+        })?;
+        parse_surface(source)
+    }
+
     fn push_chunk(&mut self, chunk: &[u8]) -> CandidateStatus {
         if chunk.len() > MAX_SOURCE_BYTES - self.buffer.len() {
             return CandidateStatus::Rejected(vec![Diagnostic {

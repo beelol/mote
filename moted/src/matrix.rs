@@ -3,7 +3,7 @@ use matrix_lang::manifest::{
     ActionContract, EnumDefinition, FieldDefinition, RecordDefinition,
 };
 use matrix_lang::{
-    lower_v0, parse_surface, resolve, BindingSnapshot, Diagnostic, Manifest, Type,
+    lower_v0, parse_surface, resolve, BindingSnapshot, Diagnostic, Manifest, Surface, Type,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -110,13 +110,17 @@ pub fn host_bindings(
 
 pub fn compile(source: &str, bindings: &HostBindings) -> Result<Value, Vec<Diagnostic>> {
     let parsed = parse_surface(source)?;
-    let resolved = resolve(&parsed, &bindings.manifest, &bindings.snapshot)?;
+    compile_surface(&parsed, bindings)
+}
+
+pub fn compile_surface(parsed: &Surface, bindings: &HostBindings) -> Result<Value, Vec<Diagnostic>> {
+    let resolved = resolve(parsed, &bindings.manifest, &bindings.snapshot)?;
     let node = lower_v0(&resolved)?;
     serde_json::to_value(node).map_err(|error| {
         vec![Diagnostic {
             code: matrix_lang::DiagnosticCode::LowerLimit,
             severity: matrix_lang::Severity::Error,
-            span: matrix_lang::Span::new(0, source.len()),
+            span: parsed.screen.span,
             declaration_path: vec!["screen".into()],
             message: format!("Could not encode the compact surface: {error}"),
             hint: None,
