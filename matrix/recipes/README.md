@@ -54,3 +54,13 @@ Every recipe uses the same four parts.
 ### Patterns
 - [pull requests](pull-requests.md), the worked inferred UI case
 - [calendar](calendar.md), the agenda representation of a day and a week
+- [dashboard](dashboard.md), headline stats and an attention table
+- [file browser](file-browser.md), a breadcrumb and an entry list
+- [notifications](notifications.md), a recent-activity inbox
+- [search](search.md), a query box and ranked results
+- [profile](profile.md), an identity header with stats and details
+- [kanban](kanban.md), state columns of cards
+- [wizard](wizard.md), a multi step form with progress
+- [login](login.md), a sign-in form
+- [gallery](gallery.md), a wrapping grid of media
+- [comments](comments.md), a thread with nested replies and a compose bar
