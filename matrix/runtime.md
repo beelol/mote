@@ -157,6 +157,46 @@ The owner confirmation list records this boundary.
 
 ## Status
 
+### First Mac runtime milestone, 2026-10-10
+
+`mote-client` remains the separate native consumer process.
+Its stream reducer validates `ui.surface` with `mote_ui::validate` before display.
+Malformed surfaces are ignored and ordinary talk event behavior is preserved.
+The focused surface module draws all eleven existing `Node` variants unchanged.
+Action clicks return the existing event name string to the `ui.event` IPC call.
+Fields, toggles and selects keep local interaction state for the displayed surface.
+This state uses structural paths within the existing surface instance.
+It does not claim keyed reconciliation across replacement surfaces.
+
+Vector is the default runtime theme in both system light and dark modes.
+It uses the fixed palette, monospace scale, eight point spacing and sixteen point padding.
+Controls have thirty-six point visual height and reserve forty-eight point touch regions.
+Six point hit expansion covers the padded touch region.
+Focus and carets use the red accent.
+Progress displays a thin red stroke and a readable percentage.
+Keyboard focus and action activation are tested without a GPU.
+There are no per-element style controls.
+
+`cargo run -p mote-client -- --fixture crates/mote-ui/fixtures/10_chat_progress.json`
+validates and previews one tree without connecting to the daemon.
+Preview actions report their names locally.
+The no-argument path remains the saved-cursor IPC stream client.
+The workspace pins eframe and egui to 0.31.0 and resolves winit 0.30.13.
+The old winit 0.29 and icrate 0.0.4 launch path is absent.
+The pinned Rust 1.89.0 toolchain builds and tests the runtime.
+
+The live fixture process stayed running in the logged-in Aqua session on macOS 26.6.2.
+The Mac was locked when the UI tool attempted inspection.
+Visible window confirmation and screenshot capture remain pending.
+Exact evidence is recorded in `docs/verification/V0-43.md`.
+This milestone does not verify the full V0-43 clause or approve UI-00.
+
+Keyed materialize animation is explicitly deferred.
+The v0 tree has no keys or typed transition metadata.
+The runtime does not simulate keyed identity or delay initial task use with a reveal.
+The fixed 180 ms interaction timing is configured for standard controls.
+The broader Matrix catalog and architecture recommendations below remain future work.
+
 This is a recommended architecture from owner direction ("inferred and animated ui on immediate gui
 under the hood," and build the interpreter in the fastest technology, Rust if it is fastest). It is
 recorded as a decision in `decisions.md` and is open to owner revision. The stack names are

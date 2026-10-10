@@ -1,5 +1,6 @@
 //! The egui application: chat view and pipeline view.
 
+use crate::state::{ChatState, Message, Status};
 use eframe::egui;
 use mote_eventlog::Event;
 use mote_ipc::Client;
@@ -13,38 +14,15 @@ fn cursor_path() -> PathBuf {
 
 /// Load the saved cursor, or 0.
 pub fn load_cursor() -> i64 {
-    std::fs::read_to_string(cursor_path()).ok().and_then(|s| s.trim().parse().ok()).unwrap_or(0)
+    std::fs::read_to_string(cursor_path())
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
 }
 
 /// Persist the cursor so reopening resumes with nothing shown twice.
 pub fn save_cursor(seq: i64) {
     let _ = std::fs::write(cursor_path(), seq.to_string());
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum Status {
-    Sending,
-    Sent,
-    Delivered,
-    Read,
-}
-
-impl Status {
-    fn dot(&self) -> &'static str {
-        match self {
-            Status::Sending => "○ sending",
-            Status::Sent => "◔ sent",
-            Status::Delivered => "◑ delivered",
-            Status::Read => "● read",
-        }
-    }
-}
-
-struct Message {
-    role: String,
-    text: String,
-    status: Status,
-    surface: Option<Node>,
 }
 
 #[derive(PartialEq)]
@@ -69,30 +47,35 @@ const CONFIG_KEYS: [&str; 8] = [
 pub struct MoteApp {
     socket: PathBuf,
     rx: Receiver<Event>,
-    messages: Vec<Message>,
+    chat: ChatState,
     input: String,
-    typing: bool,
     screen: Screen,
     stage: usize,
     tab: usize,
     config_edits: std::collections::HashMap<String, String>,
     status_line: String,
+    fixture: Option<Node>,
 }
 
 impl MoteApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>, socket: PathBuf, rx: Receiver<Event>) -> Self {
-        // eframe follows the system light/dark theme by default (NativeOptions.follow_system_theme).
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        socket: PathBuf,
+        rx: Receiver<Event>,
+        fixture: Option<Node>,
+    ) -> Self {
+        crate::theme::install(&cc.egui_ctx);
         Self {
             socket,
             rx,
-            messages: Vec::new(),
+            chat: ChatState::default(),
             input: String::new(),
-            typing: false,
             screen: Screen::Chat,
             stage: 0,
             tab: 0,
             config_edits: std::collections::HashMap::new(),
             status_line: String::new(),
+            fixture,
         }
     }
 
@@ -102,60 +85,7 @@ impl MoteApp {
 
     fn drain_events(&mut self) {
         while let Ok(ev) = self.rx.try_recv() {
-            match ev.kind.as_str() {
-                "turn.user" => {
-                    let text = ev.payload["text"].as_str().unwrap_or("").to_string();
-                    self.messages.push(Message {
-                        role: "user".into(),
-                        text,
-                        status: Status::Delivered,
-                        surface: None,
-                    });
-                }
-                "talk.delta" => {
-                    self.typing = true;
-                    let delta = ev.payload["text"].as_str().unwrap_or("");
-                    if let Some(last) = self.messages.last_mut() {
-                        if last.role == "assistant" {
-                            last.text.push_str(delta);
-                            continue;
-                        }
-                    }
-                    self.messages.push(Message {
-                        role: "assistant".into(),
-                        text: delta.to_string(),
-                        status: Status::Delivered,
-                        surface: None,
-                    });
-                }
-                "talk.done" => {
-                    self.typing = false;
-                    if let Some(last) = self.messages.last_mut() {
-                        last.status = Status::Read;
-                    }
-                }
-                "talk.unavailable" => {
-                    self.typing = false;
-                    let reason = ev.payload["reason"].as_str().unwrap_or("unavailable");
-                    self.messages.push(Message {
-                        role: "system".into(),
-                        text: format!("talk unavailable: {reason}"),
-                        status: Status::Read,
-                        surface: None,
-                    });
-                }
-                "ui.surface" => {
-                    if let Ok(node) = serde_json::from_value::<Node>(ev.payload["surface"].clone()) {
-                        self.messages.push(Message {
-                            role: "assistant".into(),
-                            text: String::new(),
-                            status: Status::Read,
-                            surface: Some(node),
-                        });
-                    }
-                }
-                _ => {}
-            }
+            self.chat.reduce(&ev);
         }
     }
 
@@ -165,7 +95,7 @@ impl MoteApp {
             return;
         }
         self.input.clear();
-        self.messages.push(Message {
+        self.chat.messages.push(Message {
             role: "user".into(),
             text: msg.clone(),
             status: Status::Sending,
@@ -173,8 +103,11 @@ impl MoteApp {
         });
         match self.client() {
             Ok(mut c) => {
-                let _ = c.call("turn", serde_json::json!({ "thread": "main", "message": msg }));
-                if let Some(last) = self.messages.last_mut() {
+                let _ = c.call(
+                    "turn",
+                    serde_json::json!({ "thread": "main", "message": msg }),
+                );
+                if let Some(last) = self.chat.messages.last_mut() {
                     last.status = Status::Sent;
                 }
             }
@@ -190,23 +123,25 @@ impl MoteApp {
 
     fn chat_view(&mut self, ui: &mut egui::Ui) {
         let mut clicked: Vec<String> = Vec::new();
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            for m in &self.messages {
-                ui.horizontal(|ui| {
-                    ui.strong(&m.role);
-                    ui.weak(m.status.dot());
-                });
-                if let Some(node) = &m.surface {
-                    render_node(ui, node, &mut clicked);
-                } else {
-                    ui.label(&m.text);
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                for (index, m) in self.chat.messages.iter().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.strong(&m.role);
+                        crate::theme::caption(ui, m.status.label());
+                    });
+                    if let Some(node) = &m.surface {
+                        ui.push_id(index, |ui| crate::surface::draw(ui, node, &mut clicked));
+                    } else {
+                        ui.label(&m.text);
+                    }
+                    ui.separator();
                 }
-                ui.separator();
-            }
-            if self.typing {
-                ui.weak("mote is typing…");
-            }
-        });
+                if self.chat.typing {
+                    crate::theme::caption(ui, "mote is typing...");
+                }
+            });
         for e in clicked {
             self.send_ui_event(&e);
         }
@@ -215,12 +150,12 @@ impl MoteApp {
         ui.horizontal(|ui| {
             let resp = ui.text_edit_singleline(&mut self.input);
             let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if ui.button("Send").clicked() || enter {
+            if crate::surface::button(ui, "Send").clicked() || enter {
                 self.send_turn();
             }
         });
         if !self.status_line.is_empty() {
-            ui.colored_label(egui::Color32::RED, &self.status_line);
+            ui.colored_label(ui.visuals().error_fg_color, &self.status_line);
         }
     }
 
@@ -265,9 +200,12 @@ impl MoteApp {
                 ui.text_edit_singleline(buf);
             });
         }
-        if ui.button("Apply").clicked() {
-            let edits: Vec<(String, String)> =
-                self.config_edits.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        if crate::surface::button(ui, "Apply").clicked() {
+            let edits: Vec<(String, String)> = self
+                .config_edits
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
             for (key, val) in edits {
                 self.apply_config(&key, &val);
             }
@@ -293,7 +231,10 @@ impl MoteApp {
             serde_json::json!(val)
         };
         if let Ok(mut c) = self.client() {
-            match c.call("config.set", serde_json::json!({ "key": key, "value": value })) {
+            match c.call(
+                "config.set",
+                serde_json::json!({ "key": key, "value": value }),
+            ) {
                 Ok(Ok(_)) => self.status_line = format!("set {key}"),
                 Ok(Err(e)) => self.status_line = format!("{key}: {}", e.message),
                 Err(e) => self.status_line = format!("{e}"),
@@ -307,87 +248,150 @@ impl eframe::App for MoteApp {
         self.drain_events();
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
 
-        egui::TopBottomPanel::top("top").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                if ui.selectable_label(self.screen == Screen::Chat, "Chat").clicked() {
-                    self.screen = Screen::Chat;
-                }
-                if ui.selectable_label(self.screen == Screen::Pipeline, "Pipeline").clicked() {
-                    self.screen = Screen::Pipeline;
-                }
-            });
-        });
+        if let Some(node) = &self.fixture {
+            egui::CentralPanel::default()
+                .frame(
+                    egui::Frame::new()
+                        .fill(ctx.style().visuals.panel_fill)
+                        .inner_margin(16),
+                )
+                .show(ctx, |ui| {
+                    let mut clicked = Vec::new();
+                    egui::ScrollArea::both()
+                        .show(ui, |ui| crate::surface::draw(ui, node, &mut clicked));
+                    if let Some(event) = clicked.last() {
+                        self.status_line = format!("Preview action: {event}");
+                    }
+                    if !self.status_line.is_empty() {
+                        crate::theme::caption(ui, &self.status_line);
+                    }
+                });
+            return;
+        }
 
-        egui::CentralPanel::default().show(ctx, |ui| match self.screen {
-            Screen::Chat => self.chat_view(ui),
-            Screen::Pipeline => self.pipeline_view(ui),
-        });
+        egui::TopBottomPanel::top("top")
+            .frame(
+                egui::Frame::new()
+                    .fill(ctx.style().visuals.panel_fill)
+                    .inner_margin(16),
+            )
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if ui
+                        .selectable_label(self.screen == Screen::Chat, "Chat")
+                        .clicked()
+                    {
+                        self.screen = Screen::Chat;
+                    }
+                    if ui
+                        .selectable_label(self.screen == Screen::Pipeline, "Pipeline")
+                        .clicked()
+                    {
+                        self.screen = Screen::Pipeline;
+                    }
+                });
+            });
+
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::new()
+                    .fill(ctx.style().visuals.panel_fill)
+                    .inner_margin(16),
+            )
+            .show(ctx, |ui| match self.screen {
+                Screen::Chat => self.chat_view(ui),
+                Screen::Pipeline => self.pipeline_view(ui),
+            });
     }
 }
 
-/// Render a surface tree node into egui widgets. Clicked action events are collected.
-fn render_node(ui: &mut egui::Ui, node: &Node, clicked: &mut Vec<String>) {
-    match node {
-        Node::Text { value } => {
-            ui.label(value);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn app() -> (MoteApp, std::sync::mpsc::Sender<Event>) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        (
+            MoteApp {
+                socket: PathBuf::new(),
+                rx,
+                chat: ChatState::default(),
+                input: String::new(),
+                screen: Screen::Chat,
+                stage: 0,
+                tab: 0,
+                config_edits: Default::default(),
+                status_line: String::new(),
+                fixture: None,
+            },
+            tx,
+        )
+    }
+
+    fn send(tx: &std::sync::mpsc::Sender<Event>, kind: &str, payload: serde_json::Value) {
+        tx.send(Event {
+            seq: 1,
+            ts: 0,
+            scope_id: "main".into(),
+            kind: kind.into(),
+            payload,
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn valid_surface_becomes_a_displayed_typed_surface() {
+        let (mut app, tx) = app();
+        send(
+            &tx,
+            "ui.surface",
+            serde_json::json!({"surface": {"type":"text", "value":"ready"}}),
+        );
+        app.drain_events();
+        assert_eq!(app.chat.messages.len(), 1);
+        assert_eq!(
+            app.chat.messages[0].surface,
+            Some(Node::Text {
+                value: "ready".into()
+            })
+        );
+    }
+
+    #[test]
+    fn malformed_surface_is_ignored_fail_closed() {
+        let (mut app, tx) = app();
+        for surface in [
+            serde_json::json!({"type":"text", "value":"bad", "key":"invented"}),
+            serde_json::json!({"type":"text"}),
+            serde_json::json!({"type":"unknown"}),
+        ] {
+            send(&tx, "ui.surface", serde_json::json!({"surface":surface}));
         }
-        Node::Stack { children } | Node::List { children } | Node::Chat { children } => {
-            for c in children {
-                render_node(ui, c, clicked);
-            }
-        }
-        Node::Row { children } => {
-            ui.horizontal(|ui| {
-                for c in children {
-                    render_node(ui, c, clicked);
-                }
-            });
-        }
-        Node::Table { columns, rows } => {
-            egui::Grid::new(ui.next_auto_id()).striped(true).show(ui, |ui| {
-                for c in columns {
-                    ui.strong(c);
-                }
-                ui.end_row();
-                for row in rows {
-                    for cell in row {
-                        ui.label(cell);
-                    }
-                    ui.end_row();
-                }
-            });
-        }
-        Node::Field { label, value, .. } => {
-            ui.horizontal(|ui| {
-                ui.label(label);
-                let mut v = value.clone();
-                ui.text_edit_singleline(&mut v);
-            });
-        }
-        Node::Toggle { label, value, .. } => {
-            let mut v = *value;
-            ui.checkbox(&mut v, label);
-        }
-        Node::Select { label, options, value, .. } => {
-            ui.horizontal(|ui| {
-                ui.label(label);
-                egui::ComboBox::from_id_source(ui.next_auto_id())
-                    .selected_text(value)
-                    .show_ui(ui, |ui| {
-                        for o in options {
-                            let mut sel = value.clone();
-                            ui.selectable_value(&mut sel, o.clone(), o);
-                        }
-                    });
-            });
-        }
-        Node::Action { label, event } => {
-            if ui.button(label).clicked() {
-                clicked.push(event.clone());
-            }
-        }
-        Node::Progress { value } => {
-            ui.add(egui::ProgressBar::new(value.clamp(0.0, 1.0)));
-        }
+        app.drain_events();
+        assert!(app.chat.messages.is_empty());
+    }
+
+    #[test]
+    fn talk_events_retain_text_typing_and_delivery_behavior() {
+        let (mut app, tx) = app();
+        send(&tx, "turn.user", serde_json::json!({"text":"hello"}));
+        send(&tx, "talk.delta", serde_json::json!({"text":"one"}));
+        send(&tx, "talk.delta", serde_json::json!({"text":" two"}));
+        app.drain_events();
+        assert!(app.chat.typing);
+        assert_eq!(app.chat.messages.len(), 2);
+        assert_eq!(app.chat.messages[0].text, "hello");
+        assert_eq!(app.chat.messages[1].text, "one two");
+        send(&tx, "talk.done", serde_json::json!({}));
+        app.drain_events();
+        assert!(!app.chat.typing);
+        assert!(app.chat.messages[1].status == Status::Read);
+        send(
+            &tx,
+            "talk.unavailable",
+            serde_json::json!({"reason":"offline"}),
+        );
+        app.drain_events();
+        assert_eq!(app.chat.messages[2].text, "talk unavailable: offline");
     }
 }
