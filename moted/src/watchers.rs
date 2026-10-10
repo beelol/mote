@@ -126,28 +126,51 @@ impl Watchers {
 
     /// Approve an approval, executing its action. Returns whether it executed.
     pub fn approve(&self, id: i64, now: i64) -> rusqlite::Result<bool> {
-        let (status, expires, payload): (String, i64, String) = self.conn.query_row(
-            "SELECT status, expires_at, payload FROM approvals WHERE id=?1",
-            [id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-        )?;
-        if status != "pending" {
+        let Some(thread_id) = self.approval_thread(id)? else {
             return Ok(false);
-        }
-        if now > expires {
-            self.set_status(id, "expired")?;
-            return Ok(false);
-        }
+        };
+        self.approve_for_thread(id, &thread_id, now)
+    }
+
+    pub fn approve_for_thread(&self, id: i64, thread_id: &str, now: i64) -> rusqlite::Result<bool> {
+        self.expire_due(now)?;
+        let payload = match self.conn.query_row(
+            "SELECT payload FROM approvals
+             WHERE id=?1 AND thread_id=?2 AND status='pending' AND expires_at>=?3",
+            rusqlite::params![id, thread_id, now],
+            |row| row.get::<_, String>(0),
+        ) {
+            Ok(payload) => payload,
+            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(false),
+            Err(error) => return Err(error),
+        };
         let v: serde_json::Value = serde_json::from_str(&payload).unwrap_or(serde_json::Value::Null);
         if let (Some(p), Some(c)) = (v["path"].as_str(), v["content"].as_str()) {
             std::fs::write(p, c).ok();
         }
-        self.set_status(id, "approved")?;
-        Ok(true)
+        let changed = self.conn.execute(
+            "UPDATE approvals SET status='approved'
+             WHERE id=?1 AND thread_id=?2 AND status='pending' AND expires_at>=?3",
+            rusqlite::params![id, thread_id, now],
+        )?;
+        Ok(changed == 1)
     }
 
-    pub fn deny(&self, id: i64) -> rusqlite::Result<()> {
-        self.set_status(id, "denied")
+    pub fn deny(&self, id: i64, now: i64) -> rusqlite::Result<bool> {
+        let Some(thread_id) = self.approval_thread(id)? else {
+            return Ok(false);
+        };
+        self.deny_for_thread(id, &thread_id, now)
+    }
+
+    pub fn deny_for_thread(&self, id: i64, thread_id: &str, now: i64) -> rusqlite::Result<bool> {
+        self.expire_due(now)?;
+        let changed = self.conn.execute(
+            "UPDATE approvals SET status='denied'
+             WHERE id=?1 AND thread_id=?2 AND status='pending' AND expires_at>=?3",
+            rusqlite::params![id, thread_id, now],
+        )?;
+        Ok(changed == 1)
     }
 
     /// Mark pending approvals past their expiry as expired.
@@ -177,11 +200,18 @@ impl Watchers {
         }))
     }
 
-    fn set_status(&self, id: i64, status: &str) -> rusqlite::Result<()> {
-        self.conn
-            .execute("UPDATE approvals SET status=?1 WHERE id=?2", rusqlite::params![status, id])?;
-        Ok(())
+    fn approval_thread(&self, id: i64) -> rusqlite::Result<Option<String>> {
+        match self.conn.query_row(
+            "SELECT thread_id FROM approvals WHERE id=?1",
+            [id],
+            |row| row.get(0),
+        ) {
+            Ok(thread_id) => Ok(Some(thread_id)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
+
 }
 
 fn is_inside(dir: &Path, path: &Path) -> bool {
@@ -239,7 +269,7 @@ mod tests {
         assert_eq!(w.status(id).unwrap(), "pending");
 
         // Deny leaves it unexecuted.
-        w.deny(id).unwrap();
+        assert!(w.deny(id, 1001).unwrap());
         assert!(!target.exists());
         assert_eq!(w.status(id).unwrap(), "denied");
 

@@ -299,7 +299,34 @@ impl Dispatch for Daemon {
             "turn" => self.handle_turn(&params),
             "ui.event" => {
                 let event = params.get("event").and_then(|e| e.as_str()).unwrap_or("");
-                self.log.append("main", "ui.event", &json!({ "event": event })).ok();
+                let thread = params.get("thread").and_then(|t| t.as_str()).unwrap_or("main");
+                self.log.append(thread, "ui.event", &json!({ "event": event })).ok();
+                if let Some(id) = event
+                    .strip_prefix("approve:")
+                    .and_then(|id| id.parse::<i64>().ok())
+                    .filter(|id| *id > 0)
+                {
+                    let executed = self
+                        .watchers
+                        .lock()
+                        .unwrap()
+                        .approve_for_thread(id, thread, now_ms())
+                        .map_err(|error| RpcError::internal(error.to_string()))?;
+                    return Ok(json!({ "ok": true, "approval": id, "executed": executed }));
+                }
+                if let Some(id) = event
+                    .strip_prefix("deny:")
+                    .and_then(|id| id.parse::<i64>().ok())
+                    .filter(|id| *id > 0)
+                {
+                    let denied = self
+                        .watchers
+                        .lock()
+                        .unwrap()
+                        .deny_for_thread(id, thread, now_ms())
+                        .map_err(|error| RpcError::internal(error.to_string()))?;
+                    return Ok(json!({ "ok": true, "approval": id, "denied": denied }));
+                }
                 Ok(json!({ "ok": true }))
             }
             // Validate a surface tree fail-closed and commit it as a `ui.surface` event on the
@@ -336,12 +363,30 @@ impl Dispatch for Daemon {
                     RpcError::invalid_params("file.write needs a path")
                 })?;
                 let content = params.get("content").and_then(|c| c.as_str()).unwrap_or("");
-                let decision = self
-                    .watchers
-                    .lock()
-                    .unwrap()
-                    .request_file_write(&self.data_dir, thread, std::path::Path::new(path), content, now_ms())
-                    .map_err(|e| RpcError::internal(e.to_string()))?;
+                let (decision, card) = {
+                    let watchers = self.watchers.lock().unwrap();
+                    let decision = watchers
+                        .request_file_write(
+                            &self.data_dir,
+                            thread,
+                            std::path::Path::new(path),
+                            content,
+                            now_ms(),
+                        )
+                        .map_err(|e| RpcError::internal(e.to_string()))?;
+                    let card = match decision {
+                        WriteDecision::Pending(id) => Some(
+                            watchers
+                                .approval_card(id)
+                                .map_err(|e| RpcError::internal(e.to_string()))?,
+                        ),
+                        WriteDecision::Executed => None,
+                    };
+                    (decision, card)
+                };
+                if let Some(card) = card {
+                    commit_surface(&self.log, thread, &card)?;
+                }
                 Ok(match decision {
                     WriteDecision::Executed => json!({ "decision": "executed" }),
                     WriteDecision::Pending(id) => json!({ "decision": "pending", "id": id }),
@@ -363,8 +408,13 @@ impl Dispatch for Daemon {
                 let id = params.get("id").and_then(|i| i.as_i64()).ok_or_else(|| {
                     RpcError::invalid_params("deny needs an id")
                 })?;
-                self.watchers.lock().unwrap().deny(id).map_err(|e| RpcError::internal(e.to_string()))?;
-                Ok(json!({ "ok": true }))
+                let denied = self
+                    .watchers
+                    .lock()
+                    .unwrap()
+                    .deny(id, now_ms())
+                    .map_err(|e| RpcError::internal(e.to_string()))?;
+                Ok(json!({ "ok": true, "denied": denied }))
             }
             "approval.card" => {
                 let id = params.get("id").and_then(|i| i.as_i64()).ok_or_else(|| {
@@ -438,6 +488,202 @@ mod surface_tests {
             .unwrap();
         assert_eq!(event.kind, "ui.surface");
         assert_eq!(event.payload["surface"], surface);
+    }
+}
+
+#[cfg(test)]
+mod approval_dispatch_tests {
+    use super::*;
+    use charter::FrontMatter;
+    use config::AllowAll;
+
+    fn daemon(data_dir: &Path) -> Daemon {
+        let log = EventLog::open_in_memory().unwrap();
+        let config = ConfigStore::load(
+            &data_dir.join("config.toml"),
+            log.clone(),
+            Arc::new(AllowAll),
+        )
+        .unwrap();
+        Daemon {
+            log,
+            config: Mutex::new(config),
+            character: Arc::new(Mutex::new(Charter {
+                front: FrontMatter {
+                    name: "mote".into(),
+                    tools: Vec::new(),
+                    realms: vec!["personal".into()],
+                },
+                prose: String::new(),
+            })),
+            store: Mutex::new(ContextStore::open_in_memory().unwrap()),
+            client: Ollama::new("http://127.0.0.1:9"),
+            watchers: Mutex::new(Watchers::open_in_memory().unwrap()),
+            think: Mutex::new(ThinkServers::new(data_dir.to_path_buf())),
+            data_dir: data_dir.to_path_buf(),
+            started: std::time::Instant::now(),
+        }
+    }
+
+    fn dirs(name: &str) -> (PathBuf, PathBuf) {
+        let root = std::env::temp_dir().join(format!(
+            "mote-approval-dispatch-{name}-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        let data = root.join("data");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        (data, outside)
+    }
+
+    #[test]
+    fn pending_file_write_emits_an_inline_approval_card() {
+        let (data, outside) = dirs("card");
+        let target = outside.join("note.txt");
+        let daemon = daemon(&data);
+
+        let response = daemon
+            .call(
+                "file.write",
+                json!({
+                    "thread": "thread-7",
+                    "path": target,
+                    "content": "held"
+                }),
+            )
+            .unwrap();
+
+        let id = response["id"].as_i64().unwrap();
+        let event = daemon
+            .log
+            .subscribe("thread-7", 0)
+            .unwrap()
+            .recv_timeout(Duration::from_millis(10))
+            .unwrap();
+        assert_eq!(event.kind, "ui.surface");
+        assert!(event.payload.to_string().contains(&format!("approve:{id}")));
+        assert!(event.payload.to_string().contains(&format!("deny:{id}")));
+        assert!(!target.exists());
+
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn approval_card_actions_execute_or_deny_the_held_write() {
+        let (data, outside) = dirs("actions");
+        let daemon = daemon(&data);
+        let approved = outside.join("approved.txt");
+        let denied = outside.join("denied.txt");
+
+        let approve_id = daemon
+            .call(
+                "file.write",
+                json!({"thread":"main", "path":approved, "content":"written"}),
+            )
+            .unwrap()["id"]
+            .as_i64()
+            .unwrap();
+        daemon
+            .call(
+                "ui.event",
+                json!({"thread":"main", "event":format!("approve:{approve_id}")}),
+            )
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(&approved).unwrap(), "written");
+        let stale_deny = daemon
+            .call(
+                "ui.event",
+                json!({"thread":"main", "event":format!("deny:{approve_id}")}),
+            )
+            .unwrap();
+        assert_eq!(stale_deny["denied"], false);
+        assert_eq!(
+            daemon.watchers.lock().unwrap().status(approve_id).unwrap(),
+            "approved"
+        );
+
+        let deny_id = daemon
+            .call(
+                "file.write",
+                json!({"thread":"main", "path":denied, "content":"blocked"}),
+            )
+            .unwrap()["id"]
+            .as_i64()
+            .unwrap();
+        let denied_response = daemon
+            .call(
+                "ui.event",
+                json!({"thread":"main", "event":format!("deny:{deny_id}")}),
+            )
+            .unwrap();
+        assert_eq!(denied_response["denied"], true);
+        assert!(!denied.exists());
+        assert_eq!(daemon.watchers.lock().unwrap().status(deny_id).unwrap(), "denied");
+        let repeated = daemon
+            .call(
+                "ui.event",
+                json!({"thread":"main", "event":format!("deny:{deny_id}")}),
+            )
+            .unwrap();
+        assert_eq!(repeated["denied"], false);
+        let unknown = daemon
+            .call("ui.event", json!({"thread":"main", "event":"deny:999999"}))
+            .unwrap();
+        assert_eq!(unknown["denied"], false);
+
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn approval_card_actions_cannot_cross_threads_or_revive_expired_rows() {
+        let (data, outside) = dirs("scope");
+        let daemon = daemon(&data);
+        let target = outside.join("scoped.txt");
+        let id = daemon
+            .call(
+                "file.write",
+                json!({"thread":"thread-7", "path":target, "content":"secret"}),
+            )
+            .unwrap()["id"]
+            .as_i64()
+            .unwrap();
+
+        let cross_thread = daemon
+            .call(
+                "ui.event",
+                json!({"thread":"main", "event":format!("approve:{id}")}),
+            )
+            .unwrap();
+        assert_eq!(cross_thread["executed"], false);
+        assert!(!target.exists());
+        assert_eq!(daemon.watchers.lock().unwrap().status(id).unwrap(), "pending");
+
+        let expired_target = outside.join("expired.txt");
+        let expired_id = daemon
+            .watchers
+            .lock()
+            .unwrap()
+            .request_file_write(&data, "main", &expired_target, "late", 0)
+            .unwrap();
+        let WriteDecision::Pending(expired_id) = expired_id else {
+            panic!("outside write must be pending");
+        };
+        let expired = daemon
+            .call(
+                "ui.event",
+                json!({"thread":"main", "event":format!("deny:{expired_id}")}),
+            )
+            .unwrap();
+        assert_eq!(expired["denied"], false);
+        assert_eq!(
+            daemon.watchers.lock().unwrap().status(expired_id).unwrap(),
+            "expired"
+        );
+        assert!(!expired_target.exists());
+
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
     }
 }
 
