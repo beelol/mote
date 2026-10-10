@@ -1190,6 +1190,43 @@ mod approval_dispatch_tests {
     }
 
     #[test]
+    fn matrix_diagnostic_events_exclude_malformed_source_literals() {
+        let (data, _) = dirs("matrix-literal-diagnostic");
+        let daemon = daemon(&data);
+        for (literal, private_text) in [
+            (r#""{\"password\":\"planted-private-password\"}""#, "planted-private-password"),
+            (r#""{\"api_key\":\"planted-private-key\"}""#, "planted-private-key"),
+            (r#""planted-private-note""#, "planted-private-note"),
+            ("12345678901234567890", "12345678901234567890"),
+        ] {
+            let source = format!("screen {{ {literal} }}");
+            for streamed in [false, true] {
+                let before = daemon.log.max_seq().unwrap();
+                let response = if streamed {
+                    candidate(&daemon, "main", "private-literal", source.as_bytes(), true)
+                } else {
+                    daemon.call("matrix.render", json!({"thread":"main", "source":source})).unwrap()
+                };
+                let stored = daemon.log.get(before + 1).unwrap().unwrap();
+                assert_eq!(stored.kind, "ui.diagnostic");
+                assert!(!stored.payload.to_string().contains(private_text), "persisted rejected literal: {stored:?}");
+                assert_eq!(stored.payload["diagnostics"], json!([{
+                    "code":"E_PARSE_TOKEN", "severity":"error",
+                    "span":{"start":9, "end":9 + literal.len()},
+                    "declaration_path":["screen[0]"],
+                    "message":"expected an identifier", "hint":null
+                }]));
+                assert_eq!(response["diagnostics"], stored.payload["diagnostics"]);
+                let replayed = daemon.log.subscribe("main", before).unwrap()
+                    .recv_timeout(Duration::from_millis(10)).unwrap();
+                assert_eq!(replayed, stored);
+                assert_eq!(daemon.log.max_seq().unwrap(), before + 1);
+            }
+        }
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
     fn invalid_matrix_source_returns_diagnostics_without_replacing_the_surface() {
         let (data, _) = dirs("matrix-invalid");
         let daemon = daemon(&data);

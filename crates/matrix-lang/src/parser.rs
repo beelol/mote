@@ -417,7 +417,9 @@ impl<'a> Parser<'a> {
         depth: usize,
         index: usize,
     ) -> ParseResult<Declaration> {
-        self.path.push(format!("{}[{index}]", self.text()));
+        if self.at(TokenKind::Identifier) {
+            self.path.push(format!("{}[{index}]", self.text()));
+        }
         if depth > 12 {
             return Err(self.error(
                 DiagnosticCode::DepthLimit,

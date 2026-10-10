@@ -418,6 +418,28 @@ fn truncated_input_never_panics() {
 }
 
 #[test]
+fn unexpected_literals_do_not_enter_diagnostic_declaration_paths() {
+    let source = r#"screen { "{\"password\":\"planted-private-password\"}" }"#;
+    let error = &parse_surface(source).unwrap_err()[0];
+    assert_eq!(error.code.as_str(), "E_PARSE_TOKEN");
+    assert_eq!(error.span, Span::new(9, 54));
+    assert_eq!(error.declaration_path, ["screen[0]"]);
+    assert_eq!(error.message, "expected an identifier");
+    assert!(error.hint.is_none());
+
+    for literal in [r#""private note""#, "12345678901234567890"] {
+        let source = format!("screen {{ row {{ {literal} }} }}");
+        let error = &parse_surface(&source).unwrap_err()[0];
+        assert_eq!(error.code.as_str(), "E_PARSE_TOKEN");
+        assert_eq!(error.declaration_path, ["screen[0]", "row[0]"]);
+        assert!(!format!("{error:?}").contains(literal));
+    }
+
+    let error = &parse_surface(r#"screen { row { text "ok" text } }"#).unwrap_err()[0];
+    assert_eq!(error.declaration_path, ["screen[0]", "row[0]", "text[1]"]);
+}
+
+#[test]
 fn reports_stable_codes_byte_spans_and_declaration_paths() {
     let source = "screen { row { mystery } }";
     let error = &parse_surface(source).unwrap_err()[0];
