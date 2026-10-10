@@ -1,91 +1,57 @@
-# Handoff: Mote closeout
+# Handoff: Matrix dashboard connected to Mote
 
-Updated 2026-10-10 03:05 PDT. Replace this file, never append. Delete it when nothing needs
-transfer. Nothing here assumes chat history.
+Updated 2026-10-10. Replace this file, never append.
 
 ## Where
 
-- Branch: `main`. `HEAD` and `origin/main` are `7d6b693` before this handoff update.
-- Contract: `docs/rfcs/v0.md`. Driver goal: `docs/goal-close-out.md`. Matrix plan:
-  `matrix/CLOSEOUT.md`.
-- The owner directed this session to drive Mote and delegate Matrix UI work. Do not ask the owner
-  questions before 09:00 America/Los_Angeles. Make conservative choices and defer owner decisions.
+- Branch: `main`.
+- Latest implementation commit: `6e1ac31`. The current HEAD also contains the verification
+  documentation recorded with this handoff.
+- The configured remote is still untrusted by the execution environment. Push was refused earlier.
+  Do not bypass that restriction. Preserve the untracked `.DS_Store`.
 
-## Completed and pushed
+## Completed slice
 
-- Matrix pattern recipes: `f93b87e`.
-- Vector design defaults: `bc9cc4b`.
-- Frozen Matrix grammar and resolved design defaults: `e7d7895` and `618a0e6`.
-- Validated `surface.render` daemon seam and `ui.surface` event: `845eb5e`.
-- First Mac-native Matrix runtime with Vector: `ca89996`, `45c7e68` and `d2f4110`.
-- Acceptance reconciliation for all open UI criteria: `414c0af`.
-- Current closeout state: `57c6880`. Streamed text after a surface remains visible: `5ef7b25`.
-- Approval cards and thread-scoped pending actions: `bd6e674`.
-- Durable client replay and optimistic turn identity: `214b588`, `91ec919` and `47507d2`.
-- Daemon-backed Pipeline data and live main-scope updates: `25526fe`.
-- Truthful talk, router and think request timing, ledger metrics and refresh-race fixes: `937b1bd`
-  and `7d6b693`.
-- The final workspace run passed 128 tests with zero failures. Clippy with warnings denied and
-  whitespace checks passed. `HEAD` matches `origin/main` before this documentation update.
+- `matrix-lang` lexes, parses, formats, streams, resolves and lowers the supported v0 subset.
+- The final resolver budget overcount is fixed in `833d4a4`.
+- `mote-client --gallery` opens one scrollable native page containing all eleven v0 Node variants.
+- `moted` owns a trusted Matrix manifest and snapshot for the four model settings, the three
+  approved local model choices, current pipeline-stage summaries and Refresh.
+- `matrix.render` atomically compiles and commits complete valid source. Invalid source returns
+  structured diagnostics and leaves the previous surface unchanged.
+- `mote-client --matrix matrix/examples/mote-dashboard.matrix` opens the working native dashboard.
+- Toggle and select changes use typed `event` and `args` envelopes. The daemon rejects values
+  outside the trusted contract. Successful changes recompile the retained source.
+- Matrix surfaces use stable identity and update in place. Cached immediate-mode control state
+  yields to changed host values. Failed events show an error and roll back optimistic state.
+- One ordered event worker keeps the render thread responsive and preserves click order.
+- UI-10 and V0-45 are verified. UI-29 and UI-30 have partial evidence and remain open.
 
-The client uses exact `eframe` and `egui` 0.31.0 with `winit` 0.30.13. It renders all eleven
-unchanged v0 `Node` variants, supports the fixture preview, follows system appearance and applies
-the Vector light and dark themes. The daemon validates requested trees fail-closed before storing
-them. It emits one redacted user event before lane work. The client reconnects from the last event
-applied by the UI and reconciles optimistic turns by stable local identity. The Matrix grammar
-supports only the published v0 lowering subset. Unsupported semantics return
-`E_LOWER_UNSUPPORTED`.
+## Verification
 
-The Pipeline screen reads one cached daemon snapshot off the render path. Now merges live
-main-scope events without polling. Config exposes all nine section 4 keys. Numbers reports exact
-last-hour totals and comparable p50 and p95 latency samples. Requests shows every retained talk,
-router and think model call with redacted payload, correlated timing and status. Legacy ledger
-rows remain visible but are marked with unknown latency semantics and excluded from incompatible
-percentiles.
+- Final focused client run: 59 tests passed.
+- Final focused Matrix daemon dispatch run: 10 tests passed.
+- `cargo test --workspace` passed after the integration fixes.
+- `cargo clippy --workspace -- -D warnings` passed.
+- `git diff --check` passed after documentation whitespace cleanup.
+- An isolated live run under `/tmp/mote-matrix-live2` displayed one native dashboard. Clicking Local
+  only changed the daemon config, emitted `ui.event`, recompiled the surface and updated the same
+  dashboard. The temporary value was restored to true.
+- Final screenshot: `/tmp/mote-matrix-dashboard-final.png`.
+- Independent final review approved the complete slice with no remaining findings.
 
-## Open gates
+## Next actions
 
-- The v0 board remains 46 of 55 checked. V0-43 through V0-48, V0-50, V0-52 and V0-53 remain open.
-- The Mac was locked during runtime verification. The native process launched and remained alive,
-  but that is not visible acceptance. No screenshot criterion is closed.
-- The lock was rechecked at 03:03 PDT. A separate isolated daemon completed one live talk and
-  router turn with the approved local models. Its Pipeline snapshot showed two correlated request
-  and response pairs, nonzero token counts, measured timing and one ledger row per call. V0-49
-  contains the excerpt.
-- Fresh 20-run benchmarks at `3bd4eec` measured talk p50 at 27.0 ms and router p50 at 56.8 ms.
-  Both existing lane gates remain green. V0-50 now has the closed-view baseline, but still needs
-  the matching run while the Pipeline view is visibly open.
-- An isolated live `config.set` changed `models.talk` from `qwen3:4b` to `qwen3:0.6b`. The next
-  turn's ledger row used `qwen3:0.6b`, with the prior `qwen3:4b` row retained as before evidence.
-  V0-48 contains the excerpt and remains open only for the visible Config-control action.
-- Ollama 0.35.0 received `think: false`, but the installed `qwen3:4b` template still returned its
-  reasoning in `message.content` before `</think>`. The raw first-token benchmark passes. Do not
-  add an output-stripping workaround or refresh the installed model without an owner decision.
-- Live daemon-connected cursor replay, message states, `ui.event`, system appearance, Pipeline
-  screenshots, a live configuration change and the Pipeline performance comparison remain undone.
-- The approval lifecycle is wired and tested, but its required screenshot remains undone.
-- V0-53 still requires literal logout and login evidence.
-- UI-00 remains an owner decision. It asks the owner to approve the closed catalog, frozen grammar,
-  Vector defaults and the split between Matrix as the future source and the unchanged v0 tree as
-  the interim consumer contract. No Matrix compiler work is authorized yet.
-- `docs/handoff/ui-language/implementation.md` defines the post-approval activation order, owned
-  files, fixtures, commands and stop conditions. It does not claim approval.
+1. Implement the production Matrix candidate stream so every prefix preserves the committed
+   surface. Then close UI-32 and the commitment part of UI-35.
+2. Add a visible in-app diagnostic artifact and one bounded diagnostic-bearing retry.
+3. Version the full-catalog consumer contract. Add slider, strict layout, anchors, fill, collection
+   selection, general action arguments, accessibility roles and host surface history.
+4. Keep current v0 JSON surfaces and approval cards compatible while each replacement is verified.
 
-## Exact next actions
+## Rules
 
-1. On an unlocked Mac, run the fixture preview in light and dark modes and save visible evidence.
-2. Connect the client to a live daemon. Verify cursor replay without duplicates, all message states,
-   typing, inline surfaces and a button action reaching the daemon as `ui.event`.
-3. Exercise all five Pipeline stages and four tabs during a live turn. Change `models.talk` and
-   capture ledger rows before and after.
-4. Run `moted bench talk` with the Pipeline closed and open to verify the p50 delta is below 5 ms.
-5. Capture the approval card, then perform the literal launchd logout and login check for V0-53.
-6. After owner approval of UI-00, move only the approved Matrix compiler slice into active scope.
-
-## Rules that still bite
-
-- `models.local_only` stays true. Pull only the three models named in `docs/rfcs/v0.md` section 0.
-- Every model call uses the ledger. Redaction runs before storage. Structured verdicts parse
-  fail-closed. No API keys.
-- Use Conventional Commits with no AI attribution. Run the full workspace tests and clippy before
-  every commit. Push accepted work to `main`.
+- `docs/rfcs/v0.md` remains authoritative for behavior not replaced by a verified Matrix contract.
+- `models.local_only` stays true. Pull only the three approved models.
+- Every model call uses the ledger. Redaction runs before storage. Structured verdicts fail closed.
+- Run workspace tests and clippy with warnings denied before every commit.

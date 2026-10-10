@@ -32,7 +32,9 @@ Nothing here assumes you were in the conversation that started it.
 
 ## Status
 
-Planning finished on 2026-10-08. No code exists. Nothing is committed yet. Toolchain on the owner's Mac: cargo 1.89, Claude Code 2.1.289, Ollama, 128 GB RAM.
+Planning finished on 2026-10-08. The headless daemon, native client, compact v0 renderer and first
+Matrix compiler-to-host slice are implemented on `main`. Toolchain on the owner's Mac: cargo 1.89,
+Claude Code 2.1.296, Ollama, 128 GB RAM.
 
 Every product default for the first build is fixed in [docs/rfcs/v0.md](docs/rfcs/v0.md). A driver does not need the owner for any item in the v0 list below. The owner's remaining decisions are deliberately outside v0: flipping `models.local_only` to allow Claude Code and Codex, a Slack bot token, the Overseer work lane, browser use, the Pi, voice. They live in [docs/backlog.md](docs/backlog.md).
 
@@ -79,7 +81,8 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
   record separate evidence files. [spec](docs/superpowers/specs/2026-10-10-matrix-toolchain.md)
   [plan](docs/superpowers/plans/2026-10-10-matrix-toolchain.md)
   Verified: [UI-01](docs/verification/UI-01.md), [UI-06](docs/verification/UI-06.md),
-  [UI-08](docs/verification/UI-08.md), [UI-11](docs/verification/UI-11.md),
+  [UI-08](docs/verification/UI-08.md), [UI-10](docs/verification/UI-10.md),
+  [UI-11](docs/verification/UI-11.md),
   [UI-12](docs/verification/UI-12.md) and [UI-45](docs/verification/UI-45.md).
 - [ ] **Matrix host and runtime** Implement UI-13 through UI-31, UI-33 through UI-44 and UI-46
   through UI-48 after the toolchain, including a versioned full-catalog consumer contract.
@@ -131,7 +134,7 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
 - [x] **V0-42** Each fixture renders to a PNG through the test renderer and matches its golden image. **Verify:** Tests. [§12](docs/rfcs/v0.md#12-surface-tree) [evidence](docs/verification/V0-42.md)
 - [ ] **V0-43** `mote-client` connects, subscribes from its saved cursor, shows threads as chat, and after close and reopen shows nothing twice. **Verify:** Live run; screenshot and cursor check in the evidence file. [§13](docs/rfcs/v0.md#13-mote-client)
 - [ ] **V0-44** Every message shows one of sending, sent, delivered, read, and a typing indicator appears while `talk.delta` events arrive. **Verify:** Screenshots of each state. [§13](docs/rfcs/v0.md#13-mote-client)
-- [ ] **V0-45** A reply that carries a surface renders inline, and a button press arrives at the daemon as `ui.event`. **Verify:** Live run; event log excerpt in the evidence file. [§13](docs/rfcs/v0.md#13-mote-client)
+- [x] **V0-45** A reply that carries a surface renders inline, and a button press arrives at the daemon as `ui.event`. **Verify:** Live run; event log excerpt in the evidence file. [§13](docs/rfcs/v0.md#13-mote-client) [evidence](docs/verification/V0-45.md)
 - [ ] **V0-46** The client follows the system light and dark setting. **Verify:** Two screenshots. [§13](docs/rfcs/v0.md#13-mote-client)
 - [ ] **V0-47** The pipeline screen lists the five stages and each opens Now, Config, Numbers and Requests tabs. **Verify:** Screenshots during a live turn. [§14](docs/rfcs/v0.md#14-pipeline-view)
 - [ ] **V0-48** Changing `models.talk` from the Config tab calls `config.set` and the next turn uses the new model. **Verify:** Live run; ledger rows before and after. [§14](docs/rfcs/v0.md#14-pipeline-view)

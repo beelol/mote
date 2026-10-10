@@ -79,7 +79,10 @@ shape, and name the actions. matrix is the vocabulary for exactly that and nothi
 
 ## Status
 
-Design only. Date 2026-10-10. No interpreter exists. No matrix parser exists. The grammar is frozen
-for owner confirmation. The catalog, bindings and examples remain open to owner revision. Nothing here changes the v0 build
-contract or the v0 surface tree. The formal acceptance gate is `UI-00` in `docs/backlog.md`, which
-only the owner closes.
+The grammar is frozen and owner-approved. `crates/matrix-lang` now lexes, parses, formats, resolves
+and lowers the supported subset into the unchanged compact v0 tree. `moted` owns the first trusted
+manifest and snapshot for configuration and pipeline data. `mote-client --matrix <path>` submits a
+source file and displays the compiled surface through the native immediate-mode renderer.
+
+The full catalog, streaming host, general action contracts, layout replacement and later device
+consumers remain open. The root README is the completion record.
