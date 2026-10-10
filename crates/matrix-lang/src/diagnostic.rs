@@ -24,6 +24,14 @@ pub enum DiagnosticCode {
     InvalidCharacter,
     CommentNotAllowed,
     SourceTooLong,
+    UnexpectedToken,
+    UnexpectedEof,
+    UnknownDeclaration,
+    InvalidNesting,
+    InvalidLiteral,
+    DuplicateArgument,
+    DepthLimit,
+    NodeLimit,
 }
 
 impl DiagnosticCode {
@@ -36,6 +44,14 @@ impl DiagnosticCode {
             Self::InvalidCharacter => "E_LEX_CHARACTER",
             Self::CommentNotAllowed => "E_LEX_COMMENT",
             Self::SourceTooLong => "E_SOURCE_TOO_LONG",
+            Self::UnexpectedToken => "E_PARSE_TOKEN",
+            Self::UnexpectedEof => "E_PARSE_INCOMPLETE",
+            Self::UnknownDeclaration => "E_PARSE_DECLARATION",
+            Self::InvalidNesting => "E_PARSE_NESTING",
+            Self::InvalidLiteral => "E_PARSE_LITERAL",
+            Self::DuplicateArgument => "E_PARSE_DUPLICATE_ARGUMENT",
+            Self::DepthLimit => "E_PARSE_DEPTH",
+            Self::NodeLimit => "E_PARSE_NODES",
         }
     }
 }
