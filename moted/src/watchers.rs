@@ -8,7 +8,7 @@
 use chrono::{TimeZone, Utc};
 use mote_eventlog::EventLog;
 use rusqlite::Connection;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::ffi::{CString, OsString};
 use std::fmt;
@@ -72,9 +72,11 @@ impl From<serde_json::Error> for ApprovalError {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct FileWritePayload {
     path: PathBuf,
+    resolved_path: PathBuf,
+    expectation: TargetExpectation,
     content: String,
 }
 
@@ -82,6 +84,14 @@ struct ResolvedWriteTarget {
     path: PathBuf,
     parent: PathBuf,
     filename: OsString,
+    expectation: TargetExpectation,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+enum TargetExpectation {
+    Missing,
+    Existing { device: u64, inode: u64 },
 }
 
 pub struct Watchers {
@@ -201,7 +211,12 @@ impl Watchers {
             write_resolved(&resolved, content, before_target_open)?;
             return Ok(WriteDecision::Executed);
         }
-        let payload = json!({ "path": path.to_string_lossy(), "content": content }).to_string();
+        let payload = serde_json::to_string(&FileWritePayload {
+            path: path.to_path_buf(),
+            resolved_path: resolved.path,
+            expectation: resolved.expectation,
+            content: content.to_string(),
+        })?;
         self.conn.execute(
             "INSERT INTO approvals(thread_id, kind, payload, status, expires_at, created_at)
              VALUES(?1, 'file_write', ?2, 'pending', ?3, ?4)",
@@ -262,6 +277,13 @@ impl Watchers {
         };
         let write: FileWritePayload = serde_json::from_str(&payload)?;
         let resolved = resolve_write_target(&write.path)?;
+        if resolved.path != write.resolved_path || resolved.expectation != write.expectation {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "approved write target changed while pending",
+            )
+            .into());
+        }
         write_resolved(&resolved, &write.content, before_target_open)?;
         let changed = self.conn.execute(
             "UPDATE approvals SET status='approved'
@@ -302,7 +324,7 @@ impl Watchers {
         let payload: String =
             self.conn.query_row("SELECT payload FROM approvals WHERE id=?1", [id], |r| r.get(0))?;
         let v: serde_json::Value = serde_json::from_str(&payload).unwrap_or(serde_json::Value::Null);
-        let path = v["path"].as_str().unwrap_or("");
+        let path = v["resolved_path"].as_str().or_else(|| v["path"].as_str()).unwrap_or("");
         Ok(json!({
             "type": "stack",
             "children": [
@@ -330,8 +352,17 @@ impl Watchers {
 }
 
 fn resolve_write_target(path: &Path) -> std::io::Result<ResolvedWriteTarget> {
-    let resolved = match path.canonicalize() {
-        Ok(path) => path,
+    let (resolved, expectation) = match path.canonicalize() {
+        Ok(path) => {
+            let metadata = path.metadata()?;
+            (
+                path,
+                TargetExpectation::Existing {
+                    device: metadata.dev(),
+                    inode: metadata.ino(),
+                },
+            )
+        }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             match path.symlink_metadata() {
                 Ok(_) => return Err(error),
@@ -348,7 +379,7 @@ fn resolve_write_target(path: &Path) -> std::io::Result<ResolvedWriteTarget> {
             let filename = path.file_name().ok_or_else(|| {
                 std::io::Error::new(std::io::ErrorKind::InvalidInput, "write target has no filename")
             })?;
-            parent.canonicalize()?.join(filename)
+            (parent.canonicalize()?.join(filename), TargetExpectation::Missing)
         }
         Err(error) => return Err(error),
     };
@@ -362,6 +393,7 @@ fn resolve_write_target(path: &Path) -> std::io::Result<ResolvedWriteTarget> {
         path: resolved.clone(),
         parent: parent.to_path_buf(),
         filename: filename.to_os_string(),
+        expectation,
     })
 }
 
@@ -372,6 +404,14 @@ fn write_resolved(
 ) -> std::io::Result<()> {
     let parent = open_directory(&target.parent)?;
     let identity = parent.metadata()?;
+    let mut existing = match target.expectation {
+        TargetExpectation::Missing => None,
+        TargetExpectation::Existing { device, inode } => {
+            let file = open_existing_target(&parent, &target.filename)?;
+            require_identity(&file, device, inode)?;
+            Some(file)
+        }
+    };
     before_target_open()?;
     let current = open_directory(&target.parent)?;
     let current_identity = current.metadata()?;
@@ -381,24 +421,79 @@ fn write_resolved(
             "write target parent changed during validation",
         ));
     }
-    let name = c_string(&target.filename)?;
-    let descriptor = unsafe {
-        libc::openat(
-            parent.as_raw_fd(),
-            name.as_ptr(),
-            libc::O_WRONLY
-                | libc::O_CREAT
-                | libc::O_TRUNC
-                | libc::O_NOFOLLOW
-                | libc::O_CLOEXEC,
-            0o666,
-        )
-    };
+    match target.expectation {
+        TargetExpectation::Missing => {
+            let mut file = create_target(&parent, &target.filename)?;
+            file.write_all(content.as_bytes())
+        }
+        TargetExpectation::Existing { device, inode } => {
+            let current = open_existing_target(&parent, &target.filename)?;
+            require_identity(&current, device, inode)?;
+            let file = existing.as_mut().expect("existing target descriptor");
+            require_same_identity(file, &current)?;
+            file.set_len(0)?;
+            file.write_all(content.as_bytes())
+        }
+    }
+}
+
+fn open_existing_target(parent: &File, filename: &std::ffi::OsStr) -> std::io::Result<File> {
+    open_target(
+        parent,
+        filename,
+        libc::O_WRONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        0,
+    )
+}
+
+fn create_target(parent: &File, filename: &std::ffi::OsStr) -> std::io::Result<File> {
+    open_target(
+        parent,
+        filename,
+        libc::O_WRONLY
+            | libc::O_CREAT
+            | libc::O_EXCL
+            | libc::O_NOFOLLOW
+            | libc::O_CLOEXEC,
+        0o666,
+    )
+}
+
+fn open_target(
+    parent: &File,
+    filename: &std::ffi::OsStr,
+    flags: libc::c_int,
+    mode: libc::c_uint,
+) -> std::io::Result<File> {
+    let name = c_string(filename)?;
+    let descriptor = unsafe { libc::openat(parent.as_raw_fd(), name.as_ptr(), flags, mode) };
     if descriptor < 0 {
         return Err(std::io::Error::last_os_error());
     }
-    let mut file = unsafe { File::from_raw_fd(descriptor) };
-    file.write_all(content.as_bytes())
+    Ok(unsafe { File::from_raw_fd(descriptor) })
+}
+
+fn require_identity(file: &File, device: u64, inode: u64) -> std::io::Result<()> {
+    let metadata = file.metadata()?;
+    if metadata.dev() != device || metadata.ino() != inode {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "write target identity changed during validation",
+        ));
+    }
+    Ok(())
+}
+
+fn require_same_identity(first: &File, second: &File) -> std::io::Result<()> {
+    let first = first.metadata()?;
+    let second = second.metadata()?;
+    if first.dev() != second.dev() || first.ino() != second.ino() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "write target identity changed during validation",
+        ));
+    }
+    Ok(())
 }
 
 fn open_directory(path: &Path) -> std::io::Result<File> {
@@ -739,6 +834,133 @@ mod tests {
         assert!(matches!(result, Err(ApprovalError::Filesystem(_))));
         assert!(!redirected.exists());
         assert!(!parked.join("note.txt").exists());
+        assert_eq!(w.status(id).unwrap(), "pending");
+        assert!(w.deny(id, 1_002).unwrap());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn target_swap_after_validation_cannot_replace_an_inside_file() {
+        let root = temp_root("inside-target-swap");
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let target = data.join("note.txt");
+        let parked = data.join("parked.txt");
+        let replacement = data.join("replacement.txt");
+        std::fs::write(&target, "original").unwrap();
+        std::fs::write(&replacement, "replacement").unwrap();
+        let w = Watchers::open_in_memory().unwrap();
+
+        let result = w.request_file_write_with_hook(
+            &data,
+            "t1",
+            &target,
+            "blocked",
+            1_000,
+            || {
+                std::fs::rename(&target, &parked)?;
+                std::fs::rename(&replacement, &target)
+            },
+        );
+
+        assert!(matches!(result, Err(ApprovalError::Filesystem(_))));
+        assert_eq!(std::fs::read_to_string(&parked).unwrap(), "original");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "replacement");
+        let approvals: i64 =
+            w.conn.query_row("SELECT COUNT(*) FROM approvals", [], |row| row.get(0)).unwrap();
+        assert_eq!(approvals, 0);
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn target_hardlink_swap_after_validation_keeps_approval_pending() {
+        let root = temp_root("approved-target-swap");
+        let data = root.join("data");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let target = outside.join("note.txt");
+        let parked = outside.join("parked.txt");
+        let bait = outside.join("bait.txt");
+        std::fs::write(&target, "original").unwrap();
+        std::fs::write(&bait, "replacement").unwrap();
+        let w = Watchers::open_in_memory().unwrap();
+        let WriteDecision::Pending(id) =
+            w.request_file_write(&data, "t1", &target, "blocked", 1_000).unwrap()
+        else {
+            panic!("outside target must be pending");
+        };
+
+        let result = w.approve_for_thread_with_hook(id, "t1", 1_001, || {
+            std::fs::rename(&target, &parked)?;
+            std::fs::hard_link(&bait, &target)
+        });
+
+        assert!(matches!(result, Err(ApprovalError::Filesystem(_))));
+        assert_eq!(std::fs::read_to_string(&parked).unwrap(), "original");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "replacement");
+        assert_eq!(std::fs::read_to_string(&bait).unwrap(), "replacement");
+        assert_eq!(w.status(id).unwrap(), "pending");
+        assert!(w.deny(id, 1_002).unwrap());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn missing_inside_target_created_after_validation_is_not_truncated() {
+        let root = temp_root("missing-target-swap");
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let target = data.join("note.txt");
+        let w = Watchers::open_in_memory().unwrap();
+
+        let result = w.request_file_write_with_hook(
+            &data,
+            "t1",
+            &target,
+            "blocked",
+            1_000,
+            || std::fs::write(&target, "replacement"),
+        );
+
+        assert!(matches!(result, Err(ApprovalError::Filesystem(_))));
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "replacement");
+        let approvals: i64 =
+            w.conn.query_row("SELECT COUNT(*) FROM approvals", [], |row| row.get(0)).unwrap();
+        assert_eq!(approvals, 0);
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pending_symlink_retarget_cannot_change_the_approved_destination() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_root("pending-symlink-retarget");
+        let data = root.join("data");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let first = outside.join("first.txt");
+        let second = outside.join("second.txt");
+        let link = outside.join("selected.txt");
+        std::fs::write(&first, "first").unwrap();
+        std::fs::write(&second, "second").unwrap();
+        symlink(&first, &link).unwrap();
+        let w = Watchers::open_in_memory().unwrap();
+        let WriteDecision::Pending(id) =
+            w.request_file_write(&data, "t1", &link, "blocked", 1_000).unwrap()
+        else {
+            panic!("outside target must be pending");
+        };
+        let card = w.approval_card(id).unwrap().to_string();
+        assert!(card.contains(first.to_str().unwrap()));
+        assert!(!card.contains(link.to_str().unwrap()));
+        std::fs::remove_file(&link).unwrap();
+        symlink(&second, &link).unwrap();
+
+        assert!(matches!(w.approve(id, 1_001), Err(ApprovalError::Filesystem(_))));
+        assert_eq!(std::fs::read_to_string(&first).unwrap(), "first");
+        assert_eq!(std::fs::read_to_string(&second).unwrap(), "second");
         assert_eq!(w.status(id).unwrap(), "pending");
         assert!(w.deny(id, 1_002).unwrap());
         std::fs::remove_dir_all(root).ok();

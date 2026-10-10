@@ -2417,6 +2417,53 @@ mod approval_dispatch_tests {
         std::fs::remove_dir_all(data.parent().unwrap()).ok();
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn retargeted_pending_symlink_returns_an_internal_error_without_accepting_event() {
+        use std::os::unix::fs::symlink;
+
+        let (data, outside) = dirs("pending-symlink-retarget");
+        let first = outside.join("first.txt");
+        let second = outside.join("second.txt");
+        let link = outside.join("selected.txt");
+        std::fs::write(&first, "first").unwrap();
+        std::fs::write(&second, "second").unwrap();
+        symlink(&first, &link).unwrap();
+        let daemon = daemon(&data);
+        let id = daemon
+            .call(
+                "file.write",
+                json!({"thread":"main", "path":link, "content":"blocked"}),
+            )
+            .unwrap()["id"]
+            .as_i64()
+            .unwrap();
+        let before_approval = daemon.log.max_seq().unwrap();
+        std::fs::remove_file(&link).unwrap();
+        symlink(&second, &link).unwrap();
+
+        let error = daemon
+            .call(
+                "ui.event",
+                json!({"thread":"main", "event":format!("approve:{id}")}),
+            )
+            .unwrap_err();
+
+        assert_eq!(error.code, codes::INTERNAL);
+        assert_eq!(daemon.log.max_seq().unwrap(), before_approval);
+        assert_eq!(std::fs::read_to_string(&first).unwrap(), "first");
+        assert_eq!(std::fs::read_to_string(&second).unwrap(), "second");
+        assert_eq!(daemon.watchers.lock().unwrap().status(id).unwrap(), "pending");
+        let denied = daemon
+            .call(
+                "ui.event",
+                json!({"thread":"main", "event":format!("deny:{id}")}),
+            )
+            .unwrap();
+        assert_eq!(denied["denied"], true);
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
     #[test]
     fn pipeline_snapshot_rpc_is_read_only_and_returns_all_config_keys() {
         let (data, _outside) = dirs("pipeline-snapshot");
