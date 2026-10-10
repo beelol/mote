@@ -8,6 +8,7 @@
 mod app;
 mod fixture;
 mod state;
+mod stream;
 mod surface;
 mod theme;
 
@@ -28,16 +29,7 @@ fn main() -> eframe::Result<()> {
         let cursor = app::load_cursor();
         let sock = socket.clone();
         std::thread::spawn(move || {
-            if let Ok(mut stream) = mote_ipc::EventStream::connect(&sock, "main", cursor) {
-                loop {
-                    if let Some(ev) = stream.next_event() {
-                        app::save_cursor(ev.seq);
-                        if tx.send(ev).is_err() {
-                            break;
-                        }
-                    }
-                }
-            }
+            stream::run(&sock, "main", cursor, tx);
         });
     }
 

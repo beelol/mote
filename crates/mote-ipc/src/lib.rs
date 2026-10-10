@@ -328,6 +328,7 @@ impl EventStream {
     }
 
     fn reconnect(&mut self) {
+        let mut delay = Duration::from_millis(20);
         loop {
             match Self::open(&self.path, &self.scope_id, self.cursor) {
                 Ok((r, s)) => {
@@ -335,7 +336,10 @@ impl EventStream {
                     self.stream = s;
                     return;
                 }
-                Err(_) => std::thread::sleep(Duration::from_millis(20)),
+                Err(_) => {
+                    std::thread::sleep(delay);
+                    delay = (delay * 2).min(Duration::from_secs(1));
+                }
             }
         }
     }
@@ -346,36 +350,48 @@ impl EventStream {
         let _ = self.stream.shutdown(std::net::Shutdown::Both);
     }
 
+    /// Read once from this subscription. A timeout returns `Ok(None)`. A dropped connection is
+    /// returned to the caller so a higher-level worker can reconnect from its delivered cursor.
+    pub fn read_event(&mut self) -> io::Result<Option<Event>> {
+        let mut line = String::new();
+        match self.reader.read_line(&mut line) {
+            Ok(0) => Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "subscription closed",
+            )),
+            Ok(_) => {
+                let frame: Value = serde_json::from_str(line.trim_end())
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+                let value = frame.get("event").ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "subscription frame has no event",
+                    )
+                })?;
+                let event: Event = serde_json::from_value(value.clone())
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+                self.cursor = event.seq;
+                Ok(Some(event))
+            }
+            Err(error)
+                if error.kind() == io::ErrorKind::WouldBlock
+                    || error.kind() == io::ErrorKind::TimedOut =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     /// Pull the next event, reconnecting from the cursor on a hard disconnect. Returns None on a
     /// read timeout with no event.
     pub fn next_event(&mut self) -> Option<Event> {
         loop {
-            let mut line = String::new();
-            match self.reader.read_line(&mut line) {
-                Ok(0) => {
-                    // EOF: server dropped the connection.
-                    self.reconnect();
-                    continue;
-                }
-                Ok(_) => {
-                    let v: Value = match serde_json::from_str(line.trim_end()) {
-                        Ok(v) => v,
-                        Err(_) => continue,
-                    };
-                    if let Some(ev) = v.get("event") {
-                        if let Ok(event) = serde_json::from_value::<Event>(ev.clone()) {
-                            self.cursor = event.seq;
-                            return Some(event);
-                        }
-                    }
-                    continue;
-                }
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut => {
-                    return None;
-                }
+            match self.read_event() {
+                Ok(event) => return event,
+                Err(error) if error.kind() == io::ErrorKind::InvalidData => continue,
                 Err(_) => {
                     self.reconnect();
-                    continue;
                 }
             }
         }
@@ -511,5 +527,17 @@ mod tests {
         for w in got.windows(2) {
             assert!(w[1] > w[0], "no duplicate, in order: {got:?}");
         }
+    }
+
+    #[test]
+    fn single_subscription_read_reports_a_dropped_connection() {
+        let (_srv, path, _log) = server("single-read-drop");
+        let mut stream = EventStream::connect(&path, "s", 0).unwrap();
+
+        stream.force_reconnect();
+
+        let error = stream.read_event().unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
+        assert_eq!(stream.cursor(), 0);
     }
 }

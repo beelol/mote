@@ -1,12 +1,14 @@
 //! The egui application: chat view and pipeline view.
 
-use crate::state::{ChatState, Message, Status};
+use crate::state::ChatState;
 use eframe::egui;
 use mote_eventlog::Event;
 use mote_ipc::Client;
 use mote_ui::Node;
 use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{self, Receiver, Sender};
+
+type TurnResult = (usize, Result<(), String>);
 
 fn cursor_path() -> PathBuf {
     mote_paths::data_dir().join("client_cursor")
@@ -55,6 +57,8 @@ pub struct MoteApp {
     config_edits: std::collections::HashMap<String, String>,
     status_line: String,
     fixture: Option<Node>,
+    turn_tx: Sender<TurnResult>,
+    turn_rx: Receiver<TurnResult>,
 }
 
 impl MoteApp {
@@ -65,6 +69,7 @@ impl MoteApp {
         fixture: Option<Node>,
     ) -> Self {
         crate::theme::install(&cc.egui_ctx);
+        let (turn_tx, turn_rx) = mpsc::channel();
         Self {
             socket,
             rx,
@@ -76,6 +81,8 @@ impl MoteApp {
             config_edits: std::collections::HashMap::new(),
             status_line: String::new(),
             fixture,
+            turn_tx,
+            turn_rx,
         }
     }
 
@@ -87,6 +94,16 @@ impl MoteApp {
         while let Ok(ev) = self.rx.try_recv() {
             self.chat.reduce(&ev);
         }
+        while let Ok((pending, result)) = self.turn_rx.try_recv() {
+            self.record_turn_result(pending, result);
+        }
+    }
+
+    fn record_turn_result(&mut self, pending: usize, result: Result<(), String>) {
+        match result {
+            Ok(()) => self.chat.mark_sent(pending),
+            Err(error) => self.status_line = error,
+        }
     }
 
     fn send_turn(&mut self) {
@@ -95,24 +112,23 @@ impl MoteApp {
             return;
         }
         self.input.clear();
-        self.chat.messages.push(Message {
-            role: "user".into(),
-            text: msg.clone(),
-            status: Status::Sending,
-            surface: None,
-        });
-        match self.client() {
-            Ok(mut c) => {
-                let _ = c.call(
+        let pending = self.chat.push_optimistic_user(msg.clone());
+        let socket = self.socket.clone();
+        let result_tx = self.turn_tx.clone();
+        std::thread::spawn(move || {
+            let result = match Client::connect(&socket) {
+                Ok(mut client) => match client.call(
                     "turn",
                     serde_json::json!({ "thread": "main", "message": msg }),
-                );
-                if let Some(last) = self.chat.messages.last_mut() {
-                    last.status = Status::Sent;
-                }
-            }
-            Err(e) => self.status_line = format!("cannot reach daemon: {e}"),
-        }
+                ) {
+                    Ok(Ok(_)) => Ok(()),
+                    Ok(Err(error)) => Err(format!("{}: {}", error.code, error.message)),
+                    Err(error) => Err(format!("cannot send turn: {error}")),
+                },
+                Err(error) => Err(format!("cannot reach daemon: {error}")),
+            };
+            let _ = result_tx.send((pending, result));
+        });
     }
 
     fn send_ui_event(&mut self, event: &str) {
@@ -310,9 +326,11 @@ impl eframe::App for MoteApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::Status;
 
     fn app() -> (MoteApp, std::sync::mpsc::Sender<Event>) {
         let (tx, rx) = std::sync::mpsc::channel();
+        let (turn_tx, turn_rx) = std::sync::mpsc::channel();
         (
             MoteApp {
                 socket: PathBuf::new(),
@@ -325,6 +343,8 @@ mod tests {
                 config_edits: Default::default(),
                 status_line: String::new(),
                 fixture: None,
+                turn_tx,
+                turn_rx,
             },
             tx,
         )
@@ -413,5 +433,19 @@ mod tests {
         assert_eq!(app.chat.messages.len(), 3);
         assert_eq!(app.chat.messages[2].text, "after");
         assert!(app.chat.messages[2].surface.is_none());
+    }
+
+    #[test]
+    fn turn_response_marks_a_pending_message_sent_without_downgrading_delivery() {
+        let (mut app, _tx) = app();
+        let pending = app.chat.push_optimistic_user("hello".into());
+
+        app.record_turn_result(pending, Ok(()));
+        assert!(app.chat.messages[pending].status == Status::Sent);
+
+        send(&_tx, "turn.user", serde_json::json!({"text": "hello"}));
+        app.drain_events();
+        app.record_turn_result(pending, Ok(()));
+        assert!(app.chat.messages[pending].status == Status::Delivered);
     }
 }
