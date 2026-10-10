@@ -48,6 +48,10 @@ percentiles.
 - The v0 board remains 46 of 55 checked. V0-43 through V0-48, V0-50, V0-52 and V0-53 remain open.
 - The Mac was locked during runtime verification. The native process launched and remained alive,
   but that is not visible acceptance. No screenshot criterion is closed.
+- The lock was rechecked at 03:03 PDT. A separate isolated daemon completed one live talk and
+  router turn with the approved local models. Its Pipeline snapshot showed two correlated request
+  and response pairs, nonzero token counts, measured timing and one ledger row per call. V0-49
+  contains the excerpt.
 - Live daemon-connected cursor replay, message states, `ui.event`, system appearance, Pipeline
   screenshots, a live configuration change and the Pipeline performance comparison remain undone.
 - The approval lifecycle is wired and tested, but its required screenshot remains undone.
