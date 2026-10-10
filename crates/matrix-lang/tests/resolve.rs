@@ -751,3 +751,112 @@ fn byte_bound_counts_only_retained_resolved_content() {
         150_000
     );
 }
+
+#[test]
+fn empty_template_fields_do_not_read_surface_field_edits() {
+    let (m, mut s) = fixture();
+    s.fields.insert("choice".into(), json!("closed"));
+    s.values.insert("rows".into(), json!([]));
+    let source = "screen { select \"Surface\" choice options [\"closed\"] list from rows { item { select \"Row\" choice options [\"open\"] } } }";
+    let result = run(source, &m, &s).unwrap();
+    assert_eq!(
+        result.screen.children[0].values["field"].value,
+        Some(json!("closed"))
+    );
+    assert!(result.screen.children[1].rows.is_empty());
+}
+
+#[test]
+fn empty_nested_template_fields_do_not_read_outer_row_edits() {
+    let (m, mut s) = fixture();
+    let source = "screen { list from rows key id { item { select \"Outer\" choice options [\"open\", \"closed\"] list from .children { item { select \"Inner\" choice options [\"open\"] } } } } }";
+    let initial = run(source, &m, &s).unwrap();
+    let outer_field = initial.screen.children[0].rows[1].children[0].children[0]
+        .field
+        .clone()
+        .unwrap();
+    s.row_fields.insert(outer_field, json!("closed"));
+    let result = run(source, &m, &s).unwrap();
+    let outer = &result.screen.children[0].rows[1].children[0];
+    assert_eq!(
+        outer.children[0].values["field"].value,
+        Some(json!("closed"))
+    );
+    assert!(outer.children[1].rows.is_empty());
+}
+
+#[test]
+fn collection_type_replacement_invalidates_selection_and_row_field_identity() {
+    let (m, s) = fixture();
+    let list = "screen { list from rows key id select one { item { field \"Draft\" draft } } }";
+    let grid = "screen { grid from rows key id select one { tile { field \"Draft\" draft } } }";
+    let before = run(list, &m, &s).unwrap();
+    let after = run(grid, &m, &s).unwrap();
+    let list = &before.screen.children[0];
+    let replacement = &after.screen.children[0];
+    assert_ne!(list.identity, replacement.identity);
+    assert_ne!(list.rows[0].identity, replacement.rows[0].identity);
+    let field = list.rows[0].children[0].children[0].field.clone().unwrap();
+    assert_ne!(
+        Some(&field),
+        replacement.rows[0].children[0].children[0].field.as_ref()
+    );
+    let mut stale_selection = s.clone();
+    stale_selection
+        .selections
+        .insert(list.identity.clone(), vec![0]);
+    assert_eq!(
+        run(grid, &m, &stale_selection).unwrap_err()[0]
+            .code
+            .as_str(),
+        "E_SNAPSHOT"
+    );
+    let mut stale_field = s;
+    stale_field.row_fields.insert(field, json!("old list edit"));
+    assert_eq!(
+        run(grid, &m, &stale_field).unwrap_err()[0].code.as_str(),
+        "E_SNAPSHOT"
+    );
+}
+
+#[test]
+fn unkeyed_identity_includes_the_node_type() {
+    let (m, s) = fixture();
+    let before = run("screen { text title }", &m, &s).unwrap();
+    let after = run("screen { caption title }", &m, &s).unwrap();
+    assert_ne!(
+        before.screen.children[0].identity,
+        after.screen.children[0].identity
+    );
+}
+
+#[test]
+fn url_values_require_a_valid_host_and_port() {
+    for url in [
+        "https://[",
+        "https://example.com:bad",
+        "https://example.com:65536",
+        "https://exa[mple.com",
+        "https://",
+        "/tmp/file",
+    ] {
+        let (m, mut s) = fixture();
+        s.values.insert("url".into(), json!(url));
+        let errors = run("screen { button \"Open\" -> Open{url} }", &m, &s).unwrap_err();
+        assert_eq!(errors[0].code.as_str(), "E_SNAPSHOT", "{url}");
+    }
+    for url in [
+        "https://example.com:8443/path?q=1#part",
+        "https://[::1]:443/path",
+        "mailto:user@example.com",
+        "app:resource/1",
+    ] {
+        let (m, mut s) = fixture();
+        s.values.insert("url".into(), json!(url));
+        let result = run("screen { button \"Open\" -> Open{url} }", &m, &s).unwrap();
+        assert_eq!(
+            result.screen.children[0].action.as_ref().unwrap().arguments["url"].value,
+            Some(json!(url))
+        );
+    }
+}

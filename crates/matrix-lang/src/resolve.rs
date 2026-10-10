@@ -21,12 +21,14 @@ pub enum RowKey {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RowIdentity {
     pub collection_path: Vec<usize>,
+    pub collection_element: Element,
     pub key: RowKey,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NodeIdentity {
     pub path: Vec<usize>,
+    pub element: Element,
     pub rows: Vec<RowIdentity>,
 }
 
@@ -36,7 +38,7 @@ pub struct FieldIdentity {
     pub rows: Vec<RowIdentity>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Element {
     Screen,
     Section,
@@ -252,32 +254,10 @@ fn valid_format(binding: &BindingDefinition) -> bool {
 }
 
 fn absolute_url(value: &str) -> bool {
-    if value
+    !value
         .bytes()
         .any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
-    {
-        return false;
-    }
-    let Some((scheme, rest)) = value.split_once(':') else {
-        return false;
-    };
-    if rest.is_empty()
-        || !scheme
-            .as_bytes()
-            .first()
-            .is_some_and(u8::is_ascii_alphabetic)
-        || !scheme
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"+.-".contains(&b))
-    {
-        return false;
-    }
-    if matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
-        return rest
-            .strip_prefix("//")
-            .is_some_and(|r| !r.split(['/', '?', '#']).next().unwrap_or("").is_empty());
-    }
-    true
+        && url::Url::parse(value).is_ok()
 }
 
 fn valid_value(ty: &Type, value: &Value, manifest: &Manifest, depth: usize) -> bool {
@@ -447,11 +427,17 @@ impl Write for SizeCounter {
 struct Context {
     row: Option<ResolvedValue>,
     selected: Option<ResolvedValue>,
-    scopes: Vec<(Vec<usize>, Vec<RowIdentity>)>,
+    scopes: Vec<FieldScope>,
     rows: Vec<RowIdentity>,
     overlay: Option<NodeIdentity>,
     retry: Option<NodeIdentity>,
     dry: bool,
+}
+
+#[derive(Clone)]
+struct FieldScope {
+    owner_path: Vec<usize>,
+    instance: Option<Vec<RowIdentity>>,
 }
 
 struct Resolver<'a> {
@@ -755,13 +741,13 @@ impl Resolver<'_> {
                 "Unknown Field path",
             )
         })?;
-        let (_, rows) = context
+        let scope = context
             .scopes
             .iter()
             .rev()
-            .find(|(scope, _)| {
+            .find(|scope| {
                 self.owners
-                    .get(scope)
+                    .get(&scope.owner_path)
                     .is_some_and(|owners| owners.contains(&name))
             })
             .ok_or_else(|| {
@@ -774,12 +760,12 @@ impl Resolver<'_> {
             })?;
         let identity = FieldIdentity {
             path: name.clone(),
-            rows: rows.clone(),
+            rows: scope.instance.clone().unwrap_or_default(),
         };
-        let value = if rows.is_empty() {
-            self.snapshot.fields.get(&name)
-        } else {
-            self.snapshot.row_fields.get(&identity)
+        let value = match &scope.instance {
+            Some(rows) if rows.is_empty() => self.snapshot.fields.get(&name),
+            Some(_) => self.snapshot.row_fields.get(&identity),
+            None => None,
         }
         .unwrap_or(&definition.initial);
         if !context.dry {
@@ -960,6 +946,7 @@ impl Resolver<'_> {
         };
         let identity = NodeIdentity {
             path: path.to_vec(),
+            element: element(&declaration.kind),
             rows: context.rows.clone(),
         };
         if !context.dry {
@@ -1324,9 +1311,10 @@ impl Resolver<'_> {
                 format: DisplayFormat::Canonical,
                 requires_selection: false,
             });
-            row_context
-                .scopes
-                .push((node.identity.path.clone(), context.rows.clone()));
+            row_context.scopes.push(FieldScope {
+                owner_path: node.identity.path.clone(),
+                instance: None,
+            });
             for (index, child) in declaration
                 .children()
                 .iter()
@@ -1342,13 +1330,15 @@ impl Resolver<'_> {
         for (row, key) in rows.iter().zip(row_keys) {
             let identity = RowIdentity {
                 collection_path: node.identity.path.clone(),
+                collection_element: node.element,
                 key,
             };
             let mut row_context = context.clone();
             row_context.rows.push(identity.clone());
-            row_context
-                .scopes
-                .push((node.identity.path.clone(), row_context.rows.clone()));
+            row_context.scopes.push(FieldScope {
+                owner_path: node.identity.path.clone(),
+                instance: (!context.dry).then(|| row_context.rows.clone()),
+            });
             row_context.row = Some(ResolvedValue {
                 ty: (**row_type).clone(),
                 value: Some(row.clone()),
@@ -1404,6 +1394,7 @@ impl Resolver<'_> {
             element: element(&declaration.kind),
             identity: NodeIdentity {
                 path: path.to_vec(),
+                element: element(&declaration.kind),
                 rows: context.rows.clone(),
             },
             span: declaration.span,
@@ -1991,7 +1982,10 @@ pub fn resolve(
         };
         resolver.collect_owners(&surface.screen, &mut Vec::new(), &[])?;
         let context = Context {
-            scopes: vec![(Vec::new(), Vec::new())],
+            scopes: vec![FieldScope {
+                owner_path: Vec::new(),
+                instance: Some(Vec::new()),
+            }],
             ..Context::default()
         };
         let screen = resolver.declaration(&surface.screen, &[], &context)?;
