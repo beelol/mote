@@ -8,6 +8,7 @@
 
 use mote_context::{count_tokens, ContextStore, LedgerEntry, Pack, PackBuilder, PartKind};
 use mote_eventlog::EventLog;
+use mote_harness::ThinkEvent;
 use mote_localmodel::{ChatOptions, Ollama};
 use serde::Deserialize;
 use serde_json::json;
@@ -266,6 +267,119 @@ pub fn run_turn(
     outcome
 }
 
+/// The five texts of a think pack. Same parts and order as the talk pack, a larger budget.
+pub struct ThinkInputs<'a> {
+    pub charter: &'a str,
+    pub profile: &'a str,
+    pub memories: &'a str,
+    pub working_set: &'a str,
+    pub turn: &'a str,
+}
+
+/// Default think pack budget in tokens (v0.md section 9).
+pub const THINK_BUDGET: usize = 8000;
+
+/// Build the think pack and the system/turn texts. The system text is every part but the turn,
+/// in order; the turn is the user message. The think lane sends the system text as the harness
+/// `system` field so the charter leads every call.
+pub fn build_think_pack(inputs: &ThinkInputs, budget: usize) -> (Pack, String, String) {
+    let (pack, texts) = PackBuilder::new("think")
+        .part(PartKind::Charter, "charter", inputs.charter)
+        .part(PartKind::Profile, "profile", inputs.profile)
+        .part(PartKind::Memory, "memory", inputs.memories)
+        .part(PartKind::WorkingSet, "working_set", inputs.working_set)
+        .part(PartKind::Turn, "turn", inputs.turn)
+        .build_with_texts(budget);
+
+    let mut system = String::new();
+    let mut turn = String::new();
+    for (kind, text) in &texts {
+        match kind {
+            PartKind::Turn => turn = text.clone(),
+            _ => {
+                if !text.is_empty() {
+                    system.push_str(text);
+                    system.push('\n');
+                }
+            }
+        }
+    }
+    (pack, system, turn)
+}
+
+/// The result of a think-lane run.
+#[derive(Debug)]
+pub enum ThinkOutcome {
+    Done { ledger_id: i64, pack_id: i64 },
+    Failed(String),
+}
+
+/// Turn the harness's normalized think events into log events and one ledger row. Each `Text`
+/// becomes `think.text`, each tool call and result its own event; the turn ends with one
+/// `think.done` that carries the ledger and pack ids. The answer text drives the completion token
+/// count. The server interaction that produces `events` is tested live by V0-29; this is the
+/// daemon-side mapping, tested offline with scripted events.
+pub fn emit_think(
+    log: &EventLog,
+    store: &ContextStore,
+    thread_id: &str,
+    model: &str,
+    pack: &Pack,
+    events: &[ThinkEvent],
+    latency_ms: u64,
+) -> ThinkOutcome {
+    let mut answer = String::new();
+    let mut ok = true;
+    for e in events {
+        match e {
+            ThinkEvent::Text { text } => {
+                answer.push_str(text);
+                let _ = log.append(thread_id, "think.text", &json!({ "text": text }));
+            }
+            ThinkEvent::ToolCall { name, id, input } => {
+                let _ = log.append(
+                    thread_id,
+                    "think.tool_call",
+                    &json!({ "name": name, "id": id, "input": input }),
+                );
+            }
+            ThinkEvent::ToolResult { name, id, output, is_error } => {
+                let _ = log.append(
+                    thread_id,
+                    "think.tool_result",
+                    &json!({ "name": name, "id": id, "output": output, "is_error": is_error }),
+                );
+            }
+            ThinkEvent::Done { ok: turn_ok } => ok = *turn_ok,
+        }
+    }
+
+    let entry = LedgerEntry {
+        lane: "think".into(),
+        model: model.into(),
+        prompt_tokens: pack.token_estimate() as i64,
+        completion_tokens: count_tokens(&answer) as i64,
+        latency_ms: latency_ms as i64,
+        cost_usd: 0.0,
+        status: if ok { "ok".into() } else { "error".into() },
+    };
+    match store.record(pack, &entry) {
+        Ok((pack_id, ledger_id)) => {
+            let _ = log.append(
+                thread_id,
+                "think.done",
+                &json!({ "ledger_id": ledger_id, "pack_id": pack_id, "ok": ok }),
+            );
+            ThinkOutcome::Done { ledger_id, pack_id }
+        }
+        Err(e) => {
+            let reason = format!("ledger write failed: {e}");
+            let _ = log.append(thread_id, "think.failed", &json!({ "reason": reason.clone() }));
+            ThinkOutcome::Failed(reason)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -484,6 +598,60 @@ mod tests {
              {f1_talk:.3}; tp={tp} fp={fp} tn={tn} fn={fn_})"
         );
         assert!(macro_f1 >= 0.85, "router macro-F1 {macro_f1:.3} below the 0.85 gate");
+    }
+
+    #[test]
+    fn emit_think_writes_events_and_one_ledger_row() {
+        let log = EventLog::open_in_memory().unwrap();
+        let store = ContextStore::open_in_memory().unwrap();
+        let mut sub = log.subscribe("t1", 0).unwrap();
+
+        let (pack, _system, _turn) = build_think_pack(
+            &ThinkInputs {
+                charter: "be kind",
+                profile: "name: owner",
+                memories: "",
+                working_set: "",
+                turn: "read notes.txt and tell me the passphrase",
+            },
+            THINK_BUDGET,
+        );
+        let events = vec![
+            ThinkEvent::ToolCall {
+                name: "moted_file_read".into(),
+                id: Some("c1".into()),
+                input: json!({ "path": "notes.txt" }),
+            },
+            ThinkEvent::ToolResult {
+                name: "moted_file_read".into(),
+                id: Some("c1".into()),
+                output: "The secret passphrase is blue-otter-42.".into(),
+                is_error: false,
+            },
+            ThinkEvent::Text { text: "The passphrase is blue-otter-42.".into() },
+            ThinkEvent::Done { ok: true },
+        ];
+        let out = emit_think(&log, &store, "t1", "qwen3-coder:30b-64k", &pack, &events, 420);
+        let (ledger_id, pack_id) = match out {
+            ThinkOutcome::Done { ledger_id, pack_id } => (ledger_id, pack_id),
+            other => panic!("expected done, got {other:?}"),
+        };
+        assert!(ledger_id > 0 && pack_id > 0);
+
+        let mut kinds = Vec::new();
+        let mut done_ledger = None;
+        while let Some(ev) = sub.recv_timeout(Duration::from_millis(50)) {
+            if ev.kind == "think.done" {
+                done_ledger = ev.payload["ledger_id"].as_i64();
+            }
+            kinds.push(ev.kind);
+        }
+        assert!(kinds.contains(&"think.tool_call".to_string()));
+        assert!(kinds.contains(&"think.tool_result".to_string()));
+        assert!(kinds.contains(&"think.text".to_string()));
+        assert_eq!(kinds.last(), Some(&"think.done".to_string()), "done is last");
+        assert_eq!(kinds.iter().filter(|k| *k == "think.done").count(), 1, "one ledger/done");
+        assert_eq!(done_ledger, Some(ledger_id));
     }
 
     #[test]

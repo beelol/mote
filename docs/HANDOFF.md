@@ -49,11 +49,20 @@ Nothing left can be closed by a driver without the owner's desktop or a deploy.
    gui/$(id -u)/com.mote.moted`, logs out and back in to confirm it survives, then `moted
    uninstall`. See docs/verification/V0-53.md. The plist generation is unit tested.
 
-## A follow-on worth noting (not v0)
+## Think lane wired into moted (not a v0 item)
 
-The think lane's persistent server is proven in `mote-harness` and the live test. Wiring it into
-`moted`'s runtime think turn (a server per thread, lifecycle and reuse) is not yet done and is not
-a v0 item; raise it when the owner opens the think-lane runtime work.
+On a `think` verdict `handle_turn` now runs the think lane: `ThinkServers` keeps one
+`opencode serve` per thread (lazily started, `opencode.json` written per thread under
+`<data>/think/<thread>`), `build_think_pack` builds the 8,000-token pack as the harness `system`
+text, and `emit_think` turns the harness events into `think.tool_call`, `think.tool_result`,
+`think.text` and one `think.done` with a ledger row. Proven end to end against an isolated daemon:
+a think-routed turn emitted the full event chain and returned `status: think_done`. `emit_think`
+is unit-tested offline; the server interaction is V0-29.
+
+Open refinements (still not v0): the think server starts a fresh session per turn (mote owns
+context via the pack, so there is no `--resume`); and the MCP `file_read` root is the server cwd,
+so a turn reads files relative to `<data>/think/<thread>`, not an arbitrary path. Decide the file
+root and session-reuse policy when the owner opens think-lane runtime work.
 
 ## Rules that still bite
 

@@ -16,19 +16,77 @@ mod watchers;
 use charter::{Charter, CharterWatcher};
 use config::ConfigStore;
 use gate::OllamaGate;
-use lanes::{run_turn, TalkInputs, TalkOutcome, TALK_BUDGET};
+use lanes::{
+    build_think_pack, emit_think, run_turn, ThinkInputs, ThinkOutcome, TalkInputs, TalkOutcome,
+    TALK_BUDGET, THINK_BUDGET,
+};
 use mote_context::ContextStore;
+use mote_harness::OpenCodeServer;
 use mote_localmodel::Ollama;
 use mote_eventlog::{EventLog, Subscription};
 use mote_ipc::{codes, Dispatch, RpcError, Server};
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use watchers::{WriteDecision, Watchers};
 
 const TALK_CTX: u32 = 32768;
 const ROUTER_CTX: u32 = 32768;
+/// A think turn may cold-start the server and load the 30b model on a thread's first turn.
+const THINK_TIMEOUT: Duration = Duration::from_secs(180);
+
+/// Per-thread persistent `opencode serve` processes for the think lane. The server and the model
+/// load once per thread; later turns on that thread are warm. See docs/rfcs/v0.md section 8.
+struct ThinkServers {
+    data_dir: PathBuf,
+    moted_exe: PathBuf,
+    servers: HashMap<String, Arc<OpenCodeServer>>,
+}
+
+impl ThinkServers {
+    fn new(data_dir: PathBuf) -> Self {
+        let moted_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("moted"));
+        Self { data_dir, moted_exe, servers: HashMap::new() }
+    }
+
+    /// Get the thread's server, starting one (with its `opencode.json`) on first use.
+    fn get(&mut self, thread_id: &str, think_model: &str) -> Result<Arc<OpenCodeServer>, String> {
+        if let Some(s) = self.servers.get(thread_id) {
+            return Ok(s.clone());
+        }
+        let safe: String =
+            thread_id.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect();
+        let dir = self.data_dir.join("think").join(safe);
+        std::fs::create_dir_all(&dir).map_err(|e| format!("think dir: {e}"))?;
+        std::fs::write(dir.join("opencode.json"), think_config(&self.moted_exe, think_model))
+            .map_err(|e| format!("write opencode.json: {e}"))?;
+        let server = Arc::new(OpenCodeServer::start(&dir, Duration::from_secs(60))?);
+        self.servers.insert(thread_id.to_string(), server.clone());
+        Ok(server)
+    }
+}
+
+/// The `opencode.json` for a think server: the Ollama provider, the configured think model, every
+/// built-in tool off, and the `moted mcp` tool server. Tools reach the model only through moted.
+fn think_config(moted_exe: &Path, model: &str) -> String {
+    json!({
+        "$schema": "https://opencode.ai/config.json",
+        "model": format!("ollama/{model}"),
+        "enabled_providers": ["ollama"],
+        "provider": { "ollama": { "npm": "@ai-sdk/openai-compatible", "name": "Ollama",
+            "options": { "baseURL": "http://127.0.0.1:11434/v1", "apiKey": "ollama" },
+            "models": { model: { "name": "think", "tool_call": true,
+                "limit": { "context": 65536, "output": 4096 } } } } },
+        "tools": { "read": false, "list": false, "grep": false, "glob": false, "write": false,
+            "edit": false, "bash": false, "webfetch": false, "task": false, "todowrite": false,
+            "todoread": false },
+        "mcp": { "moted": { "type": "local",
+            "command": [moted_exe.to_string_lossy(), "mcp"] } }
+    })
+    .to_string()
+}
 
 fn now_ms() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
@@ -41,6 +99,7 @@ struct Daemon {
     store: Mutex<ContextStore>,
     client: Ollama,
     watchers: Mutex<Watchers>,
+    think: Mutex<ThinkServers>,
     data_dir: PathBuf,
     started: std::time::Instant,
 }
@@ -56,20 +115,27 @@ impl Daemon {
             .and_then(|m| m.as_str())
             .ok_or_else(|| RpcError::invalid_params("turn needs a message"))?;
 
-        let (talk_model, router_model, budget, charter_prose) = {
+        let (talk_model, router_model, think_model, budget, think_budget, charter_prose) = {
             let cfg = self.config.lock().unwrap();
             let talk = cfg.get_json("models.talk").and_then(|v| v.as_str().map(String::from));
             let router = cfg.get_json("models.router").and_then(|v| v.as_str().map(String::from));
+            let think = cfg.get_json("models.think").and_then(|v| v.as_str().map(String::from));
             let budget = cfg
                 .get_json("packs.talk")
                 .and_then(|v| v.as_i64())
                 .map(|n| n as usize)
                 .unwrap_or(TALK_BUDGET);
+            let think_budget = cfg
+                .get_json("packs.think")
+                .and_then(|v| v.as_i64())
+                .map(|n| n as usize)
+                .unwrap_or(THINK_BUDGET);
             let prose = self.character.lock().unwrap().prose.clone();
-            (talk, router, budget, prose)
+            (talk, router, think, budget, think_budget, prose)
         };
         let talk_model = talk_model.ok_or_else(|| RpcError::internal("models.talk unset"))?;
         let router_model = router_model.ok_or_else(|| RpcError::internal("models.router unset"))?;
+        let think_model = think_model.ok_or_else(|| RpcError::internal("models.think unset"))?;
 
         let store = self.store.lock().unwrap();
         let profile = store.get_profile("profile").ok().flatten().unwrap_or_default();
@@ -94,8 +160,47 @@ impl Daemon {
             TalkOutcome::Done { ledger_id, pack_id } => {
                 json!({ "status": "done", "ledger_id": ledger_id, "pack_id": pack_id })
             }
-            TalkOutcome::Handoff => json!({ "status": "handoff" }),
             TalkOutcome::Unavailable(reason) => json!({ "status": "unavailable", "reason": reason }),
+            // The router handed off: run the think lane against the thread's persistent server.
+            TalkOutcome::Handoff => {
+                let think_inputs = ThinkInputs {
+                    charter: &charter_prose,
+                    profile: &profile,
+                    memories: &memories,
+                    working_set: &working_set,
+                    turn: message,
+                };
+                let (pack, system, turn) = build_think_pack(&think_inputs, think_budget);
+                let full_model = format!("ollama/{think_model}");
+                let server = self.think.lock().unwrap().get(thread_id, &think_model);
+                match server.and_then(|s| {
+                    let session = s.create_session()?;
+                    let started = std::time::Instant::now();
+                    s.run_turn(&session, &full_model, Some(&system), &turn, THINK_TIMEOUT)
+                        .map(|(events, _first)| (events, started.elapsed().as_millis() as u64))
+                }) {
+                    Ok((events, latency_ms)) => {
+                        match emit_think(
+                            &self.log, &store, thread_id, &think_model, &pack, &events, latency_ms,
+                        ) {
+                            ThinkOutcome::Done { ledger_id, pack_id } => json!({
+                                "status": "think_done", "ledger_id": ledger_id, "pack_id": pack_id
+                            }),
+                            ThinkOutcome::Failed(reason) => {
+                                json!({ "status": "think_failed", "reason": reason })
+                            }
+                        }
+                    }
+                    Err(reason) => {
+                        let _ = self.log.append(
+                            thread_id,
+                            "think.failed",
+                            &json!({ "reason": reason.clone() }),
+                        );
+                        json!({ "status": "think_failed", "reason": reason })
+                    }
+                }
+            }
         })
     }
 }
@@ -426,6 +531,7 @@ fn run() -> Result<(), i32> {
         store: Mutex::new(store),
         client: Ollama::local(),
         watchers: Mutex::new(watchers),
+        think: Mutex::new(ThinkServers::new(data.clone())),
         data_dir: data.clone(),
         started: std::time::Instant::now(),
     });

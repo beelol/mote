@@ -222,11 +222,14 @@ impl OpenCodeServer {
 
     /// Send `prompt` to `session` with `model` ("provider/model"), stream the server events, parse
     /// them into think events, and measure the time to the first produced token (the first tool
-    /// call or text delta) from the moment the prompt is sent. Errors on `timeout`.
+    /// call or text delta) from the moment the prompt is sent. `system`, when set, leads the call
+    /// as the harness system text (mote's pack: charter, profile, memory, working set). Errors on
+    /// `timeout`.
     pub fn run_turn(
         &self,
         session: &str,
         model: &str,
+        system: Option<&str>,
         prompt: &str,
         timeout: std::time::Duration,
     ) -> Result<(Vec<ThinkEvent>, std::time::Duration), String> {
@@ -283,10 +286,13 @@ impl OpenCodeServer {
         });
 
         // The message POST returns only when the turn completes, so send it off-thread.
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "model": { "providerID": provider, "modelID": model_id },
             "parts": [ { "type": "text", "text": prompt } ],
         });
+        if let Some(system) = system.filter(|s| !s.trim().is_empty()) {
+            body["system"] = Value::String(system.to_string());
+        }
         let agent = self.agent.clone();
         let url = format!("{}/session/{}/message", self.base_url, session);
         std::thread::spawn(move || {
@@ -551,7 +557,7 @@ mod tests {
 
         // One warm turn loads the model and primes the cached system prompt; it is not measured.
         let warm = server.create_session().expect("warm session");
-        match server.run_turn(&warm, model, prompt, timeout) {
+        match server.run_turn(&warm, model, None, prompt, timeout) {
             Ok((_, first)) => println!("  warm turn first-token {:.2} s (ignored)", first.as_secs_f64()),
             Err(e) => println!("  warm turn failed: {e}"),
         }
@@ -562,7 +568,7 @@ mod tests {
         let mut timeouts = 0;
         for _ in 0..3 {
             let session = server.create_session().expect("session");
-            match server.run_turn(&session, model, prompt, timeout) {
+            match server.run_turn(&session, model, None, prompt, timeout) {
                 Ok((events, first)) => {
                     firsts.push(first.as_secs_f64());
                     for e in &events {
