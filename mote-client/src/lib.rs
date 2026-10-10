@@ -10,3 +10,4 @@ mod theme;
 
 pub use app::observation::*;
 pub use egui::Shape as PaintedShape;
+pub use egui::Key as InputKey;

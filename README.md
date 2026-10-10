@@ -102,6 +102,9 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
   [UI-13](docs/verification/UI-13.md), [UI-21](docs/verification/UI-21.md),
   [UI-23](docs/verification/UI-23.md), [UI-26](docs/verification/UI-26.md) and
   [UI-27](docs/verification/UI-27.md). Their full Verify clauses remain open.
+  Structural interaction identity and keyboard behavior have partial v0 evidence in
+  [UI-16](docs/verification/UI-16.md) and [UI-25](docs/verification/UI-25.md).
+  Native focus and the broader keyed collection contract remain open.
 
 - [x] **V0-01** The Cargo workspace builds the `moted` and `mote-client` binaries and the nine crates named in the table, and both `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` pass on the empty project. **Verify:** Run both commands. [§1](docs/rfcs/v0.md#1-workspace) [evidence](docs/verification/V0-01.md)
 - [x] **V0-02** `mote-redact` replaces the same secret patterns and secret keys as Overseer's `redact.rs`, with Overseer's tests carried over. **Verify:** `cargo test -p mote-redact`. [§1](docs/rfcs/v0.md#1-workspace) [evidence](docs/verification/V0-02.md)

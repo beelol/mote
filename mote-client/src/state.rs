@@ -34,6 +34,7 @@ pub struct Message {
     pub surface: Option<Node>,
     pub surface_id: Option<String>,
     pub surface_seq: Option<i64>,
+    pub surface_instance: i64,
 }
 
 pub struct ChatState {
@@ -77,6 +78,7 @@ impl ChatState {
             surface: None,
             surface_id: None,
             surface_seq: None,
+            surface_instance: 0,
         });
         local_id
     }
@@ -143,6 +145,7 @@ impl ChatState {
                     surface: None,
                     surface_id: None,
                     surface_seq: None,
+                    surface_instance: 0,
                 });
             }
             "talk.delta" => {
@@ -162,6 +165,7 @@ impl ChatState {
                     surface: None,
                     surface_id: None,
                     surface_seq: None,
+                    surface_instance: 0,
                 });
             }
             "talk.done" => {
@@ -181,6 +185,7 @@ impl ChatState {
                     surface: None,
                     surface_id: None,
                     surface_seq: None,
+                    surface_instance: 0,
                 });
             }
             "ui.diagnostic" => {
@@ -218,6 +223,7 @@ impl ChatState {
                     surface: None,
                     surface_id: None,
                     surface_seq: None,
+                    surface_instance: 0,
                 });
             }
             "ui.surface" => {
@@ -245,6 +251,7 @@ impl ChatState {
                             surface: Some(node),
                             surface_id: surface_id.map(str::to_owned),
                             surface_seq: (surface_id == Some("matrix")).then_some(ev.seq),
+                            surface_instance: ev.seq,
                         });
                     }
                 }
@@ -277,6 +284,7 @@ mod tests {
             surface: None,
             surface_id: None,
             surface_seq: None,
+            surface_instance: 0,
         }
     }
 

@@ -150,6 +150,28 @@ impl ObservationHarness {
             .collect()
     }
 
+    pub fn key(&mut self, key: egui::Key, shift: bool) -> egui::FullOutput {
+        let modifiers = egui::Modifiers { shift, ..Default::default() };
+        let (_, mut output) = self.frame_output(vec![egui::Event::Key {
+            key, physical_key: None, pressed: true, repeat: false, modifiers,
+        }]);
+        let (_, released) = self.frame_output(vec![egui::Event::Key {
+            key, physical_key: None, pressed: false, repeat: false, modifiers,
+        }]);
+        output.platform_output.events.extend(released.platform_output.events);
+        output
+    }
+
+    pub fn edit(&mut self, text: &str) {
+        self.frame(vec![
+            egui::Event::Key { key: egui::Key::A, physical_key: None, pressed: true,
+                repeat: false, modifiers: egui::Modifiers::COMMAND },
+            egui::Event::Text(text.into()),
+            egui::Event::Key { key: egui::Key::A, physical_key: None, pressed: false,
+                repeat: false, modifiers: egui::Modifiers::COMMAND },
+        ]);
+    }
+
     pub fn click(&mut self, pos: egui::Pos2) -> Vec<DisplayedNode> {
         self.frame(vec![
             egui::Event::PointerMoved(pos),
@@ -236,6 +258,324 @@ mod tests {
             scope_id: "main".into(),
             kind: "ui.surface".into(),
             payload: json!({"surface_id":"matrix", "surface":node}),
+        }
+    }
+
+    fn field() -> serde_json::Value {
+        json!({"type":"field", "label":"Name", "name":"name", "value":"original"})
+    }
+
+    fn texts(harness: &mut ObservationHarness) -> Vec<String> {
+        harness.frame_output(vec![]).1.shapes.iter().filter_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) => Some(text.galley.text().to_owned()),
+            _ => None,
+        }).collect()
+    }
+
+    fn edited_field() -> ObservationHarness {
+        let mut harness = ObservationHarness::default();
+        harness.event(&surface(1, field()));
+        harness.frame(vec![]);
+        harness.key(egui::Key::Tab, false);
+        harness.edit("edited");
+        assert!(texts(&mut harness).contains(&"edited".into()));
+        assert!(harness.queued().is_empty());
+        harness
+    }
+
+    #[test]
+    fn interaction_field_survives_same_live_identity_and_host_value_wins() {
+        let mut harness = edited_field();
+        let mut replacement = field();
+        replacement["label"] = json!("Renamed");
+        harness.event(&surface(2, replacement.clone()));
+        assert!(texts(&mut harness).contains(&"edited".into()));
+        harness.edit("still focused");
+        assert!(texts(&mut harness).contains(&"still focused".into()));
+        replacement["value"] = json!("host update");
+        harness.event(&surface(3, replacement));
+        assert!(texts(&mut harness).contains(&"host update".into()));
+        assert!(!texts(&mut harness).contains(&"still focused".into()));
+        assert!(harness.queued().is_empty());
+    }
+
+    #[test]
+    fn interaction_removed_or_retyped_field_never_resurrects_edits() {
+        for replacement in [json!({"type":"text", "value":"absent"}),
+            json!({"type":"toggle", "label":"Name", "name":"name", "value":true}),
+            json!({"type":"select", "label":"Name", "name":"name", "value":"original", "options":["original","other"]})] {
+            let mut harness = edited_field();
+            harness.event(&surface(2, replacement));
+            harness.frame(vec![]);
+            harness.event(&surface(3, field()));
+            let shown = texts(&mut harness);
+            assert!(shown.contains(&"original".into()), "removed edit returned: {shown:?}");
+            assert!(!shown.contains(&"edited".into()));
+            harness.edit("orphan input");
+            assert!(!texts(&mut harness).iter().any(|text| text.contains("orphan")));
+            assert!(harness.queued().is_empty());
+        }
+    }
+
+    #[test]
+    fn interaction_changed_path_discards_field_and_returning_path_is_fresh() {
+        let mut harness = edited_field();
+        harness.event(&surface(2, json!({"type":"stack", "children":[field()]})));
+        assert!(texts(&mut harness).contains(&"original".into()));
+        assert!(!texts(&mut harness).contains(&"edited".into()));
+        harness.event(&surface(3, field()));
+        assert!(texts(&mut harness).contains(&"original".into()));
+        assert!(!texts(&mut harness).contains(&"edited".into()));
+        assert!(harness.queued().is_empty());
+    }
+
+    #[test]
+    fn interaction_separate_surface_and_reconnect_epoch_do_not_share_edits() {
+        let mut harness = edited_field();
+        let mut second = surface(2, field());
+        second.payload["surface_id"] = json!("other");
+        harness.event(&second);
+        let shown = texts(&mut harness);
+        assert_eq!(shown.iter().filter(|text| *text == "edited").count(), 1);
+        assert_eq!(shown.iter().filter(|text| *text == "original").count(), 1);
+        harness.incoming.send(StreamUpdate::Connected { replay_through: 2 }).unwrap();
+        harness.app.drain_events();
+        harness.event(&surface(3, field()));
+        let shown = texts(&mut harness);
+        assert!(!shown.contains(&"edited".into()));
+        assert_eq!(shown.iter().filter(|text| *text == "original").count(), 2);
+        assert!(harness.queued().is_empty());
+    }
+
+    #[test]
+    fn interaction_other_surface_edit_survives_matrix_removal_from_chat() {
+        for identity in [json!("other"), serde_json::Value::Null] {
+        let mut harness = ObservationHarness::default();
+        harness.event(&surface(1, json!({"type":"text","value":"matrix"})));
+        let mut second = surface(2, field());
+        second.payload["surface_id"] = identity;
+        harness.event(&second);
+        harness.frame(vec![]);
+        harness.key(egui::Key::Tab, false);
+        harness.edit("edited");
+        assert!(texts(&mut harness).contains(&"edited".into()));
+        harness.incoming.send(StreamUpdate::Disconnected).unwrap();
+        harness.app.drain_events();
+        assert!(texts(&mut harness).contains(&"edited".into()));
+        assert!(harness.queued().is_empty());
+        }
+    }
+
+    fn text_position(harness: &mut ObservationHarness, value: &str) -> egui::Pos2 {
+        harness.frame_output(vec![]).1.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.text() == value => Some(text.pos + text.galley.rect.center().to_vec2()),
+            _ => None,
+        }).unwrap_or_else(|| panic!("missing {value}"))
+    }
+
+    #[test]
+    fn interaction_removed_select_closes_popup_before_reinsertion() {
+        let mut harness = ObservationHarness::default();
+        let select = json!({"type":"select", "label":"Mode", "name":"mode", "value":"Alpha", "options":["Alpha","Bravo"]});
+        harness.event(&surface(1, select.clone()));
+        let pos = text_position(&mut harness, "Alpha");
+        harness.click(pos);
+        assert!(texts(&mut harness).contains(&"Bravo".into()));
+        harness.event(&surface(2, json!({"type":"text","value":"absent"})));
+        harness.frame(vec![]);
+        harness.event(&surface(3, select));
+        assert!(!texts(&mut harness).contains(&"Bravo".into()), "removed popup reopened");
+        assert!(harness.queued().is_empty());
+    }
+
+    #[test]
+    fn interaction_retyped_control_does_not_activate_with_the_old_focus() {
+        let controls = [
+            json!({"type":"toggle","label":"Same","name":"enabled","value":true}),
+            json!({"type":"action","label":"Same","event":"refresh"}),
+        ];
+        for (old, replacement) in [(&controls[0], &controls[1]), (&controls[1], &controls[0])] {
+            let mut harness = ObservationHarness::default();
+            harness.event(&surface(1, old.clone()));
+            harness.frame(vec![]);
+            harness.key(egui::Key::Tab, false);
+            harness.event(&surface(2, replacement.clone()));
+            harness.key(egui::Key::Space, false);
+            assert!(harness.queued().is_empty(), "new type inherited old focus");
+        }
+    }
+
+    #[test]
+    fn interaction_removed_toggle_and_select_discard_local_values() {
+        let mut toggle = ObservationHarness::default();
+        let node = json!({"type":"toggle","label":"Enabled","name":"enabled","value":true});
+        toggle.event(&surface(1, node.clone()));
+        toggle.frame(vec![]);
+        toggle.key(egui::Key::Tab, false);
+        toggle.key(egui::Key::Space, false);
+        assert_eq!(toggle.queued()[0]["args"]["value"], false);
+        toggle.event(&surface(2, json!({"type":"text","value":"absent"})));
+        toggle.frame(vec![]);
+        toggle.event(&surface(3, node));
+        toggle.frame(vec![]);
+        let pos = text_position(&mut toggle, "Enabled");
+        toggle.click(pos);
+        assert_eq!(toggle.queued()[0]["args"]["value"], false);
+
+        let mut select = ObservationHarness::default();
+        let node = json!({"type":"select","label":"Mode","name":"mode","value":"Alpha","options":["Alpha","Bravo"]});
+        select.event(&surface(1, node.clone()));
+        let pos = text_position(&mut select, "Alpha");
+        select.click(pos);
+        let pos = text_position(&mut select, "Bravo");
+        select.click(pos);
+        assert_eq!(select.queued()[0]["args"]["value"], "Bravo");
+        select.event(&surface(2, json!({"type":"text","value":"absent"})));
+        select.frame(vec![]);
+        select.event(&surface(3, node));
+        assert!(texts(&mut select).contains(&"Alpha".into()));
+        assert!(!texts(&mut select).contains(&"Bravo".into()));
+        assert!(select.queued().is_empty());
+    }
+
+    #[test]
+    fn interaction_host_toggle_and_select_updates_override_local_changes() {
+        let mut harness = ObservationHarness::default();
+        let toggle = json!({"type":"toggle", "label":"Enabled", "name":"enabled", "value":true});
+        harness.event(&surface(1, toggle.clone()));
+        harness.frame(vec![]);
+        harness.key(egui::Key::Tab, false);
+        harness.key(egui::Key::Space, false);
+        assert_eq!(harness.queued(), [json!({"thread":"main","event":"change","args":{"field":"enabled","value":false},"surface_seq":1,"node_path":[]})]);
+        let mut host = toggle.clone();
+        host["value"] = json!(false);
+        harness.event(&surface(2, host));
+        harness.frame(vec![]);
+        harness.event(&surface(3, toggle));
+        harness.frame(vec![]);
+        harness.key(egui::Key::Enter, false);
+        assert_eq!(harness.queued(), [json!({"thread":"main","event":"change","args":{"field":"enabled","value":false},"surface_seq":3,"node_path":[]})]);
+
+        let select = json!({"type":"select", "label":"Mode", "name":"mode", "value":"Alpha", "options":["Alpha","Bravo","Charlie"]});
+        harness.event(&surface(4, select.clone()));
+        let pos = text_position(&mut harness, "Alpha");
+        harness.click(pos);
+        let pos = text_position(&mut harness, "Bravo");
+        harness.click(pos);
+        assert_eq!(harness.queued(), [json!({"thread":"main","event":"change","args":{"field":"mode","value":"Bravo"},"surface_seq":4,"node_path":[]})]);
+        assert!(texts(&mut harness).contains(&"Bravo".into()));
+        let mut host = select;
+        host["value"] = json!("Charlie");
+        harness.event(&surface(5, host));
+        assert!(texts(&mut harness).contains(&"Charlie".into()));
+        assert!(!texts(&mut harness).contains(&"Bravo".into()));
+        assert!(harness.queued().is_empty());
+    }
+
+    fn focus_type(output: &egui::FullOutput) -> Vec<egui::WidgetType> {
+        output.platform_output.events.iter().filter_map(|event| match event {
+            egui::output::OutputEvent::FocusGained(info) => Some(info.typ),
+            _ => None,
+        }).collect()
+    }
+
+    #[test]
+    fn fixture_controls_follow_tab_and_shift_tab_reading_order() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../crates/mote-ui/fixtures");
+        let mut fixtures: Vec<_> = std::fs::read_dir(root).unwrap().map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|extension| extension == "json")).collect();
+        fixtures.sort();
+        assert_eq!(fixtures.len(), 10);
+        let mut controls = Vec::new();
+        for fixture in fixtures {
+            let node: serde_json::Value = serde_json::from_slice(&std::fs::read(fixture).unwrap()).unwrap();
+            let expected = match node["type"].as_str().unwrap() {
+                "field" => egui::WidgetType::TextEdit,
+                "toggle" => egui::WidgetType::Checkbox,
+                "select" => egui::WidgetType::ComboBox,
+                "action" => egui::WidgetType::Button,
+                _ => continue,
+            };
+            controls.push(node.clone());
+            let mut harness = ObservationHarness::default();
+            harness.event(&surface(1, node));
+            harness.frame(vec![]);
+            assert_eq!(focus_type(&harness.key(egui::Key::Tab, false)), [expected]);
+            let focused = harness.ctx.memory(|memory| memory.focused());
+            harness.key(egui::Key::Tab, false);
+            assert_eq!(focus_type(&harness.key(egui::Key::Tab, true)), [expected]);
+            assert_eq!(harness.ctx.memory(|memory| memory.focused()), focused);
+            assert!(harness.queued().is_empty());
+        }
+        assert_eq!(controls.len(), 4);
+        let mut harness = ObservationHarness::default();
+        harness.event(&surface(2, json!({"type":"stack","children":controls})));
+        harness.frame(vec![]);
+        let order = [egui::WidgetType::TextEdit, egui::WidgetType::Checkbox, egui::WidgetType::ComboBox, egui::WidgetType::Button];
+        let mut identities = Vec::new();
+        for expected in order {
+            assert_eq!(focus_type(&harness.key(egui::Key::Tab, false)), [expected]);
+            identities.push(harness.ctx.memory(|memory| memory.focused()).unwrap());
+            assert!(harness.queued().is_empty());
+        }
+        harness.key(egui::Key::Tab, false);
+        for (expected, identity) in order.into_iter().zip(identities).rev() {
+            assert_eq!(focus_type(&harness.key(egui::Key::Tab, true)), [expected]);
+            assert_eq!(harness.ctx.memory(|memory| memory.focused()), Some(identity));
+            assert!(harness.queued().is_empty());
+        }
+    }
+
+    #[test]
+    fn fixture_controls_keyboard_activation_emits_only_permitted_events() {
+        for (fixture, expected_event, field) in [
+            (include_str!("../../crates/mote-ui/fixtures/06_field.json"), "", ""),
+            (include_str!("../../crates/mote-ui/fixtures/07_toggle.json"), "change", "local_only"),
+            (include_str!("../../crates/mote-ui/fixtures/09_action.json"), "approve", ""),
+        ] {
+            let mut harness = ObservationHarness::default();
+            harness.event(&surface(7, serde_json::from_str(fixture).unwrap()));
+            harness.frame(vec![]);
+            harness.key(egui::Key::Tab, false);
+            assert!(harness.queued().is_empty());
+            for (key, value) in [(egui::Key::Space, false), (egui::Key::Enter, true)] {
+                if expected_event.is_empty() { harness.edit("runtime text"); }
+                harness.key(key, false);
+                let expected = match expected_event {
+                    "" => vec![],
+                    "change" => vec![json!({"thread":"main","event":"change","args":{"field":field,"value":value},"surface_seq":7,"node_path":[]})],
+                    _ => vec![json!({"thread":"main","event":expected_event,"args":{},"surface_seq":7,"node_path":[]})],
+                };
+                assert_eq!(harness.queued(), expected);
+            }
+        }
+        for key in [egui::Key::Space, egui::Key::Enter] {
+            let mut harness = ObservationHarness::default();
+            harness.event(&surface(8, serde_json::from_str(include_str!("../../crates/mote-ui/fixtures/08_select.json")).unwrap()));
+            harness.frame(vec![]);
+            harness.key(egui::Key::Tab, false);
+            harness.key(key, false);
+            assert!(texts(&mut harness).contains(&"qwen3:0.6b".into()));
+            assert!(harness.queued().is_empty());
+            assert!(focus_type(&harness.key(egui::Key::Tab, false)).is_empty());
+            let focus = harness.key(egui::Key::Tab, false);
+            assert!(focus.platform_output.events.iter().any(|event| matches!(event,
+                egui::output::OutputEvent::FocusGained(info) if info.label.as_deref() == Some("qwen3:4b"))));
+            let first = harness.ctx.memory(|memory| memory.focused());
+            let focus = harness.key(egui::Key::Tab, false);
+            assert!(focus.platform_output.events.iter().any(|event| matches!(event,
+                egui::output::OutputEvent::FocusGained(info) if info.label.as_deref() == Some("qwen3:0.6b"))));
+            let second = harness.ctx.memory(|memory| memory.focused());
+            assert!(first.is_some() && second.is_some() && first != second);
+            harness.key(egui::Key::Tab, true);
+            assert_eq!(harness.ctx.memory(|memory| memory.focused()), first);
+            harness.key(egui::Key::Tab, false);
+            assert_eq!(harness.ctx.memory(|memory| memory.focused()), second);
+            assert!(harness.queued().is_empty());
+            harness.key(key, false);
+            assert_eq!(harness.queued(), [json!({"thread":"main","event":"change","args":{"field":"models.talk","value":"qwen3:0.6b"},"surface_seq":8,"node_path":[]})]);
+            assert!(texts(&mut harness).contains(&"qwen3:0.6b".into()));
+            assert!(!texts(&mut harness).contains(&"qwen3:4b".into()));
         }
     }
 

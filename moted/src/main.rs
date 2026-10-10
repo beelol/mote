@@ -1724,6 +1724,94 @@ mod approval_dispatch_tests {
     }
 
     #[test]
+    fn runtime_keyboard_edits_and_activations_keep_models_and_history_host_owned() {
+        use mote_client::{InputKey, ObservationHarness};
+        let server = mote_testkit::ScriptedServer::start().unwrap();
+        let (data, _) = dirs("runtime-keyboard");
+        let mut daemon = daemon(&data);
+        daemon.client = Ollama::new(server.base_url());
+        daemon.call("surface.render", json!({"surface":{
+            "type":"field","label":"Name","name":"name","value":"host value"
+        }})).unwrap();
+        let original = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().unwrap();
+        let mut field = ObservationHarness::default();
+        field.event(&original);
+        field.frame(vec![]);
+        field.key(InputKey::Tab, false);
+        for text in ["first edit", "second edit"] {
+            field.edit(text);
+            field.key(InputKey::Space, false);
+            assert!(field.queued().is_empty());
+            let (_, output) = field.frame_output(vec![]);
+            assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
+                mote_client::PaintedShape::Text(value) if value.galley.text() == text)));
+            assert_eq!(daemon.log.max_seq().unwrap(), original.seq);
+            assert_eq!(daemon.log.get(original.seq).unwrap(), Some(original.clone()));
+            assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), 0);
+            assert_eq!(daemon.store.lock().unwrap().count_packs().unwrap(), 0);
+            assert!(server.recorded().is_empty());
+        }
+        field.enter();
+        assert!(field.queued().is_empty());
+
+        let source = "screen { toggle \"Local\" models.local_only select \"Talk\" models.talk options model_options button \"Refresh\" -> refresh }";
+        daemon.call("matrix.render", json!({"source":source})).unwrap();
+        for (key, tabs, expected_event, expected_args, path) in [
+            (InputKey::Space, 1, "change", json!({"field":"models.local_only","value":false}), vec![0]),
+            (InputKey::Enter, 1, "change", json!({"field":"models.local_only","value":true}), vec![0]),
+            (InputKey::Space, 3, "refresh", json!({}), vec![2]),
+            (InputKey::Enter, 3, "refresh", json!({}), vec![2]),
+            (InputKey::Enter, 2, "change", json!({"field":"models.talk","value":"qwen3:0.6b"}), vec![1]),
+        ] {
+            let committed = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().unwrap();
+            assert_eq!(committed.kind, "ui.surface");
+            let mut harness = ObservationHarness::default();
+            harness.event(&committed);
+            harness.frame(vec![]);
+            for _ in 0..tabs { harness.key(InputKey::Tab, false); }
+            assert!(harness.queued().is_empty());
+            assert_eq!(daemon.log.max_seq().unwrap(), committed.seq);
+            harness.key(key, false);
+            if tabs == 2 {
+                assert!(harness.queued().is_empty());
+                for _ in 0..3 { harness.key(InputKey::Tab, false); }
+                assert!(harness.queued().is_empty());
+                harness.key(InputKey::Tab, true);
+                harness.key(InputKey::Tab, false);
+                harness.key(key, false);
+            }
+            let queued = harness.queued();
+            assert_eq!(queued, [json!({"thread":"main", "event":expected_event, "args":expected_args,
+                "surface_seq":committed.seq, "node_path":path})]);
+            assert_eq!(daemon.log.max_seq().unwrap(), committed.seq);
+            daemon.call("ui.event", queued[0].clone()).unwrap();
+            let config_events = i64::from(expected_event == "change");
+            if config_events == 1 {
+                assert_eq!(daemon.log.get(committed.seq + 1).unwrap().unwrap().kind, "config.changed");
+            }
+            assert_eq!(daemon.log.get(committed.seq + config_events + 1).unwrap().unwrap().kind, "ui.event");
+            let refreshed = daemon.log.get(committed.seq + config_events + 2).unwrap().unwrap();
+            assert_eq!(refreshed.kind, "ui.surface");
+            assert_eq!(daemon.log.max_seq().unwrap(), refreshed.seq);
+            assert_eq!(daemon.log.get(committed.seq).unwrap(), Some(committed.clone()));
+            harness.event(&refreshed);
+            harness.frame(vec![]);
+            assert!(harness.queued().is_empty());
+            if expected_event == "change" {
+                let field = expected_args["field"].as_str().unwrap();
+                assert_eq!(daemon.config.lock().unwrap().get_json(field), Some(expected_args["value"].clone()));
+                assert_eq!(refreshed.payload["surface"]["children"][path[0]]["value"], expected_args["value"]);
+            }
+            assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), 0);
+            assert_eq!(daemon.store.lock().unwrap().count_packs().unwrap(), 0);
+            assert!(server.recorded().is_empty());
+        }
+        assert_eq!(daemon.log.get(original.seq).unwrap(), Some(original));
+        println!("Field edits and traversal emit no events; five keyboard activations dispatch exact UI contracts; zero model requests, packs or ledger rows");
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
     fn matrix_literal_strings_reach_the_renderer_as_inert_text() {
         use mote_client::ObservationHarness;
         let (data, _) = dirs("literal-rendering");

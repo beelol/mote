@@ -1,5 +1,6 @@
 use eframe::egui;
 use mote_ui::Node;
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SurfaceContext {
@@ -61,11 +62,46 @@ pub fn discard_change(ctx: &egui::Context, event: &SurfaceEvent) {
     });
 }
 
-pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
-    draw_at(ui, node, events, &mut Vec::new());
+#[derive(Clone, Copy, Hash)]
+enum ControlKind {
+    Field,
+    Toggle,
+    Select,
+    Action,
 }
 
-fn draw_at(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>, path: &mut Vec<usize>) {
+pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
+    let cache = ui.id().with("live-controls");
+    let mut live = HashMap::new();
+    draw_at(ui, node, events, &mut Vec::new(), ui.id(), &mut live);
+    let previous = ui
+        .data_mut(|data| data.get_temp::<HashMap<egui::Id, egui::Id>>(cache))
+        .unwrap_or_default();
+    for (id, widget) in previous.iter().filter(|(id, _)| !live.contains_key(id)) {
+        ui.data_mut(|data| {
+            data.remove::<(String, String)>(*id);
+            data.remove::<(bool, bool)>(*id);
+            data.remove::<egui::text_edit::TextEditState>(*id);
+        });
+        let popup_open = egui::ComboBox::is_open(ui.ctx(), *widget);
+        ui.memory_mut(|memory| {
+            memory.surrender_focus(*widget);
+            if popup_open {
+                memory.close_popup();
+            }
+        });
+    }
+    ui.data_mut(|data| data.insert_temp(cache, live));
+}
+
+fn draw_at(
+    ui: &mut egui::Ui,
+    node: &Node,
+    events: &mut Vec<SurfaceEvent>,
+    path: &mut Vec<usize>,
+    namespace: egui::Id,
+    live: &mut HashMap<egui::Id, egui::Id>,
+) {
     #[cfg(any(test, feature = "test-observation"))]
     let first_shape = observation::shape_count(ui);
     match node {
@@ -79,7 +115,7 @@ fn draw_at(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>, path:
                         ui.separator();
                     }
                     path.push(index);
-                    ui.push_id(index, |ui| draw_at(ui, child, events, path));
+                    ui.push_id(index, |ui| draw_at(ui, child, events, path, namespace, live));
                     path.pop();
                 }
             });
@@ -89,7 +125,7 @@ fn draw_at(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>, path:
                 ui.horizontal_wrapped(|ui| {
                     for (index, child) in children.iter().enumerate() {
                         path.push(index);
-                        ui.push_id(index, |ui| draw_at(ui, child, events, path));
+                        ui.push_id(index, |ui| draw_at(ui, child, events, path, namespace, live));
                         path.pop();
                     }
                 });
@@ -111,8 +147,9 @@ fn draw_at(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>, path:
                     }
                 });
         }
-        Node::Field { label, name, value } => {
-            let id = ui.make_persistent_id(("field", name));
+        Node::Field { label, value, .. } => {
+            let id = namespace.with((ControlKind::Field, &*path));
+            live.insert(id, id);
             let mut edited = ui
                 .data_mut(|data| data.get_temp::<(String, String)>(id))
                 .filter(|(host, _)| host == value)
@@ -128,13 +165,16 @@ fn draw_at(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>, path:
             ui.data_mut(|data| data.insert_temp(id, (value.clone(), edited)));
         }
         Node::Toggle { label, name, value } => {
-            let id = ui.make_persistent_id(("toggle", name));
+            let id = namespace.with((ControlKind::Toggle, &*path));
             let mut edited = ui
                 .data_mut(|data| data.get_temp::<(bool, bool)>(id))
                 .filter(|(host, _)| host == value)
                 .map(|(_, edited)| edited)
                 .unwrap_or(*value);
-            let response = control(ui, |ui| ui.add(egui::Checkbox::new(&mut edited, label)));
+            let response = ui.push_id(id, |ui| {
+                control(ui, |ui| ui.add(egui::Checkbox::new(&mut edited, label)))
+            }).inner;
+            live.insert(id, response.id);
             if response.changed() {
                 events.push(SurfaceEvent::Change {
                     context: SurfaceContext { surface_seq: None, node_path: path.clone() },
@@ -151,13 +191,13 @@ fn draw_at(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>, path:
             options,
             value,
         } => {
-            let id = ui.make_persistent_id(("select", name));
+            let id = namespace.with((ControlKind::Select, &*path));
             let mut selected = ui
                 .data_mut(|data| data.get_temp::<(String, String)>(id))
                 .filter(|(host, _)| host == value)
                 .map(|(_, selected)| selected)
                 .unwrap_or_else(|| value.clone());
-            control(ui, |ui| {
+            let response = control(ui, |ui| {
                 ui.label(label);
                 egui::ComboBox::from_id_salt(id)
                     .selected_text(&selected)
@@ -167,11 +207,13 @@ fn draw_at(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>, path:
                                 let response =
                                     crate::theme::selectable_label(ui, selected == *option, option);
                                 let target = response.rect.expand2(egui::vec2(0.0, 6.0));
-                                if response
+                                let activated = response
                                     .union(ui.interact(target, response.id, egui::Sense::click()))
-                                    .clicked()
-                                    && selected != *option
-                                {
+                                    .clicked();
+                                if activated {
+                                    ui.memory_mut(|memory| memory.close_popup());
+                                }
+                                if activated && selected != *option {
                                     selected = option.clone();
                                     events.push(SurfaceEvent::Change {
                                         context: SurfaceContext { surface_seq: None, node_path: path.clone() },
@@ -182,12 +224,16 @@ fn draw_at(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>, path:
                                 }
                             });
                         }
-                    });
+                    })
             });
+            live.insert(id, response.response.id);
             ui.data_mut(|data| data.insert_temp(id, (value.clone(), selected)));
         }
         Node::Action { label, event } => {
-            if button(ui, label).clicked() {
+            let id = namespace.with((ControlKind::Action, &*path));
+            let response = ui.push_id(id, |ui| button(ui, label)).inner;
+            live.insert(id, response.id);
+            if response.clicked() {
                 events.push(SurfaceEvent::Action {
                     context: SurfaceContext { surface_seq: None, node_path: path.clone() },
                     event: event.clone(),

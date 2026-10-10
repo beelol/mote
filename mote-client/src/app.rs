@@ -365,7 +365,7 @@ impl MoteApp {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                for (index, m) in self.chat.messages.iter().enumerate() {
+                for m in &self.chat.messages {
                     ui.horizontal(|ui| {
                         ui.strong(&m.role);
                         crate::theme::caption(ui, m.status.label());
@@ -373,11 +373,11 @@ impl MoteApp {
                     if let Some(node) = &m.surface {
                         let first_event = clicked.len();
                         if m.surface_id.as_deref() == Some("matrix") {
-                            ui.push_id(("matrix", self.chat.matrix_epoch, index), |ui| {
+                            ui.push_id(("matrix", self.chat.matrix_epoch), |ui| {
                                 crate::surface::draw(ui, node, &mut clicked)
                             });
                         } else {
-                            ui.push_id(index, |ui| crate::surface::draw(ui, node, &mut clicked));
+                            ui.push_id(("surface", m.surface_id.as_deref(), m.surface_instance), |ui| crate::surface::draw(ui, node, &mut clicked));
                         }
                         for event in &mut clicked[first_event..] {
                             event.set_surface_seq(m.surface_seq);
