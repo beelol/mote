@@ -2,8 +2,8 @@
 
 Updated 2026-10-10. Replace this file, never append.
 
-Branch: `main`. Base: `c9b912e`.
-Requested subject: `test(matrix): measure inferred surface validity`.
+Branch: `main`. Base: `59bfedb`.
+Requested subject: `docs(matrix): correct inferred surface evidence`.
 Preserve untracked `.DS_Store` and `.superpowers/`. Do not push.
 
 Task 4 adds `MOTE_LIVE=1 moted bench surface`. The benchmark uses a fixed 200-prompt corpus with
@@ -23,9 +23,15 @@ eligible. The isolated database contains exactly 200 surface ledger rows and mat
 response events.
 
 The activation gate failed. Production `handle_turn` remains disconnected from automatic surface
-inference. UI-24 remains open. UI-36 is verified for the bounded v0 retry controller. UI-37 is
-verified only for the permitted local Ollama v0 path. UI-38 remains open because the owner has not
-accepted the two-call composition as the final framing.
+inference. UI-24 remains open. UI-36 remains partial because retry input uses the last committed
+canonical source instead of a valid prefix recovered from the rejected candidate. A second failure
+preserves the prior surface and prose instead of rendering a recovered prefix with fallback prose.
+UI-37 is verified only for the permitted local Ollama v0 path. UI-38 remains open because the owner
+has not accepted the two-call composition as the final framing.
+
+The live benchmark called the surface model boundary directly with canned completed prose. It
+captured strict-envelope behavior only. It did not run after a completed live prose answer through
+the internal orchestration and does not prove live prose-to-surface ordering.
 
 The isolated live evidence remains at `/private/tmp/mote-surface-task4.EH1JJG`. The exact output is
 copied into `docs/verification/UI-24.md`.
