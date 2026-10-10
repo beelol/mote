@@ -70,6 +70,20 @@ Every other criterion written during planning, 329 of them with stable IDs, is i
 
 Work top to bottom. Each item stands alone: what, how to verify, and the section of [docs/rfcs/v0.md](docs/rfcs/v0.md) that defines it. Nothing here needs an owner decision.
 
+- [x] **UI-00** The owner confirmed the four Matrix defaults and activated UI-01 through UI-48.
+  Existing v0 behavior remains authoritative until each versioned replacement is verified.
+  Hardware-only evidence may remain open while independent implementation continues.
+  [decisions](matrix/decisions.md) [evidence](docs/verification/UI-00.md)
+- [ ] **Matrix toolchain** Implement UI-01 through UI-12, UI-32, UI-35 and UI-45 using the
+  activated plan. **Verify:** complete every criterion's full Verify clause in `docs/backlog.md` and
+  record separate evidence files. [spec](docs/superpowers/specs/2026-10-10-matrix-toolchain.md)
+  [plan](docs/superpowers/plans/2026-10-10-matrix-toolchain.md)
+- [ ] **Matrix host and runtime** Implement UI-13 through UI-31, UI-33 through UI-44 and UI-46
+  through UI-48 after the toolchain, including a versioned full-catalog consumer contract.
+  **Verify:** complete every criterion's full Verify clause in `docs/backlog.md`; do not let unavailable
+  hardware block independent code and headless evidence. [catalog](matrix/catalog.md)
+  [runtime](matrix/runtime.md)
+
 - [x] **V0-01** The Cargo workspace builds the `moted` and `mote-client` binaries and the nine crates named in the table, and both `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` pass on the empty project. **Verify:** Run both commands. [§1](docs/rfcs/v0.md#1-workspace) [evidence](docs/verification/V0-01.md)
 - [x] **V0-02** `mote-redact` replaces the same secret patterns and secret keys as Overseer's `redact.rs`, with Overseer's tests carried over. **Verify:** `cargo test -p mote-redact`. [§1](docs/rfcs/v0.md#1-workspace) [evidence](docs/verification/V0-02.md)
 - [x] **V0-03** `mote-paths` returns the macOS data directory and socket path and creates the directory with mode 0700. **Verify:** Unit test checks the path and the mode. [§1](docs/rfcs/v0.md#1-workspace) [evidence](docs/verification/V0-03.md)

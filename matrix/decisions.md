@@ -1,8 +1,8 @@
 # matrix decisions
 
-This document lists the decisions an owner confirms to move matrix forward, and it records where
-matrix departs from the earlier UI language RFC. Nothing here is approved. The formal gate is `UI-00`
-in `docs/backlog.md`, which only the owner closes.
+This document lists the decisions the owner confirmed to move matrix forward, and it records where
+matrix departs from the earlier UI language RFC. The owner approved all four defaults without changes
+on 2026-10-10. The gate evidence is `docs/verification/UI-00.md`.
 
 ## Decisions already taken in this design
 
@@ -42,8 +42,7 @@ reverses them.
 
 ## Owner confirmation list for UI-00
 
-Confirm or name explicit changes to these four defaults.
-Nothing here closes `UI-00` or moves work into v0.
+The owner confirmed these four defaults without changes on 2026-10-10.
 
 1. Keep the closed [catalog](catalog.md), its coverage recipes and the explicit deferrals below.
 2. Confirm [grammar.md](grammar.md), host owned types and actions, scoped optional selection,
