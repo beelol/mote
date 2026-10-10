@@ -46,7 +46,7 @@ impl ChatState {
                 self.typing = true;
                 let delta = ev.payload["text"].as_str().unwrap_or("");
                 if let Some(last) = self.messages.last_mut() {
-                    if last.role == "assistant" {
+                    if last.role == "assistant" && last.surface.is_none() {
                         last.text.push_str(delta);
                         return;
                     }

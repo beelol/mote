@@ -396,4 +396,22 @@ mod tests {
         app.drain_events();
         assert_eq!(app.chat.messages[2].text, "talk unavailable: offline");
     }
+
+    #[test]
+    fn streamed_text_after_a_surface_starts_a_visible_message() {
+        let (mut app, tx) = app();
+        send(&tx, "talk.delta", serde_json::json!({"text":"before"}));
+        send(
+            &tx,
+            "ui.surface",
+            serde_json::json!({"surface": {"type":"text", "value":"card"}}),
+        );
+        send(&tx, "talk.delta", serde_json::json!({"text":"after"}));
+
+        app.drain_events();
+
+        assert_eq!(app.chat.messages.len(), 3);
+        assert_eq!(app.chat.messages[2].text, "after");
+        assert!(app.chat.messages[2].surface.is_none());
+    }
 }
