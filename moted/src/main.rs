@@ -109,6 +109,7 @@ struct Daemon {
     matrix_surfaces: Mutex<HashMap<String, matrix::CommittedMatrixSurface>>,
     matrix_candidates: Mutex<HashMap<(String, String), matrix_lang::CandidateStream>>,
     inferred_retry_budget: Mutex<inferred_ui::RetryBudget>,
+    inferred_surface_turns: Mutex<HashMap<String, i64>>,
     data_dir: PathBuf,
     started: std::time::Instant,
 }
@@ -126,6 +127,26 @@ struct MatrixCommit<'a> {
 enum MatrixCandidateFinalization {
     Committed(Value),
     Rejected(Value),
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+enum AnswerCompletion<'a> {
+    TalkDone(&'a str),
+    ThinkDone(&'a str),
+    TalkUnavailable,
+    ThinkFailed,
+    HandoffUnfinished,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, PartialEq, Eq)]
+enum SurfaceInferenceOutcome {
+    Ineligible,
+    AlreadyAttempted,
+    None,
+    Committed,
+    Rejected,
 }
 
 impl Daemon {
@@ -426,6 +447,69 @@ impl Daemon {
                 Ok(json!({"status":"rejected", "diagnostics":diagnostics}))
             }
         }
+    }
+
+    fn infer_surface_after_answer_with<F>(
+        &self,
+        thread: &str,
+        turn_seq: i64,
+        request: &str,
+        completion: AnswerCompletion<'_>,
+        now: std::time::Instant,
+        generate: F,
+    ) -> Result<SurfaceInferenceOutcome, RpcError>
+    where
+        F: FnMut(&inferred_ui::SurfaceInputs<'_>) -> Result<inferred_ui::SurfaceDecision, String>,
+    {
+        let prose = match completion {
+            AnswerCompletion::TalkDone(prose) | AnswerCompletion::ThinkDone(prose) => prose,
+            AnswerCompletion::TalkUnavailable
+            | AnswerCompletion::ThinkFailed
+            | AnswerCompletion::HandoffUnfinished => {
+                return Ok(SurfaceInferenceOutcome::Ineligible);
+            }
+        };
+        {
+            let mut turns = self.inferred_surface_turns.lock().unwrap();
+            if turns.get(thread).is_some_and(|last| *last >= turn_seq) {
+                return Ok(SurfaceInferenceOutcome::AlreadyAttempted);
+            }
+            turns.insert(thread.to_owned(), turn_seq);
+        }
+        let response = self.infer_surface_with(
+            thread,
+            &format!("surface-{turn_seq}"),
+            request,
+            prose,
+            now,
+            generate,
+        )?;
+        Ok(match response.get("status").and_then(Value::as_str) {
+            Some("committed") => SurfaceInferenceOutcome::Committed,
+            Some("rejected") => SurfaceInferenceOutcome::Rejected,
+            _ => SurfaceInferenceOutcome::None,
+        })
+    }
+
+    #[allow(dead_code)]
+    fn infer_surface_after_answer(
+        &self,
+        thread: &str,
+        turn_seq: i64,
+        request: &str,
+        completion: AnswerCompletion<'_>,
+    ) -> Result<SurfaceInferenceOutcome, RpcError> {
+        self.infer_surface_after_answer_with(
+            thread,
+            turn_seq,
+            request,
+            completion,
+            std::time::Instant::now(),
+            |inputs| {
+                let store = self.store.lock().unwrap();
+                inferred_ui::generate_surface(&self.log, &store, &self.client, inputs)
+            },
+        )
     }
 
     fn render_matrix(&self, thread: &str, source: &str, retain: bool) -> Result<Value, RpcError> {
@@ -1008,6 +1092,7 @@ mod approval_dispatch_tests {
             matrix_surfaces: Mutex::new(HashMap::new()),
             matrix_candidates: Mutex::new(HashMap::new()),
             inferred_retry_budget: Mutex::new(inferred_ui::RetryBudget::default()),
+            inferred_surface_turns: Mutex::new(HashMap::new()),
             data_dir: data_dir.to_path_buf(),
             started: std::time::Instant::now(),
         }
@@ -1038,6 +1123,19 @@ mod approval_dispatch_tests {
   }
 }"#;
 
+    const INFERRED_DASHBOARD: &str = r#"screen {
+  col {
+    text "Agent dashboard"
+    progress value host.progress
+    toggle "Local only" models.local_only
+    select "Talk model" models.talk options model_options
+    list from pipeline.stages {
+      item { row { text .stage text .latency } }
+    }
+    button "Refresh" -> refresh
+  }
+}"#;
+
     const HOST_SNAPSHOT_DASHBOARD: &str = r#"screen {
   col {
     progress value host.progress
@@ -1053,6 +1151,571 @@ mod approval_dispatch_tests {
     {
         let mut values = values.into_iter();
         move |_| values.next().expect("one scripted decision per attempt")
+    }
+
+    #[test]
+    fn completed_talk_answer_commits_one_inferred_surface_after_prose() {
+        let (data, _) = dirs("inferred-talk-flow");
+        let daemon = daemon(&data);
+        let turn = daemon
+            .log
+            .append("main", "turn.user", &json!({"text":"show settings"}))
+            .unwrap();
+        daemon
+            .log
+            .append("main", "talk.delta", &json!({"text":"Here are the settings."}))
+            .unwrap();
+        daemon
+            .log
+            .append("main", "talk.done", &json!({"ledger_id":1,"pack_id":1}))
+            .unwrap();
+
+        let outcome = daemon
+            .infer_surface_after_answer_with(
+                "main",
+                turn.seq,
+                "show settings",
+                AnswerCompletion::TalkDone("Here are the settings."),
+                std::time::Instant::now(),
+                decisions([Ok(inferred_ui::SurfaceDecision::Matrix {
+                    source: MATRIX_DASHBOARD.into(),
+                })]),
+            )
+            .unwrap();
+
+        assert!(matches!(outcome, SurfaceInferenceOutcome::Committed));
+        let mut events = daemon.log.recent_since(i64::MIN, 20).unwrap();
+        events.reverse();
+        let kinds: Vec<_> = events.iter().map(|event| event.kind.as_str()).collect();
+        assert_eq!(kinds, ["turn.user", "talk.delta", "talk.done", "ui.surface"]);
+        assert_eq!(
+            events.iter().filter(|event| event.kind == "ui.surface").count(),
+            1
+        );
+    }
+
+    #[test]
+    fn duplicate_completed_answer_cannot_commit_a_second_surface_for_the_turn() {
+        let (data, _) = dirs("inferred-one-surface-per-turn");
+        let daemon = daemon(&data);
+        let mut outcomes = Vec::new();
+
+        for label in ["First", "Second"] {
+            outcomes.push(
+                daemon
+                    .infer_surface_after_answer_with(
+                        "main",
+                        23,
+                        "show status",
+                        AnswerCompletion::TalkDone("Status is ready."),
+                        std::time::Instant::now(),
+                        decisions([Ok(inferred_ui::SurfaceDecision::Matrix {
+                            source: format!("screen {{ text \"{label}\" }}"),
+                        })]),
+                    )
+                    .unwrap(),
+            );
+        }
+
+        assert_eq!(
+            outcomes,
+            [
+                SurfaceInferenceOutcome::Committed,
+                SurfaceInferenceOutcome::AlreadyAttempted,
+            ]
+        );
+        assert_eq!(
+            daemon
+                .log
+                .recent_kind_since("ui.surface", i64::MIN, 10)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn completed_think_answer_commits_after_think_done() {
+        let (data, _) = dirs("inferred-think-flow");
+        let daemon = daemon(&data);
+        let turn = daemon
+            .log
+            .append("main", "turn.user", &json!({"text":"inspect configuration"}))
+            .unwrap();
+        daemon
+            .log
+            .append("main", "think.text", &json!({"text":"Inspection complete."}))
+            .unwrap();
+        daemon
+            .log
+            .append("main", "think.done", &json!({"ledger_id":2,"pack_id":2}))
+            .unwrap();
+
+        let outcome = daemon
+            .infer_surface_after_answer_with(
+                "main",
+                turn.seq,
+                "inspect configuration",
+                AnswerCompletion::ThinkDone("Inspection complete."),
+                std::time::Instant::now(),
+                decisions([Ok(inferred_ui::SurfaceDecision::Matrix {
+                    source: MATRIX_DASHBOARD.into(),
+                })]),
+            )
+            .unwrap();
+
+        assert_eq!(outcome, SurfaceInferenceOutcome::Committed);
+        let surface = daemon
+            .log
+            .recent_kind_since("ui.surface", i64::MIN, 10)
+            .unwrap();
+        assert_eq!(surface.len(), 1);
+        let done = daemon
+            .log
+            .recent_kind_since("think.done", i64::MIN, 10)
+            .unwrap();
+        assert!(done[0].seq < surface[0].seq);
+    }
+
+    #[test]
+    fn none_and_incomplete_answers_never_change_the_surface() {
+        let (data, _) = dirs("inferred-ineligible");
+        let daemon = daemon(&data);
+        daemon.render_matrix("main", "screen { text \"Prior\" }", true).unwrap();
+        let prior_seq = daemon.matrix_surfaces.lock().unwrap()["main"].seq;
+        let mut calls = 0;
+
+        let none = daemon
+            .infer_surface_after_answer_with(
+                "main",
+                17,
+                "ordinary chat",
+                AnswerCompletion::TalkDone("Ordinary answer."),
+                std::time::Instant::now(),
+                |_| {
+                    calls += 1;
+                    Ok(inferred_ui::SurfaceDecision::None)
+                },
+            )
+            .unwrap();
+        assert_eq!(none, SurfaceInferenceOutcome::None);
+
+        for completion in [
+            AnswerCompletion::TalkUnavailable,
+            AnswerCompletion::ThinkFailed,
+            AnswerCompletion::HandoffUnfinished,
+        ] {
+            let outcome = daemon
+                .infer_surface_after_answer_with(
+                    "main",
+                    18,
+                    "unfinished",
+                    completion,
+                    std::time::Instant::now(),
+                    |_| {
+                        calls += 1;
+                        Ok(inferred_ui::SurfaceDecision::None)
+                    },
+                )
+                .unwrap();
+            assert_eq!(outcome, SurfaceInferenceOutcome::Ineligible);
+        }
+
+        assert_eq!(calls, 1);
+        assert_eq!(daemon.matrix_surfaces.lock().unwrap()["main"].seq, prior_seq);
+        assert_eq!(
+            daemon
+                .log
+                .recent_kind_since("ui.surface", i64::MIN, 10)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn inferred_turn_uses_exact_candidate_id_and_preserves_prose_and_prior_surface() {
+        let (data, _) = dirs("inferred-turn-rejection");
+        let daemon = daemon(&data);
+        daemon.render_matrix("main", "screen { text \"Prior\" }", true).unwrap();
+        let prior = daemon.matrix_surfaces.lock().unwrap().clone();
+        let prior_source = daemon.matrix_sources.lock().unwrap().clone();
+        let turn = daemon
+            .log
+            .append("main", "turn.user", &json!({"text":"show controls"}))
+            .unwrap();
+        let answer = daemon
+            .log
+            .append("main", "talk.done", &json!({"ledger_id":1,"pack_id":1}))
+            .unwrap();
+
+        let outcome = daemon
+            .infer_surface_after_answer_with(
+                "main",
+                turn.seq,
+                "show controls",
+                AnswerCompletion::TalkDone("The prose remains visible."),
+                std::time::Instant::now(),
+                decisions([
+                    Ok(inferred_ui::SurfaceDecision::Matrix {
+                        source: "screen { text missing_binding }".into(),
+                    }),
+                    Ok(inferred_ui::SurfaceDecision::Matrix {
+                        source: "screen { button \"Bad\" -> missing_action }".into(),
+                    }),
+                ]),
+            )
+            .unwrap();
+
+        assert_eq!(outcome, SurfaceInferenceOutcome::Rejected);
+        assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), prior);
+        assert_eq!(*daemon.matrix_sources.lock().unwrap(), prior_source);
+        let diagnostic = daemon
+            .log
+            .recent_kind_since("ui.diagnostic", i64::MIN, 10)
+            .unwrap();
+        assert_eq!(diagnostic.len(), 1);
+        assert_eq!(
+            diagnostic[0].payload["candidate"],
+            format!("surface-{}", turn.seq)
+        );
+        assert!(answer.seq < diagnostic[0].seq);
+    }
+
+    #[test]
+    fn production_turn_keeps_automatic_surface_inference_disabled_before_the_live_gate() {
+        let server = mote_testkit::ScriptedServer::start().unwrap();
+        server.set_chat_chunks(vec![json!({
+            "message":{"role":"assistant","content":"{\"route\":\"talk\",\"reason\":\"greeting\"}"},
+            "done":true
+        })
+        .to_string()]);
+        let (data, _) = dirs("inferred-production-gate");
+        let mut daemon = daemon(&data);
+        daemon.client = Ollama::new(server.base_url());
+
+        let response = daemon
+            .handle_turn(&json!({
+                "thread":"main",
+                "message":"show a dashboard",
+                "client_message_id":"gate-check"
+            }))
+            .unwrap();
+
+        assert_eq!(response["status"], "done");
+        assert_eq!(
+            daemon
+                .log
+                .recent_kind_since("ui.surface", i64::MIN, 10)
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(
+            daemon
+                .store
+                .lock()
+                .unwrap()
+                .ledger_since(0)
+                .unwrap()
+                .iter()
+                .filter(|row| row.lane == "surface")
+                .count(),
+            0
+        );
+        assert_eq!(
+            server
+                .recorded()
+                .iter()
+                .filter(|request| request.path == "/api/chat")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn completed_talk_flow_keeps_event_order_ledger_counts_and_redacted_surface_request() {
+        let server = mote_testkit::ScriptedServer::start().unwrap();
+        server.set_chat_chunks(vec![json!({
+            "message":{"role":"assistant","content":"{\"route\":\"talk\",\"reason\":\"greeting\"}"},
+            "done":true
+        })
+        .to_string()]);
+        let (data, _) = dirs("inferred-talk-accounting");
+        let mut daemon = daemon(&data);
+        daemon.client = Ollama::new(server.base_url());
+        let turn = daemon
+            .log
+            .append("main", "turn.user", &json!({"text":"show settings"}))
+            .unwrap();
+        let answer = {
+            let store = daemon.store.lock().unwrap();
+            let inputs = TalkInputs {
+                charter: "be concise",
+                profile: "",
+                memories: "",
+                working_set: "",
+                turn: "show settings",
+            };
+            match run_turn(
+                &daemon.log,
+                &store,
+                &daemon.client,
+                "main",
+                "talk-test",
+                TALK_CTX,
+                "router-test",
+                ROUTER_CTX,
+                &inputs,
+                TALK_BUDGET,
+            ) {
+                TalkOutcome::Done { answer, .. } => answer,
+                other => panic!("expected completed talk, got {other:?}"),
+            }
+        };
+
+        let secret = "sk-abcdefghijklmnopqrstuvwxyz";
+        server.set_chat_chunks(vec![json!({
+            "message": {
+                "role":"assistant",
+                "content": json!({"kind":"matrix","source":INFERRED_DASHBOARD}).to_string()
+            },
+            "done":true
+        })
+        .to_string()]);
+        let outcome = daemon
+            .infer_surface_after_answer(
+                "main",
+                turn.seq,
+                &format!("show settings using {secret}"),
+                AnswerCompletion::TalkDone(&answer),
+            )
+            .unwrap();
+
+        assert_eq!(outcome, SurfaceInferenceOutcome::Committed);
+        let rows = daemon.store.lock().unwrap().ledger_since(0).unwrap();
+        let lanes: Vec<_> = rows.iter().map(|row| row.lane.as_str()).collect();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(lanes.iter().filter(|lane| **lane == "talk").count(), 1);
+        assert_eq!(lanes.iter().filter(|lane| **lane == "router").count(), 1);
+        assert_eq!(lanes.iter().filter(|lane| **lane == "surface").count(), 1);
+
+        let mut events = daemon.log.recent_since(i64::MIN, 100).unwrap();
+        events.reverse();
+        let talk_done = events.iter().position(|event| event.kind == "talk.done").unwrap();
+        let surface_request = events
+            .iter()
+            .position(|event| {
+                event.kind == "model.request" && event.payload["lane"] == "surface"
+            })
+            .unwrap();
+        let surface = events.iter().position(|event| event.kind == "ui.surface").unwrap();
+        assert!(talk_done < surface_request && surface_request < surface);
+        let outbound = server
+            .recorded()
+            .into_iter()
+            .find(|request| request.body["format"].get("oneOf").is_some())
+            .unwrap();
+        assert!(!outbound.body.to_string().contains(secret));
+    }
+
+    #[test]
+    fn completed_think_flow_adds_exactly_one_think_and_surface_ledger_row() {
+        let server = mote_testkit::ScriptedServer::start().unwrap();
+        server.set_chat_chunks(vec![json!({
+            "message": {
+                "role":"assistant",
+                "content": json!({"kind":"matrix","source":INFERRED_DASHBOARD}).to_string()
+            },
+            "done":true
+        })
+        .to_string()]);
+        let (data, _) = dirs("inferred-think-accounting");
+        let mut daemon = daemon(&data);
+        daemon.client = Ollama::new(server.base_url());
+        let turn = daemon
+            .log
+            .append("main", "turn.user", &json!({"text":"inspect settings"}))
+            .unwrap();
+        let (pack, system, request) = build_think_pack(
+            &ThinkInputs {
+                charter: "be concise",
+                profile: "",
+                memories: "",
+                working_set: "",
+                turn: "inspect settings",
+            },
+            THINK_BUDGET,
+        );
+        let answer = {
+            let store = daemon.store.lock().unwrap();
+            match run_think_model_call(
+                &daemon.log,
+                &store,
+                "main",
+                "think-test",
+                &pack,
+                &system,
+                &request,
+                || {
+                    Ok((
+                        vec![
+                            mote_harness::ThinkEvent::Text {
+                                text: "Inspection complete.".into(),
+                            },
+                            mote_harness::ThinkEvent::Done { ok: true },
+                        ],
+                        Duration::from_millis(3),
+                    ))
+                },
+            ) {
+                ThinkOutcome::Done { answer, .. } => answer,
+                other => panic!("expected completed think, got {other:?}"),
+            }
+        };
+        let done = daemon
+            .log
+            .recent_kind_since("think.done", i64::MIN, 1)
+            .unwrap()[0]
+            .seq;
+
+        let outcome = daemon
+            .infer_surface_after_answer(
+                "main",
+                turn.seq,
+                "inspect settings",
+                AnswerCompletion::ThinkDone(&answer),
+            )
+            .unwrap();
+
+        assert_eq!(outcome, SurfaceInferenceOutcome::Committed);
+        let rows = daemon.store.lock().unwrap().ledger_since(0).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows.iter().filter(|row| row.lane == "think").count(), 1);
+        assert_eq!(rows.iter().filter(|row| row.lane == "surface").count(), 1);
+        let surface = daemon
+            .log
+            .recent_kind_since("ui.surface", i64::MIN, 1)
+            .unwrap()[0]
+            .seq;
+        assert!(done < surface);
+    }
+
+    #[test]
+    fn inferred_host_subset_accepts_controls_data_progress_and_refresh() {
+        let (data, _) = dirs("inferred-host-subset");
+        let daemon = daemon(&data);
+        daemon.matrix_snapshots.lock().unwrap().insert(
+            "main".into(),
+            matrix::HostSnapshot::ready(0.5, ["Inspect", "Ship"]),
+        );
+
+        let outcome = daemon
+            .infer_surface_after_answer_with(
+                "main",
+                7,
+                "show a configuration dashboard",
+                AnswerCompletion::TalkDone("Configuration is ready."),
+                std::time::Instant::now(),
+                decisions([Ok(inferred_ui::SurfaceDecision::Matrix {
+                    source: INFERRED_DASHBOARD.into(),
+                })]),
+            )
+            .unwrap();
+
+        assert_eq!(outcome, SurfaceInferenceOutcome::Committed);
+        let event = daemon
+            .log
+            .recent_kind_since("ui.surface", i64::MIN, 1)
+            .unwrap()
+            .pop()
+            .unwrap();
+        let rendered = event.payload["surface"].to_string();
+        for expected in ["progress", "toggle", "select", "list", "action"] {
+            assert!(rendered.contains(expected), "missing {expected}: {rendered}");
+        }
+    }
+
+    #[test]
+    fn unsupported_inferred_semantics_reject_before_commitment() {
+        let cases = [
+            ("unknown-action", "screen { button \"Open\" -> launch }", None),
+            (
+                "action-argument",
+                "screen { button \"Refresh\" -> refresh(reason: \"now\") }",
+                None,
+            ),
+            (
+                "keyed-list",
+                "screen { list from host.items key label { item { text .label } } }",
+                None,
+            ),
+            (
+                "selected-list",
+                "screen { list from host.items select one { item { text .label } } }",
+                None,
+            ),
+            ("pending", INFERRED_DASHBOARD, Some(matrix::HostSnapshot::pending())),
+            ("failed", INFERRED_DASHBOARD, Some(matrix::HostSnapshot::failed())),
+        ];
+        for (name, source, host) in cases {
+            let (data, _) = dirs(name);
+            let daemon = daemon(&data);
+            daemon.render_matrix("main", "screen { text \"Prior\" }", true).unwrap();
+            if let Some(host) = host {
+                daemon.matrix_snapshots.lock().unwrap().insert("main".into(), host);
+            }
+            let prior = daemon.matrix_surfaces.lock().unwrap().clone();
+            let outcome = daemon
+                .infer_surface_after_answer_with(
+                    "main",
+                    9,
+                    "show dashboard",
+                    AnswerCompletion::TalkDone("Answer remains."),
+                    std::time::Instant::now(),
+                    decisions([
+                        Ok(inferred_ui::SurfaceDecision::Matrix { source: source.into() }),
+                        Ok(inferred_ui::SurfaceDecision::Matrix { source: source.into() }),
+                    ]),
+                )
+                .unwrap();
+            assert_eq!(outcome, SurfaceInferenceOutcome::Rejected, "{name}");
+            assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), prior, "{name}");
+        }
+    }
+
+    #[test]
+    fn inferred_finalization_releases_the_context_store_lock() {
+        let server = mote_testkit::ScriptedServer::start().unwrap();
+        server.set_chat_chunks(vec![json!({
+            "message": {
+                "role":"assistant",
+                "content": json!({"kind":"matrix","source":"screen { text \"Ready\" }"}).to_string()
+            },
+            "done":true
+        })
+        .to_string()]);
+        let (data, _) = dirs("inferred-store-lock");
+        let mut daemon = daemon(&data);
+        daemon.client = Ollama::new(server.base_url());
+        let daemon = Arc::new(daemon);
+        let (sent, received) = std::sync::mpsc::channel();
+        let worker = daemon.clone();
+        std::thread::spawn(move || {
+            let result = worker.infer_surface_after_answer(
+                "main",
+                11,
+                "show status",
+                AnswerCompletion::TalkDone("Status is ready."),
+            );
+            let _ = sent.send(result);
+        });
+
+        let outcome = received
+            .recv_timeout(Duration::from_secs(2))
+            .expect("candidate finalization deadlocked on the context store")
+            .unwrap();
+        assert_eq!(outcome, SurfaceInferenceOutcome::Committed);
     }
 
     #[test]
@@ -3065,6 +3728,7 @@ mod turn_event_tests {
             matrix_surfaces: Mutex::new(HashMap::new()),
             matrix_candidates: Mutex::new(HashMap::new()),
             inferred_retry_budget: Mutex::new(inferred_ui::RetryBudget::default()),
+            inferred_surface_turns: Mutex::new(HashMap::new()),
             data_dir: data_dir.clone(),
             started: std::time::Instant::now(),
         });
@@ -3296,6 +3960,7 @@ fn run() -> Result<(), i32> {
         matrix_surfaces: Mutex::new(HashMap::new()),
         matrix_candidates: Mutex::new(HashMap::new()),
         inferred_retry_budget: Mutex::new(inferred_ui::RetryBudget::default()),
+        inferred_surface_turns: Mutex::new(HashMap::new()),
         data_dir: data.clone(),
         started: std::time::Instant::now(),
     });
