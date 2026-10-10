@@ -38,6 +38,7 @@ pub struct ObservationHarness {
     decoder: mote_ipc::EventDecoder,
     bytes: IncomingBytes,
     ctx: egui::Context,
+    viewport: egui::Vec2,
     pub switches: usize,
 }
 
@@ -81,6 +82,7 @@ impl Default for ObservationHarness {
             decoder: Default::default(),
             bytes: Default::default(),
             ctx,
+            viewport: egui::vec2(800.0, 600.0),
             switches: 0,
         }
     }
@@ -127,17 +129,21 @@ impl ObservationHarness {
         events: Vec<egui::Event>,
     ) -> (Vec<DisplayedNode>, egui::FullOutput) {
         crate::surface::observation::take();
+        crate::surface::observation::take_layout();
         let output = self.ctx.run(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(800.0, 600.0),
+                    self.viewport,
                 )),
                 events,
                 ..Default::default()
             },
             |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| self.app.chat_view(ui));
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    if self.app.fixture.is_some() { self.app.preview_view(ui); }
+                    else { self.app.chat_view(ui); }
+                });
             },
         );
         (crate::surface::observation::take(), output)
@@ -227,24 +233,24 @@ impl ObservationHarness {
             .unwrap();
         assert_eq!(self.click(action.rect.center()), expected);
         assert_eq!(self.queued(), vec![prior_event.clone()]);
-        self.frame(vec![egui::Event::Key {
-            key: egui::Key::Tab,
-            physical_key: None,
-            pressed: true,
-            repeat: false,
-            modifiers: Default::default(),
-        }]);
-        self.frame(vec![egui::Event::Key {
-            key: egui::Key::Tab,
-            physical_key: None,
-            pressed: false,
-            repeat: false,
-            modifiers: Default::default(),
-        }]);
+        let layout = crate::surface::observation::take_layout();
+        let action_id = layout.controls.iter()
+            .find(|control| control.kind == "Action" && control.path == action.path).unwrap().id;
+        for _ in 0..=layout.controls.len() + layout.scrolls.len() {
+            if self.ctx.memory(|memory| memory.focused()) == Some(action_id) { break; }
+            self.key(egui::Key::Tab, false);
+            assert_eq!(self.frame(vec![]), expected);
+            assert!(self.queued().is_empty(), "focus traversal emitted an event");
+        }
+        assert_eq!(self.ctx.memory(|memory| memory.focused()), Some(action_id));
         assert_eq!(self.enter(), expected);
         assert_eq!(self.queued(), vec![prior_event.clone()]);
     }
 }
+
+#[cfg(test)]
+#[path = "layout_tests.rs"]
+mod layout_tests;
 
 #[cfg(test)]
 mod tests {

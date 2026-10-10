@@ -157,10 +157,13 @@ fn draw_at(
                 .unwrap_or_else(|| value.clone());
             control(ui, |ui| {
                 ui.label(label);
-                ui.add_sized(
+                let response = ui.add_sized(
                     [ui.available_width().min(320.0), 36.0],
                     egui::TextEdit::singleline(&mut edited).id(id),
                 );
+                let _response = padded_response(ui, response);
+                #[cfg(any(test, feature = "test-observation"))]
+                observation::control(ui, "Field", path, &_response);
             });
             ui.data_mut(|data| data.insert_temp(id, (value.clone(), edited)));
         }
@@ -172,6 +175,8 @@ fn draw_at(
                 .map(|(_, edited)| edited)
                 .unwrap_or(*value);
             let response = identified_control(ui, id, label, Some(&mut edited));
+            #[cfg(any(test, feature = "test-observation"))]
+            observation::control(ui, "Toggle", path, &response);
             live.insert(id, response.id);
             if response.changed() {
                 events.push(SurfaceEvent::Change {
@@ -197,17 +202,21 @@ fn draw_at(
                 .unwrap_or_else(|| value.clone());
             let response = control(ui, |ui| {
                 ui.label(label);
-                egui::ComboBox::from_id_salt(id)
+                let mut combo = egui::ComboBox::from_id_salt(id)
                     .selected_text(&selected)
                     .show_ui(ui, |ui| {
                         for option in options {
                             control(ui, |ui| {
+                                #[cfg(any(test, feature = "test-observation"))]
+                                let first_shape = observation::shape_count(ui);
                                 let response =
                                     crate::theme::selectable_label(ui, selected == *option, option);
-                                let target = response.rect.expand2(egui::vec2(0.0, 6.0));
-                                let activated = response
-                                    .union(ui.interact(target, response.id, egui::Sense::click()))
-                                    .clicked();
+                                let response = padded_response(ui, response);
+                                #[cfg(any(test, feature = "test-observation"))]
+                                observation::control(ui, "Option", path, &response);
+                                #[cfg(any(test, feature = "test-observation"))]
+                                observation::popup(ui, first_shape);
+                                let activated = response.clicked();
                                 if activated {
                                     ui.memory_mut(|memory| memory.close_popup());
                                 }
@@ -222,14 +231,20 @@ fn draw_at(
                                 }
                             });
                         }
-                    })
+                    });
+                combo.response = padded_response(ui, combo.response);
+                combo
             });
             live.insert(id, response.response.id);
+            #[cfg(any(test, feature = "test-observation"))]
+            observation::control(ui, "Select", path, &response.response);
             ui.data_mut(|data| data.insert_temp(id, (value.clone(), selected)));
         }
         Node::Action { label, event } => {
             let id = namespace.with((ControlKind::Action, &*path));
             let response = identified_control(ui, id, label, None);
+            #[cfg(any(test, feature = "test-observation"))]
+            observation::control(ui, "Action", path, &response);
             live.insert(id, response.id);
             if response.clicked() {
                 events.push(SurfaceEvent::Action {
@@ -280,6 +295,52 @@ pub(crate) mod observation {
 
     thread_local! {
         static DISPLAYED: RefCell<Vec<DisplayedNode>> = const { RefCell::new(Vec::new()) };
+        static LAYOUT: RefCell<Layout> = RefCell::new(Layout::default());
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct Control {
+        pub kind: &'static str,
+        pub path: Vec<usize>,
+        pub id: egui::Id,
+        pub layer: egui::LayerId,
+        pub visual: egui::Rect,
+        pub hit: egui::Rect,
+        pub clip: egui::Rect,
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct Scroll {
+        pub name: &'static str,
+        pub viewport: egui::Rect,
+        pub clip: egui::Rect,
+        pub content: egui::Vec2,
+        pub offset: egui::Vec2,
+    }
+
+    #[derive(Default, Debug)]
+    pub struct Layout {
+        pub controls: Vec<Control>,
+        pub scrolls: Vec<Scroll>,
+        pub paints: Vec<(egui::Rect, egui::Rect)>,
+        pub popup_paints: Vec<(egui::Rect, egui::Rect, egui::Rect)>,
+    }
+
+    pub fn take_layout() -> Layout {
+        LAYOUT.with(|layout| std::mem::take(&mut *layout.borrow_mut()))
+    }
+
+    pub fn control(ui: &egui::Ui, kind: &'static str, path: &[usize], response: &egui::Response) {
+        LAYOUT.with(|layout| layout.borrow_mut().controls.push(Control {
+            kind, path: path.to_vec(), id: response.id, layer: response.layer_id,
+            visual: response.rect, hit: response.interact_rect, clip: ui.clip_rect(),
+        }));
+    }
+
+    pub fn scroll<R>(name: &'static str, clip: egui::Rect, output: &egui::scroll_area::ScrollAreaOutput<R>) {
+        LAYOUT.with(|layout| layout.borrow_mut().scrolls.push(Scroll {
+            name, viewport: output.inner_rect, clip, content: output.content_size, offset: output.state.offset,
+        }));
     }
 
     pub fn take() -> Vec<DisplayedNode> {
@@ -292,16 +353,34 @@ pub(crate) mod observation {
         count
     }
 
+    fn shape_bounds(shape: &egui::Shape) -> egui::Rect {
+        match shape {
+            egui::Shape::Rect(shape) => shape.rect,
+            egui::Shape::Text(shape) => shape.galley.rect.translate(shape.pos.to_vec2()),
+            shape => shape.visual_bounding_rect(),
+        }
+    }
+
+    pub fn popup(ui: &egui::Ui, start: usize) {
+        let mut index = 0;
+        ui.painter().for_each_shape(|shape| {
+            if index >= start {
+                LAYOUT.with(|layout| layout.borrow_mut().popup_paints.push((
+                    shape.shape.visual_bounding_rect(), shape.clip_rect, ui.clip_rect(),
+                )));
+            }
+            index += 1;
+        });
+    }
+
     pub fn record(ui: &egui::Ui, node: &Node, path: &[usize], start: usize) {
         let mut index = 0;
         let mut rect = egui::Rect::NOTHING;
         ui.painter().for_each_shape(|shape| {
             if index >= start {
-                rect = rect.union(match &shape.shape {
-                    egui::Shape::Rect(shape) => shape.rect,
-                    egui::Shape::Text(shape) => shape.galley.rect.translate(shape.pos.to_vec2()),
-                    shape => shape.visual_bounding_rect(),
-                });
+                let bounds = shape_bounds(&shape.shape);
+                rect = rect.union(bounds);
+                LAYOUT.with(|layout| layout.borrow_mut().paints.push((shape.shape.visual_bounding_rect(), shape.clip_rect)));
             }
             index += 1;
         });
@@ -339,8 +418,26 @@ fn control<R>(ui: &mut egui::Ui, draw: impl FnOnce(&mut egui::Ui) -> R) -> R {
 
 pub fn button(ui: &mut egui::Ui, label: &str) -> egui::Response {
     control(ui, |ui| {
-        ui.add(egui::Button::new(label).min_size(egui::vec2(48.0, 36.0)))
+        let response = ui.add(egui::Button::new(label).min_size(egui::vec2(48.0, 36.0)));
+        padded_response(ui, response)
     })
+}
+
+pub fn compose(ui: &mut egui::Ui, text: &mut String) -> egui::Response {
+    control(ui, |ui| {
+        let response = ui.add_sized([280.0, 36.0], egui::TextEdit::singleline(text));
+        padded_response(ui, response)
+    })
+}
+
+fn padded_response(ui: &egui::Ui, response: egui::Response) -> egui::Response {
+    let visual = response.rect;
+    let target = egui::Rect::from_center_size(visual.center(),
+        visual.size().max(response.interact_rect.size()).max(egui::vec2(48.0, 48.0)));
+    let padded = ui.interact(target, response.id, response.sense);
+    let mut response = response.union(padded);
+    response.rect = visual;
+    response
 }
 
 fn identified_control(
@@ -363,7 +460,8 @@ fn identified_control(
         );
         let desired = (galley.size() + extra).max(ui.spacing().interact_size);
         let (_, allocated) = ui.allocate_space(desired);
-        let mut response = ui.interact(allocated, id, egui::Sense::click());
+        let mut response = ui.interact(allocated.expand2(egui::vec2(0.0, 6.0)), id, egui::Sense::click());
+        response.rect = allocated;
         response.intrinsic_size = Some(desired);
         if let Some(value) = checked.as_deref_mut() {
             if response.clicked() {

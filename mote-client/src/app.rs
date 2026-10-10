@@ -348,13 +348,21 @@ impl MoteApp {
             crate::theme::caption(ui, &self.status_line);
         }
         let mut clicked = Vec::new();
-        egui::ScrollArea::both()
+        #[cfg(any(test, feature = "test-observation"))]
+        let mut scroll_clip = egui::Rect::NOTHING;
+        let scroll = egui::ScrollArea::both()
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                #[cfg(any(test, feature = "test-observation"))]
+                { scroll_clip = ui.clip_rect(); }
                 if let Some(node) = &self.fixture {
                     crate::surface::draw(ui, node, &mut clicked);
                 }
             });
+        #[cfg(any(test, feature = "test-observation"))]
+        crate::surface::observation::scroll("preview", scroll_clip, &scroll);
+        #[cfg(not(any(test, feature = "test-observation")))]
+        let _ = scroll;
         if let Some(event) = clicked.last() {
             self.status_line = preview_status(event);
         }
@@ -362,9 +370,14 @@ impl MoteApp {
 
     fn chat_view(&mut self, ui: &mut egui::Ui) {
         let mut clicked = Vec::new();
-        egui::ScrollArea::vertical()
+        #[cfg(any(test, feature = "test-observation"))]
+        let mut scroll_clip = egui::Rect::NOTHING;
+        let scroll = egui::ScrollArea::vertical()
             .auto_shrink([false, false])
+            .max_height((ui.available_height() - 48.0 - 3.0 * ui.spacing().item_spacing.y).max(0.0))
             .show(ui, |ui| {
+                #[cfg(any(test, feature = "test-observation"))]
+                { scroll_clip = ui.clip_rect(); }
                 for m in &self.chat.messages {
                     ui.horizontal(|ui| {
                         ui.strong(&m.role);
@@ -394,12 +407,21 @@ impl MoteApp {
         for e in clicked {
             self.send_ui_event(e);
         }
+        #[cfg(any(test, feature = "test-observation"))]
+        crate::surface::observation::scroll("chat", scroll_clip, &scroll);
+        #[cfg(not(any(test, feature = "test-observation")))]
+        let _ = scroll;
 
         ui.separator();
         ui.horizontal(|ui| {
-            let resp = ui.text_edit_singleline(&mut self.input);
+            let resp = crate::surface::compose(ui, &mut self.input);
+            #[cfg(any(test, feature = "test-observation"))]
+            crate::surface::observation::control(ui, "Composer", &[], &resp);
             let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if crate::surface::button(ui, "Send").clicked() || enter {
+            let send = crate::surface::button(ui, "Send");
+            #[cfg(any(test, feature = "test-observation"))]
+            crate::surface::observation::control(ui, "Send", &[], &send);
+            if send.clicked() || enter {
                 self.send_turn();
             }
         });

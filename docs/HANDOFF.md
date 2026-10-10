@@ -1,72 +1,54 @@
-# Handoff: Matrix structural interaction state after review
+# Handoff: Matrix runtime layout verification
 
 Updated 2026-10-10. Replace this file, never append.
 
-Branch: `main`.
-Task 4 base: `b07c1ec`.
-Task 4 commit: `ac291e4`, `fix(client): reconcile structural interaction state`.
-Fix Round 1 base: `ac291e4`.
-Fix Round 1 subject: `fix(client): stabilize control widget identities`.
-Preserve untracked `.DS_Store` and `.superpowers/`.
-Do not push.
+Branch: `main`. Task 5 base: `a5c286d`.
+Task 5 implementation is complete in `docs/superpowers/plans/2026-10-10-matrix-host-runtime-v0.md`.
+Commit subject: `fix(client): enforce runtime layout invariants`.
+Preserve untracked `.DS_Store` and `.superpowers/`. Do not push.
 
-The runtime caches edits by surface identity, structural path and control type.
-Matrix identity includes its connection epoch.
-Other surfaces retain their first committed sequence as a stable instance identity.
-Named replacements retain that identity.
-Current sequence and structural path remain unchanged in the outbound admission envelope.
+The new headless observations distinguish response rectangles, hit rectangles, painted bounds,
+paint clips, scroll viewport bounds, content extents and scroll offsets.
+They exercise the real client view methods and existing surface renderer.
+The ten unchanged fixtures run at 800 by 480 and 1280 by 800 in preview and chat.
+The 200-item List and 500-row Table reach their final rows in each existing outer scroll area.
+No nested collection scroll region is needed.
 
-Each complete surface draw records its live controls in egui state.
-Removed controls lose edited values, text edit state and focus.
-Removed Select popups close.
-Toggle and Action interactive responses use explicit structural IDs.
-The shared plain-control helper supplies those IDs directly to egui interaction.
-This fixes focus loss when an earlier chat message disappears.
-It does not restore focus after rendering or keep test-only focus state.
-Keyboard selection closes Select popups.
-No v0 JSON, schema, fixture or host admission contract changed.
+RED measurements found 36-point actual hit heights for Field, Toggle, Select trigger and Action.
+Existing popup option targets were already 48 points high.
+Chat previously consumed the viewport and placed its composer below the screen.
+The implementation explicitly registers padded hit regions and reserves 72 points for composition.
+The theme's surface control visuals remain unchanged.
+The composer now uses a 36-point input with a 48-point hit region.
 
-Twelve interaction tests cover matching replacements, path and type changes, removal and
-reinsertion, host value updates, separate surfaces and reconnect epochs.
-They also preserve focus and exact Space events for named and anonymous surviving controls.
-Removing a focused surface does not transfer its focus to an equal-label survivor.
-Two keyboard tests cover all four interactive fixture types, both Select options,
-Tab and Shift-Tab order, and Space and Enter activation.
-The parity test compares exact light/dark painted shapes and widget metadata with the prior
-egui Checkbox and Button through hover, focus, padded-edge click, Space and Enter.
-The daemon test dispatches five real queued keyboard events through host admission.
-Field edits and traversal emit no events.
-Host updates preserve prior surface events.
-Model request, pack and ledger counts stay zero.
+Six layout tests cover fixture geometry, control measurements, center and both padded vertical edges,
+adjacent controls, the composer and Send, and collection scrolling.
+The focused client run passed 89 tests and the measurement check passed.
+Workspace clippy passed.
+An earlier sandboxed client run failed three local socket tests with PermissionDenied.
+The client rerun passed with local socket access.
+The first workspace run exposed an old isolation-helper assumption that one Tab focuses Action.
+A diagnostic can make chat scrollable, so egui exposes the outer scroll region to keyboard focus.
+The helper now traverses with Tab until the observed prior Action ID is focused.
+Every traversal step still asserts unchanged display bounds and no event.
+The focused daemon test passes all 173 prefixes, 297 rejected finalizations and 48 switches.
+The workspace passed 323 tests and all doc tests.
+The final pre-commit rerun also passed with the completed paint-clip assertions.
 
-Partial evidence: `docs/verification/UI-16.md`, `UI-25.md` and `UI-26.md`.
-All three criteria remain open.
-Native focus pixels, full-catalog form semantics, keyed selection and broader subscriptions
-are not claimed.
+Task 1 admission, Task 2 decoder and candidate isolation, Task 3 literal semantics and Task 4
+structural state and focus must remain intact.
+The schema, ten consumer fixtures and PNG goldens, source fixtures and deterministic measurements
+remain unchanged.
 
-Task 1 admission, sequence/path context and reconnect isolation remain intact.
-Task 2 decoder and candidate-isolation tests remain intact.
-Task 3 literal and forbidden-source evidence remains intact.
-The schema, ten consumer fixtures, nine source fixtures and deterministic measurements are unchanged.
-No model pull, live model call, remote write or push occurred.
+The UI-15/UI-17/UI-43 evidence files and README links are written.
+The task report is `.superpowers/sdd/2026-10-10-matrix-host-runtime-v0/task-5-report.md`.
+Next: independently review Task 5, then continue Task 6 host snapshot refresh.
+UI-15 native Mac captures and later target repetition remain open.
+UI-17 later approved touch targets remain open.
+UI-43 is verified for the current approved headless path and checked in README.
+No Taffy path is approved or implemented.
 
-Focused verification passed 83 client tests and the daemon keyboard ownership test.
-The full workspace passed 317 tests and all doc tests.
-This includes 63 daemon unit tests and two daemon integration tests.
-Workspace clippy, the deterministic measurement check and diff checks passed.
-Socket-dependent suites ran with local socket access.
-
-Next: independently review Fix Round 1, then continue Task 5 in
-`docs/superpowers/plans/2026-10-10-matrix-host-runtime-v0.md`.
-Task 5 checks runtime layout invariants.
-The report is `.superpowers/sdd/2026-10-10-matrix-host-runtime-v0/task-4-report.md`.
-
-UI-35 native capture remains pending in `docs/verification/UI-35.md`.
-Its isolated fixture is `/private/tmp/mote-ui35.XJxtru`.
-The Mac was locked during that capture attempt.
-Headless evidence does not replace native captures or approve Pi or iPad targets.
+UI-35 native capture remains pending. The prior Mac capture session was locked.
+No model pull, model call, remote write or push has occurred.
 The client still persists only its cursor, not chat history.
-
-`docs/rfcs/v0.md` remains authoritative.
-Production `models.local_only` stays true.
-Every model call uses the ledger and every stored event passes through redaction.
+`docs/rfcs/v0.md` remains authoritative. Production `models.local_only` stays true.

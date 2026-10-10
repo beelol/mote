@@ -105,6 +105,14 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
   Structural interaction identity and keyboard behavior have partial v0 evidence in
   [UI-16](docs/verification/UI-16.md) and [UI-25](docs/verification/UI-25.md).
   Native focus and the broader keyed collection contract remain open.
+  Runtime overflow and hit targets have partial headless evidence in
+  [UI-15](docs/verification/UI-15.md) and [UI-17](docs/verification/UI-17.md).
+  Native Mac overflow captures and later approved touch targets remain open.
+- [x] **UI-43** Headless runtime layout respects clipping, reading order and minimum hit regions.
+  **Verify:** measure every supported fixture at 800 by 480 and 1280 by 800; assert no unintended
+  overlapping hit regions, no paint escaping the intended scroll clip and 48 by 48 point targets.
+  Repeat the invariant suite for any later approved Taffy path.
+  [evidence](docs/verification/UI-43.md)
 
 - [x] **V0-01** The Cargo workspace builds the `moted` and `mote-client` binaries and the nine crates named in the table, and both `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` pass on the empty project. **Verify:** Run both commands. [§1](docs/rfcs/v0.md#1-workspace) [evidence](docs/verification/V0-01.md)
 - [x] **V0-02** `mote-redact` replaces the same secret patterns and secret keys as Overseer's `redact.rs`, with Overseer's tests carried over. **Verify:** `cargo test -p mote-redact`. [§1](docs/rfcs/v0.md#1-workspace) [evidence](docs/verification/V0-02.md)
