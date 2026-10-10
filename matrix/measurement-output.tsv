@@ -24,8 +24,8 @@ v0_total	383	118	758	227
 host_and_transport	encoding	bytes	tokens
 dashboard_source	matrix_source	433	100
 dashboard_consumer_json	compact_consumer_json	664	227
-host_manifest	canonical_measurement_json	1097	306
-binding_snapshot	canonical_measurement_json	277	103
+host_manifest	canonical_measurement_json	1367	374
+binding_snapshot	canonical_measurement_json	313	114
 matrix_render_request	ipc_json_line	536	131
 matrix_render_response	ipc_json_line	43	15
 ui_surface_event	ipc_json_line	774	258

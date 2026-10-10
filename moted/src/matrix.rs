@@ -149,6 +149,30 @@ pub struct HostBindings {
     pub snapshot: BindingSnapshot,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct HostSnapshot {
+    progress: f64,
+    items: Vec<String>,
+}
+
+impl Default for HostSnapshot {
+    fn default() -> Self {
+        Self::ready(0.0, std::iter::empty::<String>())
+    }
+}
+
+impl HostSnapshot {
+    pub fn ready(
+        progress: f64,
+        items: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        Self {
+            progress,
+            items: items.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
 pub fn surface_payload(surface: &Value) -> Value {
     json!({"surface": surface, "surface_id": "matrix"})
 }
@@ -160,6 +184,7 @@ pub fn render_success(valid: bool) -> Value {
 pub fn host_bindings(
     config: &BTreeMap<String, Value>,
     pipeline: &PipelineSnapshot,
+    host: &HostSnapshot,
 ) -> HostBindings {
     let mut manifest = Manifest::default();
     manifest
@@ -175,6 +200,12 @@ pub fn host_bindings(
             ]),
         },
     );
+    manifest.records.insert(
+        "HostItem".into(),
+        RecordDefinition {
+            fields: BTreeMap::from([("label".into(), Type::String.into())]),
+        },
+    );
     manifest.values.insert(
         "model_options".into(),
         Type::List(Box::new(Type::Enum("Model".into()))).into(),
@@ -182,6 +213,13 @@ pub fn host_bindings(
     manifest.values.insert(
         "pipeline.stages".into(),
         Type::List(Box::new(Type::Record("PipelineStage".into()))).into(),
+    );
+    manifest
+        .values
+        .insert("host.progress".into(), Type::Number.into());
+    manifest.values.insert(
+        "host.items".into(),
+        Type::List(Box::new(Type::Record("HostItem".into()))).into(),
     );
     for (name, ty) in [
         ("models.local_only", Type::Boolean),
@@ -223,6 +261,18 @@ pub fn host_bindings(
                         "latency": latency,
                     })
                 })
+                .collect(),
+        ),
+    );
+    snapshot
+        .values
+        .insert("host.progress".into(), json!(host.progress));
+    snapshot.values.insert(
+        "host.items".into(),
+        Value::Array(
+            host.items
+                .iter()
+                .map(|label| json!({"label": label}))
                 .collect(),
         ),
     );

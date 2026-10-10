@@ -444,5 +444,7 @@ mod tests {
                 value: "second".into()
             })
         );
+        assert_eq!(chat.messages[0].surface_seq, Some(21));
+        assert_eq!(chat.messages[0].surface_instance, 20);
     }
 }

@@ -687,6 +687,35 @@ mod tests {
     }
 
     #[test]
+    fn resolved_progress_and_populated_list_draw_only_resolved_values() {
+        let node = Node::Stack {
+            children: vec![
+                Node::Progress { value: 0.75 },
+                Node::List {
+                    children: ["Review", "Ship", "Observe"]
+                        .into_iter()
+                        .map(|value| Node::Text { value: value.into() })
+                        .collect(),
+                },
+            ],
+        };
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let (output, events, _) = frame(&ctx, &node, vec![]);
+        let text: Vec<_> = output.shapes.iter().filter_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) => Some(text.galley.text().to_owned()),
+            _ => None,
+        }).collect();
+
+        assert!(events.is_empty());
+        assert!(text.iter().any(|text| text == "75%"));
+        for value in ["Review", "Ship", "Observe"] {
+            assert!(text.iter().any(|text| text == value));
+        }
+        assert!(!text.iter().any(|text| text.contains("host.")));
+    }
+
+    #[test]
     fn long_action_label_stays_on_one_line_and_clicks_at_padded_edge() {
         let ctx = egui::Context::default();
         crate::theme::install(&ctx);

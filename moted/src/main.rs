@@ -103,10 +103,21 @@ struct Daemon {
     watchers: Mutex<Watchers>,
     think: Mutex<ThinkServers>,
     matrix_sources: Mutex<HashMap<String, String>>,
+    matrix_snapshots: Mutex<HashMap<String, matrix::HostSnapshot>>,
     matrix_surfaces: Mutex<HashMap<String, matrix::CommittedMatrixSurface>>,
     matrix_candidates: Mutex<HashMap<(String, String), matrix_lang::CandidateStream>>,
     data_dir: PathBuf,
     started: std::time::Instant,
+}
+
+struct MatrixCommit<'a> {
+    sources: &'a mut HashMap<String, String>,
+    snapshots: &'a mut HashMap<String, matrix::HostSnapshot>,
+    thread: &'a str,
+    surface: &'a Value,
+    source: Option<&'a str>,
+    bindings: &'a matrix::HostBindings,
+    host: matrix::HostSnapshot,
 }
 
 impl Daemon {
@@ -125,23 +136,45 @@ impl Daemon {
             .map_err(|error| RpcError::internal(format!("read pipeline snapshot: {error}")))
     }
 
-    fn compile_matrix(&self, source: &str) -> Result<Value, Value> {
+    fn compile_matrix_with_host(
+        &self,
+        source: &str,
+        host: &matrix::HostSnapshot,
+    ) -> Result<(Value, matrix::HostBindings), Value> {
         let snapshot = self.pipeline_snapshot().map_err(|error| {
             json!([{"code":"E_HOST","severity":"error","message":error.message}])
         })?;
-        let bindings = matrix::host_bindings(&snapshot.config, &snapshot);
-        matrix::compile(source, &bindings).map_err(|errors| matrix::diagnostics(&errors))
+        let bindings = matrix::host_bindings(&snapshot.config, &snapshot, host);
+        matrix::compile(source, &bindings)
+            .map(|surface| (surface, bindings))
+            .map_err(|errors| matrix::diagnostics(&errors))
+    }
+
+    #[cfg(test)]
+    fn compile_matrix(&self, source: &str) -> Result<Value, Value> {
+        self.compile_matrix_with_host(source, &matrix::HostSnapshot::default())
+            .map(|(surface, _)| surface)
     }
 
     fn render_matrix_with_sources(
         &self,
         sources: &mut HashMap<String, String>,
+        snapshots: &mut HashMap<String, matrix::HostSnapshot>,
         thread: &str,
         source: &str,
         retain: bool,
+        host: matrix::HostSnapshot,
     ) -> Result<Value, RpcError> {
-        match self.compile_matrix(source) {
-            Ok(surface) => self.commit_matrix(sources, thread, &surface, retain.then_some(source)),
+        match self.compile_matrix_with_host(source, &host) {
+            Ok((surface, bindings)) => self.commit_matrix(MatrixCommit {
+                sources,
+                snapshots,
+                thread,
+                surface: &surface,
+                source: retain.then_some(source),
+                bindings: &bindings,
+                host,
+            }),
             Err(diagnostics) => {
                 self.emit_matrix_diagnostic(thread, None, &diagnostics)?;
                 Ok(json!({"ok": false, "diagnostics": diagnostics}))
@@ -165,31 +198,27 @@ impl Daemon {
         Ok(())
     }
 
-    fn commit_matrix(
-        &self,
-        sources: &mut HashMap<String, String>,
-        thread: &str,
-        surface: &Value,
-        source: Option<&str>,
-    ) -> Result<Value, RpcError> {
-        let (node, valid) = validate_surface(surface);
-        let snapshot = self.pipeline_snapshot()?;
-        let bindings = matrix::host_bindings(&snapshot.config, &snapshot);
+    fn commit_matrix(&self, commit: MatrixCommit<'_>) -> Result<Value, RpcError> {
+        let (node, valid) = validate_surface(commit.surface);
         let typed = serde_json::from_value(node.clone())
             .map_err(|error| RpcError::internal(format!("decode surface contract: {error}")))?;
-        let mut committed = matrix::CommittedMatrixSurface::new(typed, &bindings.manifest);
+        let mut committed =
+            matrix::CommittedMatrixSurface::new(typed, &commit.bindings.manifest);
         let event = self
             .log
-            .append(thread, "ui.surface", &matrix::surface_payload(&node))
+            .append(commit.thread, "ui.surface", &matrix::surface_payload(&node))
             .map_err(|error| RpcError::internal(format!("commit surface: {error}")))?;
         committed.seq = event.seq;
         self.matrix_surfaces
             .lock()
             .unwrap()
-            .insert(thread.into(), committed);
-        if let Some(source) = source {
-            sources.insert(thread.into(), source.into());
+            .insert(commit.thread.into(), committed);
+        if let Some(source) = commit.source {
+            commit.sources.insert(commit.thread.into(), source.into());
         }
+        commit
+            .snapshots
+            .insert(commit.thread.into(), commit.host);
         Ok(matrix::render_success(valid))
     }
 
@@ -243,13 +272,22 @@ impl Daemon {
             }
         };
         let mut sources = self.matrix_sources.lock().unwrap();
+        let mut snapshots = self.matrix_snapshots.lock().unwrap();
         let snapshot = self.pipeline_snapshot()?;
-        let bindings = matrix::host_bindings(&snapshot.config, &snapshot);
+        let host = snapshots.get(thread).cloned().unwrap_or_default();
+        let bindings = matrix::host_bindings(&snapshot.config, &snapshot, &host);
         match matrix::compile_surface(&parsed, &bindings) {
             Ok(surface) => {
                 let source = matrix_lang::format_surface(&parsed);
-                let mut response =
-                    self.commit_matrix(&mut sources, thread, &surface, Some(&source))?;
+                let mut response = self.commit_matrix(MatrixCommit {
+                    sources: &mut sources,
+                    snapshots: &mut snapshots,
+                    thread,
+                    surface: &surface,
+                    source: Some(&source),
+                    bindings: &bindings,
+                    host,
+                })?;
                 response["status"] = json!("committed");
                 Ok(response)
             }
@@ -263,18 +301,61 @@ impl Daemon {
 
     fn render_matrix(&self, thread: &str, source: &str, retain: bool) -> Result<Value, RpcError> {
         let mut sources = self.matrix_sources.lock().unwrap();
-        self.render_matrix_with_sources(&mut sources, thread, source, retain)
+        let mut snapshots = self.matrix_snapshots.lock().unwrap();
+        let host = snapshots.get(thread).cloned().unwrap_or_default();
+        self.render_matrix_with_sources(
+            &mut sources,
+            &mut snapshots,
+            thread,
+            source,
+            retain,
+            host,
+        )
     }
 
     fn refresh_matrix_with_sources(
         &self,
         sources: &mut HashMap<String, String>,
+        snapshots: &mut HashMap<String, matrix::HostSnapshot>,
         thread: &str,
     ) -> Result<Option<Value>, RpcError> {
         let source = sources.get(thread).cloned();
+        let host = snapshots.get(thread).cloned().unwrap_or_default();
         source
-            .map(|source| self.render_matrix_with_sources(sources, thread, &source, false))
+            .map(|source| {
+                self.render_matrix_with_sources(
+                    sources,
+                    snapshots,
+                    thread,
+                    &source,
+                    false,
+                    host,
+                )
+            })
             .transpose()
+    }
+
+    #[allow(dead_code)]
+    fn refresh_matrix_host_snapshot(
+        &self,
+        thread: &str,
+        host: matrix::HostSnapshot,
+    ) -> Result<Value, RpcError> {
+        let mut sources = self.matrix_sources.lock().unwrap();
+        let mut snapshots = self.matrix_snapshots.lock().unwrap();
+        let Some(source) = sources.get(thread).cloned() else {
+            return Err(RpcError::invalid_params(
+                "host snapshot needs a retained Matrix source",
+            ));
+        };
+        self.render_matrix_with_sources(
+            &mut sources,
+            &mut snapshots,
+            thread,
+            &source,
+            false,
+            host,
+        )
     }
 
     fn handle_turn(&self, params: &Value) -> Result<Value, RpcError> {
@@ -568,14 +649,24 @@ impl Dispatch for Daemon {
                     self.log
                         .append(thread, "ui.event", &json!({ "event": event, "args": args }))
                         .map_err(|error| RpcError::internal(format!("record UI event: {error}")))?;
-                    let rendered = self.refresh_matrix_with_sources(&mut sources, thread)?;
+                    let mut snapshots = self.matrix_snapshots.lock().unwrap();
+                    let rendered = self.refresh_matrix_with_sources(
+                        &mut sources,
+                        &mut snapshots,
+                        thread,
+                    )?;
                     return Ok(json!({"ok": true, "seq": seq, "rendered": rendered}));
                 }
                 if event == "refresh" {
                     self.log
                         .append(thread, "ui.event", &json!({ "event": event, "args": args }))
                         .map_err(|error| RpcError::internal(format!("record UI event: {error}")))?;
-                    let rendered = self.refresh_matrix_with_sources(&mut sources, thread)?;
+                    let mut snapshots = self.matrix_snapshots.lock().unwrap();
+                    let rendered = self.refresh_matrix_with_sources(
+                        &mut sources,
+                        &mut snapshots,
+                        thread,
+                    )?;
                     return Ok(json!({"ok": true, "rendered": rendered}));
                 }
                 Err(RpcError::invalid_params("unsupported Matrix action"))
@@ -781,6 +872,7 @@ mod approval_dispatch_tests {
             watchers: Mutex::new(Watchers::open_in_memory().unwrap()),
             think: Mutex::new(ThinkServers::new(data_dir.to_path_buf())),
             matrix_sources: Mutex::new(HashMap::new()),
+            matrix_snapshots: Mutex::new(HashMap::new()),
             matrix_surfaces: Mutex::new(HashMap::new()),
             matrix_candidates: Mutex::new(HashMap::new()),
             data_dir: data_dir.to_path_buf(),
@@ -812,6 +904,114 @@ mod approval_dispatch_tests {
     button "Refresh" -> refresh
   }
 }"#;
+
+    const HOST_SNAPSHOT_DASHBOARD: &str = r#"screen {
+  col {
+    progress value host.progress
+    list from host.items {
+      item { text .label }
+    }
+  }
+}"#;
+
+    #[test]
+    fn validated_host_snapshot_refreshes_progress_and_list_once_without_model_traffic() {
+        use mote_client::ObservationHarness;
+        let server = mote_testkit::ScriptedServer::start().unwrap();
+        let (data, _) = dirs("matrix-host-snapshot");
+        let mut daemon = daemon(&data);
+        daemon.client = Ollama::new(&server.base_url());
+        daemon.matrix_snapshots.lock().unwrap().insert(
+            "main".into(),
+            matrix::HostSnapshot::ready(0.25, ["Inspect"]),
+        );
+
+        daemon
+            .render_matrix("main", HOST_SNAPSHOT_DASHBOARD, true)
+            .unwrap();
+        let initial = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().unwrap();
+        let mut client = ObservationHarness::default();
+        client.event(&initial);
+        assert_eq!(client.switches, 1);
+        let initial_display = client.frame(vec![]);
+        assert_eq!(initial.payload["surface"]["children"][0]["value"], json!(0.25));
+        assert_eq!(initial.payload["surface"]["children"][1]["children"].as_array().unwrap().len(), 1);
+
+        let requests = server.recorded().len();
+        let ledger = daemon.store.lock().unwrap().count_ledger().unwrap();
+        daemon
+            .refresh_matrix_host_snapshot(
+                "main",
+                matrix::HostSnapshot::ready(0.75, ["Review", "Ship", "Observe"]),
+            )
+            .unwrap();
+
+        let refreshed = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().unwrap();
+        assert_eq!(refreshed.kind, "ui.surface");
+        assert_eq!(refreshed.payload["surface"]["children"][0]["value"], json!(0.75));
+        assert_eq!(
+            refreshed.payload["surface"]["children"][1]["children"],
+            json!([
+                {"type":"text","value":"Review"},
+                {"type":"text","value":"Ship"},
+                {"type":"text","value":"Observe"}
+            ])
+        );
+        assert!(!refreshed.payload["surface"].to_string().contains("host."));
+        client.event(&refreshed);
+        assert_eq!(client.switches, 2, "one accepted snapshot caused more than one redraw");
+        assert_eq!(client.surface().unwrap().0, refreshed.seq);
+        let refreshed_display = client.frame(vec![]);
+        assert_ne!(refreshed_display, initial_display);
+        assert!(!format!("{refreshed_display:?}").contains("host."));
+        assert_eq!(server.recorded().len(), requests);
+        assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), ledger);
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn rejected_host_snapshot_and_unsupported_bindings_preserve_committed_state() {
+        let (data, _) = dirs("matrix-host-snapshot-rejection");
+        let daemon = daemon(&data);
+        daemon
+            .render_matrix("main", HOST_SNAPSHOT_DASHBOARD, true)
+            .unwrap();
+        let committed = daemon.matrix_surfaces.lock().unwrap().clone();
+        let source = daemon.matrix_sources.lock().unwrap()["main"].clone();
+        let accepted = daemon.matrix_snapshots.lock().unwrap()["main"].clone();
+        let surface = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().unwrap();
+
+        let rejected = daemon
+            .refresh_matrix_host_snapshot(
+                "main",
+                matrix::HostSnapshot::ready(1.25, ["Must not commit"]),
+            )
+            .unwrap();
+        assert_eq!(rejected["ok"], false);
+        assert_eq!(rejected["diagnostics"][0]["code"], "E_RESOLVE_CONSTRAINT");
+        assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), committed);
+        assert_eq!(daemon.matrix_sources.lock().unwrap()["main"], source);
+        assert_eq!(daemon.matrix_snapshots.lock().unwrap()["main"], accepted);
+        assert_eq!(
+            daemon.log.get(surface.seq).unwrap().unwrap().payload,
+            surface.payload
+        );
+
+        for unsupported in [
+            r#"screen { list from host.items { item { text .label } empty "Pending" } }"#,
+            r#"screen { list from host.items { item { text .label } error "Failed" } }"#,
+            r#"screen { list from host.items key label { item { text .label } } }"#,
+            r#"screen { list from host.items select one { item { text .label } } }"#,
+        ] {
+            let response = daemon.render_matrix("main", unsupported, true).unwrap();
+            assert_eq!(response["ok"], false, "unsupported source committed: {unsupported}");
+            assert_eq!(response["diagnostics"][0]["code"], "E_LOWER_UNSUPPORTED");
+            assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), committed);
+            assert_eq!(daemon.matrix_sources.lock().unwrap()["main"], source);
+            assert_eq!(daemon.matrix_snapshots.lock().unwrap()["main"], accepted);
+        }
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
 
     #[test]
     fn committed_matrix_rejects_forged_events_without_side_effects() {
@@ -2315,6 +2515,7 @@ mod turn_event_tests {
             watchers: Mutex::new(Watchers::open_in_memory().unwrap()),
             think: Mutex::new(ThinkServers::new(data_dir.clone())),
             matrix_sources: Mutex::new(HashMap::new()),
+            matrix_snapshots: Mutex::new(HashMap::new()),
             matrix_surfaces: Mutex::new(HashMap::new()),
             matrix_candidates: Mutex::new(HashMap::new()),
             data_dir: data_dir.clone(),
@@ -2544,6 +2745,7 @@ fn run() -> Result<(), i32> {
         watchers: Mutex::new(watchers),
         think: Mutex::new(ThinkServers::new(data.clone())),
         matrix_sources: Mutex::new(HashMap::new()),
+        matrix_snapshots: Mutex::new(HashMap::new()),
         matrix_surfaces: Mutex::new(HashMap::new()),
         matrix_candidates: Mutex::new(HashMap::new()),
         data_dir: data.clone(),

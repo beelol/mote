@@ -210,7 +210,11 @@ fn measure_host_and_transport(tokenizer: &tiktoken_rs::CoreBPE) -> Result<(), Bo
     let log = mote_eventlog::EventLog::open_in_memory()?;
     let store = mote_context::ContextStore::open_in_memory()?;
     let pipeline = pipeline::build_snapshot(&log, &store, config, 0)?;
-    let bindings = matrix::host_bindings(&pipeline.config, &pipeline);
+    let bindings = matrix::host_bindings(
+        &pipeline.config,
+        &pipeline,
+        &matrix::HostSnapshot::default(),
+    );
     let source = fs::read_to_string("matrix/examples/mote-dashboard.matrix")?;
     let surface = matrix::compile(&source, &bindings)
         .map_err(|errors| format!("dashboard compile failed: {errors:?}"))?;
