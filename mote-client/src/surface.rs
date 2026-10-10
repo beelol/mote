@@ -1,7 +1,36 @@
 use eframe::egui;
 use mote_ui::Node;
 
-pub fn draw(ui: &mut egui::Ui, node: &Node, clicked: &mut Vec<String>) {
+#[derive(Clone, Debug, PartialEq)]
+pub enum SurfaceEvent {
+    Action {
+        event: String,
+    },
+    Change {
+        field: String,
+        value: serde_json::Value,
+    },
+}
+
+impl SurfaceEvent {
+    pub fn event(&self) -> &str {
+        match self {
+            Self::Action { event } => event,
+            Self::Change { .. } => "change",
+        }
+    }
+
+    pub fn args(&self) -> serde_json::Value {
+        match self {
+            Self::Action { .. } => serde_json::json!({}),
+            Self::Change { field, value } => {
+                serde_json::json!({ "field": field, "value": value })
+            }
+        }
+    }
+}
+
+pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
     match node {
         Node::Text { value } => {
             ui.label(value);
@@ -12,7 +41,7 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, clicked: &mut Vec<String>) {
                     if index > 0 && !matches!(node, Node::Stack { .. }) {
                         ui.separator();
                     }
-                    ui.push_id(index, |ui| draw(ui, child, clicked));
+                    ui.push_id(index, |ui| draw(ui, child, events));
                 }
             });
         }
@@ -20,7 +49,7 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, clicked: &mut Vec<String>) {
             egui::Frame::new().inner_margin(16).show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     for (index, child) in children.iter().enumerate() {
-                        ui.push_id(index, |ui| draw(ui, child, clicked));
+                        ui.push_id(index, |ui| draw(ui, child, events));
                     }
                 });
             });
@@ -60,9 +89,13 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, clicked: &mut Vec<String>) {
             let mut edited = ui
                 .data_mut(|data| data.get_temp::<bool>(id))
                 .unwrap_or(*value);
-            control(ui, |ui| {
-                ui.add(egui::Checkbox::new(&mut edited, label));
-            });
+            let response = control(ui, |ui| ui.add(egui::Checkbox::new(&mut edited, label)));
+            if response.changed() {
+                events.push(SurfaceEvent::Change {
+                    field: name.clone(),
+                    value: serde_json::Value::Bool(edited),
+                });
+            }
             ui.data_mut(|data| data.insert_temp(id, edited));
         }
         Node::Select {
@@ -88,8 +121,13 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, clicked: &mut Vec<String>) {
                                 if response
                                     .union(ui.interact(target, response.id, egui::Sense::click()))
                                     .clicked()
+                                    && selected != *option
                                 {
                                     selected = option.clone();
+                                    events.push(SurfaceEvent::Change {
+                                        field: name.clone(),
+                                        value: serde_json::Value::String(selected.clone()),
+                                    });
                                 }
                             });
                         }
@@ -99,7 +137,9 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, clicked: &mut Vec<String>) {
         }
         Node::Action { label, event } => {
             if button(ui, label).clicked() {
-                clicked.push(event.clone());
+                events.push(SurfaceEvent::Action {
+                    event: event.clone(),
+                });
             }
         }
         Node::Progress { value } => {
@@ -168,7 +208,7 @@ mod tests {
         ctx: &egui::Context,
         node: &Node,
         events: Vec<egui::Event>,
-    ) -> (egui::FullOutput, Vec<String>, egui::Rect) {
+    ) -> (egui::FullOutput, Vec<SurfaceEvent>, egui::Rect) {
         let mut clicked = Vec::new();
         let mut rect = egui::Rect::NOTHING;
         let output = ctx.run(
@@ -253,7 +293,12 @@ mod tests {
             &node,
             click_events(egui::pos2(rect.right() - 1.0, rect.bottom() - 1.0)),
         );
-        assert_eq!(clicked, vec!["gallery.preview"]);
+        assert_eq!(
+            clicked,
+            vec![SurfaceEvent::Action {
+                event: "gallery.preview".into()
+            }]
+        );
     }
 
     #[test]
@@ -308,6 +353,65 @@ mod tests {
     }
 
     #[test]
+    fn toggle_emits_one_typed_change_only_when_its_value_changes() {
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let node = Node::Toggle {
+            label: "Enable preview".into(),
+            name: "preview.enabled".into(),
+            value: true,
+        };
+        let (_, idle, rect) = frame(&ctx, &node, vec![]);
+        assert!(idle.is_empty());
+
+        let (_, changed, _) = frame(&ctx, &node, click_events(rect.center()));
+        assert_eq!(
+            changed,
+            vec![SurfaceEvent::Change {
+                field: "preview.enabled".into(),
+                value: serde_json::Value::Bool(false),
+            }]
+        );
+
+        let (_, idle_again, _) = frame(&ctx, &node, vec![]);
+        assert!(idle_again.is_empty());
+    }
+
+    #[test]
+    fn select_emits_one_typed_change_only_for_a_different_choice() {
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let node = Node::Select {
+            label: "Mode".into(),
+            name: "models.talk".into(),
+            options: vec!["Alpha".into(), "Bravo".into()],
+            value: "Alpha".into(),
+        };
+        let (closed, idle, _) = frame(&ctx, &node, vec![]);
+        assert!(idle.is_empty());
+
+        let (_, opened, _) = frame(&ctx, &node, click_events(text_center(&closed, "Alpha")));
+        assert!(opened.is_empty());
+        let (popup, _, _) = frame(&ctx, &node, vec![]);
+        let (_, selected, _) = frame(&ctx, &node, click_events(text_center(&popup, "Bravo")));
+        assert_eq!(
+            selected,
+            vec![SurfaceEvent::Change {
+                field: "models.talk".into(),
+                value: serde_json::Value::String("Bravo".into()),
+            }]
+        );
+
+        let (closed, idle_again, _) = frame(&ctx, &node, vec![]);
+        assert!(idle_again.is_empty());
+        let (_, opened, _) = frame(&ctx, &node, click_events(text_center(&closed, "Bravo")));
+        assert!(opened.is_empty());
+        let (popup, _, _) = frame(&ctx, &node, vec![]);
+        let (_, reselected, _) = frame(&ctx, &node, click_events(text_center(&popup, "Bravo")));
+        assert!(reselected.is_empty());
+    }
+
+    #[test]
     fn actions_return_the_existing_event_string() {
         let ctx = egui::Context::default();
         crate::theme::install(&ctx);
@@ -317,7 +421,12 @@ mod tests {
         };
         let (_, _, rect) = frame(&ctx, &node, vec![]);
         let (_, clicked, _) = frame(&ctx, &node, click_events(rect.center()));
-        assert_eq!(clicked, vec!["job.run"]);
+        assert_eq!(
+            clicked,
+            vec![SurfaceEvent::Action {
+                event: "job.run".into()
+            }]
+        );
     }
 
     #[test]
@@ -335,7 +444,12 @@ mod tests {
             &node,
             click_events(egui::pos2(rect.center().x, rect.bottom() - 1.0)),
         );
-        assert_eq!(clicked, vec!["job.run"]);
+        assert_eq!(
+            clicked,
+            vec![SurfaceEvent::Action {
+                event: "job.run".into()
+            }]
+        );
     }
 
     #[test]
@@ -371,7 +485,12 @@ mod tests {
                 modifiers: Default::default(),
             }],
         );
-        assert_eq!(clicked, vec!["job.run"]);
+        assert_eq!(
+            clicked,
+            vec![SurfaceEvent::Action {
+                event: "job.run".into()
+            }]
+        );
     }
 
     #[test]

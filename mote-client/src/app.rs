@@ -12,6 +12,25 @@ use std::sync::mpsc::{self, Receiver, Sender};
 type TurnResult = (LocalMessageId, Result<(), String>);
 type PipelineResult = Result<PipelineSnapshot, String>;
 
+fn ui_event_params(event: &crate::surface::SurfaceEvent) -> serde_json::Value {
+    serde_json::json!({
+        "thread": "main",
+        "event": event.event(),
+        "args": event.args(),
+    })
+}
+
+fn preview_status(event: &crate::surface::SurfaceEvent) -> String {
+    match event {
+        crate::surface::SurfaceEvent::Action { event } => {
+            format!("Preview action: {event}")
+        }
+        crate::surface::SurfaceEvent::Change { field, value } => {
+            format!("Preview change: {field} = {value}")
+        }
+    }
+}
+
 fn spawn_pipeline_load_with(
     tx: Sender<PipelineResult>,
     load: impl FnOnce() -> PipelineResult + Send + 'static,
@@ -251,9 +270,9 @@ impl MoteApp {
         });
     }
 
-    fn send_ui_event(&mut self, event: &str) {
+    fn send_ui_event(&mut self, event: &crate::surface::SurfaceEvent) {
         if let Ok(mut c) = self.client() {
-            let _ = c.call("ui.event", serde_json::json!({ "event": event }));
+            let _ = c.call("ui.event", ui_event_params(event));
         }
     }
 
@@ -270,12 +289,12 @@ impl MoteApp {
                 }
             });
         if let Some(event) = clicked.last() {
-            self.status_line = format!("Preview action: {event}");
+            self.status_line = preview_status(event);
         }
     }
 
     fn chat_view(&mut self, ui: &mut egui::Ui) {
-        let mut clicked: Vec<String> = Vec::new();
+        let mut clicked = Vec::new();
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -728,6 +747,44 @@ mod tests {
         );
         let displayed = render(&mut app, vec![]);
         assert!(displayed.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Preview action: gallery.preview")));
+    }
+
+    #[test]
+    fn ui_event_params_include_thread_action_name_and_empty_args() {
+        let event = crate::surface::SurfaceEvent::Action {
+            event: "job.run".into(),
+        };
+        assert_eq!(
+            ui_event_params(&event),
+            serde_json::json!({
+                "thread": "main",
+                "event": "job.run",
+                "args": {}
+            })
+        );
+    }
+
+    #[test]
+    fn ui_event_params_include_typed_field_change_args() {
+        let event = crate::surface::SurfaceEvent::Change {
+            field: "models.local_only".into(),
+            value: serde_json::Value::Bool(true),
+        };
+        assert_eq!(
+            ui_event_params(&event),
+            serde_json::json!({
+                "thread": "main",
+                "event": "change",
+                "args": {
+                    "field": "models.local_only",
+                    "value": true
+                }
+            })
+        );
+        assert_eq!(
+            preview_status(&event),
+            "Preview change: models.local_only = true"
+        );
     }
 
     #[test]
