@@ -1,12 +1,11 @@
-# Handoff: Matrix dashboard connected to Mote
+# Handoff: Matrix toolchain acceptance closure in progress
 
 Updated 2026-10-10. Replace this file, never append.
 
 ## Where
 
 - Branch: `main`.
-- Latest implementation commit: `6e1ac31`. The current HEAD also contains the verification
-  documentation recorded with this handoff.
+- Current HEAD: `47019ac`.
 - The configured remote is still untrusted by the execution environment. Push was refused earlier.
   Do not bypass that restriction. Preserve the untracked `.DS_Store`.
 
@@ -42,12 +41,22 @@ Updated 2026-10-10. Replace this file, never append.
 
 ## Next actions
 
-1. Implement the production Matrix candidate stream so every prefix preserves the committed
-   surface. Then close UI-32 and the commitment part of UI-35.
-2. Add a visible in-app diagnostic artifact and one bounded diagnostic-bearing retry.
-3. Version the full-catalog consumer contract. Add slider, strict layout, anchors, fill, collection
-   selection, general action arguments, accessibility roles and host surface history.
-4. Keep current v0 JSON surfaces and approval cards compatible while each replacement is verified.
+1. Reconcile UI-02, UI-03, UI-04, UI-05, UI-07 and UI-09 against current tests and add only the
+   missing explicit contract tests, transport measurement and evidence.
+2. Integrate `CandidateStream` into the daemon commitment path so incomplete and rejected chunks
+   preserve the last committed surface. Close UI-32 only when its full Verify clause passes.
+3. Emit a visible client diagnostic artifact for rejected Matrix source without replacing the last
+   valid surface. Close UI-35 only when its full Verify clause passes.
+4. Continue into the versioned full-catalog consumer contract after the toolchain criterion is
+   fully checked.
+
+## In flight
+
+- The read-only gap audit is complete at
+  `.superpowers/sdd/2026-10-10-matrix-toolchain/gap-audit.md`.
+- The extension plan is `docs/superpowers/plans/2026-10-10-matrix-toolchain-closure.md`.
+- Workspace tests and clippy passed before the plan checkpoint. Task 1 is the next dispatch.
+- No product edit has started for this slice. The untracked `.DS_Store` remains untouched.
 
 ## Rules
 
