@@ -52,6 +52,12 @@ percentiles.
   router turn with the approved local models. Its Pipeline snapshot showed two correlated request
   and response pairs, nonzero token counts, measured timing and one ledger row per call. V0-49
   contains the excerpt.
+- Fresh 20-run benchmarks at `3bd4eec` measured talk p50 at 27.0 ms and router p50 at 56.8 ms.
+  Both existing lane gates remain green. V0-50 now has the closed-view baseline, but still needs
+  the matching run while the Pipeline view is visibly open.
+- Ollama 0.35.0 received `think: false`, but the installed `qwen3:4b` template still returned its
+  reasoning in `message.content` before `</think>`. The raw first-token benchmark passes. Do not
+  add an output-stripping workaround or refresh the installed model without an owner decision.
 - Live daemon-connected cursor replay, message states, `ui.event`, system appearance, Pipeline
   screenshots, a live configuration change and the Pipeline performance comparison remain undone.
 - The approval lifecycle is wired and tested, but its required screenshot remains undone.
