@@ -157,8 +157,13 @@ fn apply_next_event(
             StreamUpdate::Disconnected => chat.invalidate_matrix(),
         }
     };
-    let reduction = chat.reduce(&event);
-    let persisted = cursor_path.map_or(Ok(()), |path| crate::cursor::store(path, event.seq));
+    let chat_event = event.scope_id == "main";
+    let reduction = chat_event.then(|| chat.reduce(&event)).flatten();
+    let persisted = if chat_event {
+        cursor_path.map_or(Ok(()), |path| crate::cursor::store(path, event.seq))
+    } else {
+        Ok(())
+    };
     Some((event, reduction, arrived_ns, persisted))
 }
 
@@ -648,7 +653,7 @@ impl MoteApp {
         );
         crate::theme::caption(
             ui,
-            "Main-thread events update live. Other scopes update on Refresh.",
+            "Chat and talk benchmark events update live. Other scopes update on Refresh.",
         );
         let events = snapshot.events_for(stage);
         if events.is_empty() {
@@ -1143,6 +1148,35 @@ mod tests {
             payload,
         }.into())
         .unwrap();
+    }
+
+    #[test]
+    fn benchmark_events_preserve_completed_chat_and_its_cursor() {
+        let (mut app, tx) = app();
+        send(&tx, "turn.user", serde_json::json!({"text":"An ordinary question"}));
+        send(&tx, "talk.delta", serde_json::json!({"text":"The completed ordinary answer"}));
+        send(&tx, "talk.done", serde_json::json!({}));
+        app.drain_events();
+        app.install_pipeline_snapshot(pipeline_snapshot("qwen3:4b"));
+        let cursor_path = std::env::temp_dir().join(format!("mote-benchmark-cursor-{}",std::process::id()));
+        crate::cursor::store(&cursor_path, 3).unwrap();
+        app.cursor_path = Some(cursor_path.clone());
+        for (seq,kind,payload) in [
+            (100,"talk.delta",serde_json::json!({"text":"Synthetic benchmark answer"})),
+            (101,"talk.done",serde_json::json!({"ledger_id":20})),
+        ] {
+            tx.send(Event {seq,ts:5001,scope_id:"bench.talk".into(),kind:kind.into(),payload}.into()).unwrap();
+        }
+
+        app.drain_events();
+
+        assert_eq!(app.chat.messages.len(),2);
+        assert_eq!(app.chat.messages[1].text,"The completed ordinary answer");
+        assert_eq!(app.chat.messages[1].status.label(),"read");
+        assert!(!app.chat.typing);
+        assert_eq!(crate::cursor::load(&cursor_path).seq,3);
+        assert_eq!(app.pipeline.as_ref().unwrap().events_for("talk").len(),2);
+        std::fs::remove_file(cursor_path).unwrap();
     }
 
     fn pipeline_snapshot(talk_model: &str) -> PipelineSnapshot {

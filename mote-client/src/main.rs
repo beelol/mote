@@ -79,6 +79,16 @@ fn main() -> eframe::Result<()> {
             let cursor_seq = loaded_cursor.as_ref().map_or(0, |loaded| loaded.seq);
             let cursor_warning = loaded_cursor.and_then(|loaded| loaded.warning);
             if live_mode {
+                let benchmark_socket = socket.clone();
+                let benchmark_clock = clock.clone();
+                let benchmark_tx = tx.clone();
+                let benchmark_repaint = cc.egui_ctx.clone();
+                std::thread::spawn(move || {
+                    stream::run_benchmark(
+                        &benchmark_socket, benchmark_tx, benchmark_clock,
+                        move || benchmark_repaint.request_repaint(),
+                    );
+                });
                 let sock = socket.clone();
                 let stream_clock = clock.clone();
                 let repaint = cc.egui_ctx.clone();

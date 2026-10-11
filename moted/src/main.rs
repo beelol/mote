@@ -773,6 +773,15 @@ impl Dispatch for Daemon {
                 serde_json::to_value(snapshot)
                     .map_err(|error| RpcError::internal(format!("encode pipeline snapshot: {error}")))
             }
+            "bench.talk" => {
+                let model = self.config.lock().unwrap().get_json("models.talk")
+                    .and_then(|value| value.as_str().map(String::from))
+                    .ok_or_else(|| RpcError::internal("models.talk unset"))?;
+                let store = self.store.lock().unwrap();
+                bench::bench_talk(&self.log, &store, &self.client, &model, TALK_CTX, bench::RUNS)
+                    .map(|result| result.to_line())
+                    .map_err(RpcError::internal)
+            }
             "character.info" => {
                 let c = self.character.lock().unwrap();
                 Ok(json!({
@@ -1377,6 +1386,38 @@ mod approval_dispatch_tests {
             data_dir: data_dir.to_path_buf(),
             started: std::time::Instant::now(),
         }
+    }
+
+    #[test]
+    fn talk_benchmark_uses_live_subscribers_and_records_every_sample() {
+        let server = mote_testkit::ScriptedServer::start().unwrap();
+        server.set_chat_chunks(vec![
+            json!({"message":{"role":"assistant","content":"hello"},"done":false}).to_string(),
+            json!({"message":{"role":"assistant","content":""},"done":true}).to_string(),
+        ]);
+        let (data, _) = dirs("talk-benchmark");
+        let mut daemon = daemon(&data);
+        daemon.client = Ollama::new(server.base_url());
+        daemon.log.append("main", "turn.user", &json!({"text":"An ordinary question"})).unwrap();
+        daemon.log.append("main", "talk.delta", &json!({"text":"The completed ordinary answer"})).unwrap();
+        daemon.log.append("main", "talk.done", &json!({})).unwrap();
+        let before_main = daemon.log.recent_since(0, 1000).unwrap();
+        let mut subscriber = daemon.log.subscribe("bench.talk", 0).unwrap();
+
+        let result = daemon.call("bench.talk", json!({}));
+
+        assert!(result.is_ok(), "benchmark RPC must use the live daemon: {result:?}");
+        let result = result.unwrap();
+        assert_eq!(result["runs"], 20);
+        assert_eq!(result["extra"]["samples_ms"].as_array().unwrap().len(), 20);
+        assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), 20);
+        let events = daemon.log.recent_since(0, 1000).unwrap();
+        assert_eq!(events.iter().filter(|event| event.scope_id == "main").collect::<Vec<_>>(),
+            before_main.iter().collect::<Vec<_>>());
+        assert_eq!(events.iter().filter(|event| event.kind == "talk.done" && event.scope_id == "bench.talk").count(), 20);
+        assert_eq!(events.iter().filter(|event| event.kind == "model.request").count(), 20);
+        assert_eq!(subscriber.recv_timeout(Duration::from_millis(100)).unwrap().kind, "talk.delta");
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
     }
 
     fn dirs(name: &str) -> (PathBuf, PathBuf) {
@@ -4092,6 +4133,26 @@ fn run_bench(name: Option<String>) -> Result<(), i32> {
         println!("{}", report.line());
         return if report.target_failed() { Err(1) } else { Ok(()) };
     }
+    if name == "talk" && mote_paths::socket_path().exists() {
+        let result = (|| -> Result<bench::BenchResult, String> {
+            let mut client = mote_ipc::Client::connect(&mote_paths::socket_path())
+                .map_err(|error| format!("running daemon required: {error}"))?;
+            let value = client.call("bench.talk", json!({}))
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error.message)?;
+            let result: bench::BenchResult = serde_json::from_value(value)
+                .map_err(|error| error.to_string())?;
+            bench::append_bench_line(&data.join("bench.jsonl"), &result)
+                .map_err(|error| error.to_string())?;
+            Ok(result)
+        })().map_err(|error| {
+            eprintln!("moted bench talk: {error}");
+            1
+        })?;
+        println!("bench {}: p50 {:.1} ms, p95 {:.1} ms over {} runs",
+            result.name, result.p50_ms, result.p95_ms, result.runs);
+        return Ok(());
+    }
     let gate = Arc::new(OllamaGate::new(Ollama::local()));
     let log = EventLog::open(&mote_paths::db_path()).map_err(|_| 1)?;
     let config = ConfigStore::load(&mote_paths::config_path(), log.clone(), gate).map_err(|e| {
@@ -4102,6 +4163,22 @@ fn run_bench(name: Option<String>) -> Result<(), i32> {
         eprintln!("moted bench: {error}");
         1
     })?;
+    if name == "talk" {
+        let model = config.get_json("models.talk")
+            .and_then(|value| value.as_str().map(String::from)).unwrap_or_default();
+        let result = bench::bench_talk(&log, &store, &Ollama::local(), &model, TALK_CTX, bench::RUNS)
+            .and_then(|result| {
+                bench::append_bench_line(&data.join("bench.jsonl"), &result)
+                    .map_err(|error| error.to_string())?;
+                Ok(result)
+            }).map_err(|error| {
+                eprintln!("moted bench talk: {error}");
+                1
+            })?;
+        println!("bench {}: p50 {:.1} ms, p95 {:.1} ms over {} runs",
+            result.name, result.p50_ms, result.p95_ms, result.runs);
+        return Ok(());
+    }
     bench::run_named(&name, &data, &Ollama::local(), &config, &log, &store);
     Ok(())
 }

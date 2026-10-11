@@ -70,6 +70,29 @@ pub fn run_after_connect(
     );
 }
 
+pub fn run_benchmark(
+    path: &Path,
+    tx: Sender<StreamUpdate>,
+    clock: crate::display_latency::SharedClock,
+    repaint: impl FnMut(),
+) {
+    run_with(
+        0,
+        |cursor| {
+            let client = Client::connect(path)?;
+            Ok((client.subscribe("bench.talk", cursor)?, 0))
+        },
+        |stream| stream.read_event(),
+        || clock.now_ns(),
+        |update| match update {
+            StreamUpdate::Event { .. } => tx.send(update).is_ok(),
+            StreamUpdate::Connected { .. } | StreamUpdate::Disconnected => true,
+        },
+        repaint,
+        std::thread::sleep,
+    );
+}
+
 fn run_with<S>(
     initial_cursor: i64,
     mut connect: impl FnMut(i64) -> io::Result<(S, i64)>,

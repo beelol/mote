@@ -1,0 +1,40 @@
+   Compiling mote-client v0.0.0 (/Users/bilal/projects/mote/mote-client)
+   Compiling moted v0.0.0 (/Users/bilal/projects/mote/moted)
+warning: associated items `set_viewport` and `legacy` are never used
+   --> mote-client/src/observation.rs:110:12
+    |
+108 | impl ObservationHarness {
+    | ----------------------- associated items in this implementation
+109 |     #[cfg(feature = "test-observation")]
+110 |     pub fn set_viewport(&mut self, width: f32, height: f32) {
+    |            ^^^^^^^^^^^^
+...
+114 |     pub fn legacy() -> Self {
+    |            ^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: `mote-client` (bin "mote-client" test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.95s
+     Running unittests src/lib.rs (target/debug/deps/mote_client-d5b5b6c796da610d)
+
+running 1 test
+test app::tests::benchmark_events_preserve_completed_chat_and_its_cursor ... FAILED
+
+failures:
+
+---- app::tests::benchmark_events_preserve_completed_chat_and_its_cursor stdout ----
+
+thread 'app::tests::benchmark_events_preserve_completed_chat_and_its_cursor' panicked at mote-client/src/app.rs:1169:9:
+assertion `left == right` failed
+  left: "The completed ordinary answerSynthetic benchmark answer"
+ right: "The completed ordinary answer"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    app::tests::benchmark_events_preserve_completed_chat_and_its_cursor
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 155 filtered out; finished in 0.09s
+
+error: test failed, to rerun pass `-p mote-client --lib`

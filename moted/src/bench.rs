@@ -842,7 +842,7 @@ fn append_surface_report(path: &Path, report: &SurfaceReport) -> std::io::Result
 }
 
 /// A benchmark result: p50/p95 of the primary metric, plus any extra metrics.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct BenchResult {
     pub name: String,
     pub runs: usize,
@@ -886,32 +886,47 @@ pub fn append_bench_line(path: &Path, result: &BenchResult) -> std::io::Result<(
 }
 
 /// Benchmark talk-lane first-token latency.
-pub fn bench_talk(client: &Ollama, model: &str, num_ctx: u32, runs: usize) -> BenchResult {
+pub fn bench_talk(
+    log: &EventLog,
+    store: &ContextStore,
+    client: &Ollama,
+    model: &str,
+    num_ctx: u32,
+    runs: usize,
+) -> Result<BenchResult, String> {
     let mut firsts = Vec::new();
     for _ in 0..runs {
-        let messages = json!([
-            { "role": "system", "content": "Reply in one short sentence." },
-            { "role": "user", "content": "say hello" }
-        ]);
-        let opts = mote_localmodel::ChatOptions::new(num_ctx).no_think();
-        let start = Instant::now();
-        let mut first: Option<f64> = None;
-        let _ = client.chat_stream(model, messages, &opts, |chunk| {
-            if first.is_none() && !chunk.content.is_empty() {
-                first = Some(start.elapsed().as_secs_f64() * 1000.0);
-            }
-        });
-        if let Some(ms) = first {
-            firsts.push(ms);
+        let inputs = lanes::TalkInputs {
+            charter: "Reply in one short sentence.",
+            profile: "",
+            memories: "",
+            working_set: "",
+            turn: "say hello",
+        };
+        let outcome = lanes::run_talk(
+            log, store, client, "bench.talk", model, num_ctx, &inputs, lanes::TALK_BUDGET,
+            &std::sync::atomic::AtomicBool::new(false),
+        );
+        let lanes::TalkOutcome::Done { ledger_id, .. } = outcome else {
+            return Err(format!("talk benchmark sample failed: {outcome:?}"));
+        };
+        let row = store.ledger_since(0).map_err(|error| error.to_string())?
+            .into_iter().find(|row| row.id == ledger_id)
+            .ok_or_else(|| "talk benchmark ledger row missing".to_string())?;
+        if row.latency_kind != "first_token" || row.status != "ok" {
+            return Err("talk benchmark sample has no successful first token".into());
         }
+        firsts.push(row.latency_ms as f64);
     }
-    BenchResult {
+    Ok(BenchResult {
         name: "talk".into(),
         runs: firsts.len(),
         p50_ms: percentile(&firsts, 50.0),
         p95_ms: percentile(&firsts, 95.0),
-        extra: json!({ "metric": "first_token_ms", "model": model }),
-    }
+        extra: json!({ "metric": "first_token_ms", "model": model,
+            "samples_ms": firsts, "measurement": "live_talk_lane",
+            "resolution_ms": 1, "num_ctx": num_ctx }),
+    })
 }
 
 /// Benchmark router latency (full structured verdict).
@@ -986,7 +1001,13 @@ pub fn run_named(
         }
         "talk" => {
             let model = config.get_json("models.talk").and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
-            bench_talk(client, &model, 32768, RUNS)
+            match bench_talk(log, store, client, &model, 32768, RUNS) {
+                Ok(result) => result,
+                Err(error) => {
+                    eprintln!("moted bench talk: {error}");
+                    return;
+                }
+            }
         }
         "router" => {
             let model = config.get_json("models.router").and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
@@ -1129,7 +1150,9 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("bench.jsonl");
 
-        append_bench_line(&path, &bench_talk(&client, "qwen3:4b", 32768, 3)).unwrap();
+        let log = EventLog::open_in_memory().unwrap();
+        let store = ContextStore::open_in_memory().unwrap();
+        append_bench_line(&path, &bench_talk(&log, &store, &client, "qwen3:4b", 32768, 3).unwrap()).unwrap();
         append_bench_line(&path, &bench_router(&client, "qwen3:0.6b", 32768, 3)).unwrap();
         append_bench_line(&path, &bench_memory_scale(50, 3)).unwrap();
 

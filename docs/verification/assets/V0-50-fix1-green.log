@@ -1,0 +1,67 @@
+   Compiling mote-client v0.0.0 (/Users/bilal/projects/mote/mote-client)
+   Compiling moted v0.0.0 (/Users/bilal/projects/mote/moted)
+warning: variable does not need to be mutable
+  --> mote-client/src/stream.rs:82:17
+   |
+82 |             let mut client = Client::connect(path)?;
+   |                 ----^^^^^^
+   |                 |
+   |                 help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` on by default
+
+warning: `mote-client` (lib) generated 1 warning (run `cargo fix --lib -p mote-client` to apply 1 suggestion)
+warning: `mote-client` (lib test) generated 1 warning (1 duplicate)
+warning: associated items `set_viewport` and `legacy` are never used
+   --> mote-client/src/observation.rs:110:12
+    |
+108 | impl ObservationHarness {
+    | ----------------------- associated items in this implementation
+109 |     #[cfg(feature = "test-observation")]
+110 |     pub fn set_viewport(&mut self, width: f32, height: f32) {
+    |            ^^^^^^^^^^^^
+...
+114 |     pub fn legacy() -> Self {
+    |            ^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: `mote-client` (bin "mote-client" test) generated 2 warnings (1 duplicate)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.38s
+     Running unittests src/lib.rs (target/debug/deps/mote_client-d5b5b6c796da610d)
+
+running 1 test
+test app::tests::benchmark_events_preserve_completed_chat_and_its_cursor ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 155 filtered out; finished in 0.04s
+
+     Running unittests src/main.rs (target/debug/deps/mote_client-3db52b7896a817a1)
+
+running 1 test
+test app::tests::benchmark_events_preserve_completed_chat_and_its_cursor ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 160 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (target/debug/deps/moted-66fd539ad86b6298)
+
+running 6 tests
+test bench::tests::compiler_benchmark_refuses_debug_builds ... ok
+test bench::tests::compiler_benchmark_budget_only_passes_on_named_target_hardware ... ok
+test bench::tests::compiler_benchmark_uses_nearest_rank_p95 ... ok
+test bench::tests::compiler_benchmark_fixture_is_fixed_and_exercises_v1_bindings ... ok
+test bench::tests::surface_benchmark_uses_the_ledgered_model_boundary_for_every_attempt ... ok
+test approval_dispatch_tests::talk_benchmark_uses_live_subscribers_and_records_every_sample ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 123 filtered out; finished in 0.44s
+
+     Running tests/local_only.rs (target/debug/deps/local_only-1cbec872628d4b9a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/second_instance.rs (target/debug/deps/second_instance-23a26f1e5260e3e8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
