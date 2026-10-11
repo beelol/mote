@@ -723,12 +723,12 @@ impl Renderer<'_> {
                     }
                 }
                 if state.confirming && !disabled {
-                    egui::Window::new(format!("Confirm {label}"))
+                    egui::Window::new("Confirm action")
                         .id(id.with("confirmation"))
                         .collapsible(false)
                         .resizable(false)
                         .show(ui.ctx(), |ui| {
-                            ui.label(format!("Confirm {label}?"));
+                            ui.label(format!("Continue with \u{201c}{label}\u{201d}?"));
                             let yes = crate::surface::button(ui, "Confirm");
                             #[cfg(test)]
                             observe(ui, "confirm", path, yes.rect, yes.id);

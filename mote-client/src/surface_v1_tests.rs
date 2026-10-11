@@ -540,7 +540,18 @@ fn confirmation_cancel_and_removal_never_emit() {
     h.frame(vec![]);
     let (obs, _, _) = h.frame(vec![]);
     assert!(h.click(find(&obs, "button").rect.center()).is_empty());
-    h.frame(vec![]);
+    let (_, _, confirmation) = h.frame(vec![]);
+    let confirmation_text: Vec<_> = confirmation
+        .shapes
+        .iter()
+        .filter_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) => Some(text.galley.text()),
+            _ => None,
+        })
+        .collect();
+    assert!(confirmation_text.contains(&"Confirm action"));
+    assert!(confirmation_text.contains(&"Continue with “Delete”?"));
+    assert!(!confirmation_text.contains(&"Confirm Delete"));
     assert!(h.key(egui::Key::Escape).is_empty());
     assert!(!h.frame(vec![]).0.iter().any(|o| o.kind == "confirm"));
     h.frame(vec![]);
