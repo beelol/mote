@@ -969,3 +969,66 @@ pub fn assert_v0_payload(surface: &serde_json::Value) {
     let node = mote_ui::validate(&serde_json::to_vec(surface).unwrap()).unwrap();
     assert_eq!(keys(surface), keys(&serde_json::to_value(node).unwrap()));
 }
+
+#[cfg(test)]
+mod matrix_renderer_tests {
+    use super::*;
+
+    fn payload(version: u32) -> serde_json::Value {
+        serde_json::json!({"surface_id":"matrix","surface":{"type":"text","value":"Fallback only"},"matrix_surface":{"version":version,"root":{"type":"screen","children":[{"type":"button","label":"Matrix action","event":"matrix.test"}]}}})
+    }
+
+    fn labels(output: &egui::FullOutput) -> Vec<String> {
+        output.shapes.iter().filter_map(|shape|match &shape.shape {egui::Shape::Text(text)=>Some(text.galley.text().to_owned()),_=>None}).collect()
+    }
+
+    #[test]
+    fn live_matrix_draws_v1_but_never_sends_v1_actions_to_daemon() {
+        for viewport in [egui::vec2(400.0,800.0),egui::vec2(1200.0,800.0)] {
+            let mut h=ObservationHarness {viewport,..Default::default()};
+            h.event(&Event{seq:17,ts:0,scope_id:"main".into(),kind:"ui.surface".into(),payload:payload(1)});
+            h.frame(vec![]);
+            let (_,out)=h.frame_output(vec![]);
+            assert!(labels(&out).iter().any(|label|label=="Matrix action"));
+            assert!(!labels(&out).iter().any(|label|label=="Fallback only"));
+            let update=out.platform_output.accesskit_update.unwrap();
+            let bounds=update.nodes.iter().find(|(_,node)|node.label()==Some("Matrix action")).unwrap().1.bounds().unwrap();
+            h.click(egui::pos2(((bounds.x0+bounds.x1)/2.0) as f32,((bounds.y0+bounds.y1)/2.0) as f32));
+            assert!(h.queued().is_empty());
+        }
+    }
+
+    #[test]
+    fn unsupported_matrix_draws_fallback_and_gallery_keeps_both_catalogs() {
+        let mut h=ObservationHarness::default();
+        h.app.fixture=crate::contract::decode(&payload(2));
+        assert!(labels(&h.frame_output(vec![]).1).contains(&"Fallback only".into()));
+        h.app.fixture=Some(crate::gallery::preview());
+        let (_,out)=h.frame_output(vec![]);
+        let labels=labels(&out);
+        assert!(labels.contains(&"Surface gallery".into()));
+        assert!(out.platform_output.accesskit_update.unwrap().nodes.iter().any(|(_,node)|node.role()==accesskit::Role::Slider));
+        h.frame(vec![egui::Event::PointerMoved(egui::pos2(400.0,300.0)),egui::Event::MouseWheel{unit:egui::MouseWheelUnit::Point,delta:egui::vec2(0.0,-3000.0),modifiers:Default::default()}]);
+        let mut found=false;
+        for _ in 0..20 {found|=self::labels(&h.frame_output(vec![]).1).contains(&"Matrix v1".into());}
+        assert!(found,"gallery scroll must expose Matrix slice");
+        assert!(h.queued().is_empty());
+    }
+
+    #[test]
+    fn live_matrix_body_scroll_keeps_both_anchors_inside_chat_viewport() {
+        for viewport in [egui::vec2(400.0,800.0),egui::vec2(1200.0,800.0)] {
+            let mut h=ObservationHarness{viewport,..Default::default()};
+            let body:Vec<_>=(0..100).map(|_|serde_json::json!({"type":"text","value":"Body row"})).collect();
+            h.event(&Event{seq:18,ts:0,scope_id:"main".into(),kind:"ui.surface".into(),payload:serde_json::json!({"surface_id":"matrix","surface":{"type":"text","value":"Fallback"},"matrix_surface":{"version":1,"root":{"type":"screen","children":[{"type":"header","children":[{"type":"button","label":"Head","event":"head"}]},{"type":"col","children":body},{"type":"footer","children":[{"type":"button","label":"Foot","event":"foot"}]}]}}})});
+            h.frame(vec![]);let (_,out)=h.frame_output(vec![]);
+            let bounds=|out:&egui::FullOutput,label:&str|out.platform_output.accesskit_update.as_ref().unwrap().nodes.iter().find(|(_,n)|n.label()==Some(label)).unwrap().1.bounds().unwrap();
+            let head=bounds(&out,"Head");let foot=bounds(&out,"Foot");
+            let layout=crate::surface::observation::take_layout();let clip=layout.scrolls.iter().find(|scroll|scroll.name=="chat").unwrap().viewport;
+            assert!(foot.y1<=clip.bottom() as f64,"footer is clipped by outer chat viewport: {foot:?} {clip:?}");
+            h.frame(vec![egui::Event::PointerMoved(egui::pos2(viewport.x/2.0,400.0)),egui::Event::MouseWheel{unit:egui::MouseWheelUnit::Point,delta:egui::vec2(0.0,-300.0),modifiers:Default::default()}]);
+            let (_,out)=h.frame_output(vec![]);
+            assert_eq!(bounds(&out,"Head"),head);assert_eq!(bounds(&out,"Foot"),foot);
+        }
+    }
+}

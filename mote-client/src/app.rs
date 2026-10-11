@@ -55,6 +55,13 @@ fn preview_status(event: &crate::surface::SurfaceEvent) -> String {
     }
 }
 
+fn matrix_preview_status(event: &crate::surface_v1::Event) -> String {
+    match event {
+        crate::surface_v1::Event::Action { event, .. } => format!("Preview action: {event}"),
+        crate::surface_v1::Event::Change { field, value, .. } => format!("Preview change: {field} = {value}"),
+    }
+}
+
 fn spawn_pipeline_load_with(
     tx: Sender<PipelineResult>,
     load: impl FnOnce() -> PipelineResult + Send + 'static,
@@ -419,6 +426,13 @@ impl MoteApp {
             crate::theme::caption(ui, &self.status_line);
         }
         let mut clicked = Vec::new();
+        let mut matrix_events = Vec::new();
+        let screen_height = ui.available_height();
+        if let Some(crate::contract::Surface::V1 { surface, .. }) = &self.fixture {
+            crate::surface_v1::draw(ui, surface, &mut matrix_events);
+            if let Some(event) = matrix_events.last() { self.status_line = matrix_preview_status(event); }
+            return;
+        }
         #[cfg(any(test, feature = "test-observation"))]
         let mut scroll_clip = egui::Rect::NOTHING;
         let scroll = egui::ScrollArea::both()
@@ -428,6 +442,12 @@ impl MoteApp {
                 { scroll_clip = ui.clip_rect(); }
                 if let Some(node) = &self.fixture {
                     crate::surface::draw(ui, node.display_v0(), &mut clicked);
+                    if let crate::contract::Surface::Gallery { matrix, .. } = node {
+                        let rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(ui.available_width(), screen_height));
+                        ui.allocate_rect(rect, egui::Sense::hover());
+                        let mut screen_ui = ui.new_child(egui::UiBuilder::new().id_salt("matrix-gallery").max_rect(rect));
+                        crate::surface_v1::draw(&mut screen_ui, matrix, &mut matrix_events);
+                    }
                 }
             });
         crate::accessibility::hide_id(ui.ctx(), scroll.id.with(0));
@@ -440,11 +460,13 @@ impl MoteApp {
         if let Some(event) = clicked.last() {
             self.status_line = preview_status(event);
         }
+        if let Some(event) = matrix_events.last() { self.status_line = matrix_preview_status(event); }
     }
 
     fn chat_view(&mut self, ui: &mut egui::Ui) -> Vec<u64> {
         let mut clicked = Vec::new();
         let mut drawn_revisions = Vec::new();
+        let screen_height = (ui.available_height() - 48.0 - 3.0 * ui.spacing().item_spacing.y).max(0.0);
         #[cfg(any(test, feature = "test-observation"))]
         let mut scroll_clip = egui::Rect::NOTHING;
         let scroll = egui::ScrollArea::vertical()
@@ -454,19 +476,32 @@ impl MoteApp {
                 #[cfg(any(test, feature = "test-observation"))]
                 { scroll_clip = ui.clip_rect(); }
                 for m in &self.chat.messages {
+                    let message_top = ui.cursor().min.y;
                     ui.horizontal(|ui| {
                         ui.strong(&m.role);
                         crate::theme::caption(ui, m.status.label());
                     });
+                    let screen_height = (screen_height - (ui.cursor().min.y - message_top) - ui.spacing().item_spacing.y).max(0.0);
                     if let Some(node) = &m.surface {
-                        let node = node.display_v0();
                         let first_event = clicked.len();
+                        let draw_surface = |ui: &mut egui::Ui, clicked: &mut Vec<crate::surface::SurfaceEvent>| {
+                            match node {
+                                crate::contract::Surface::V1 { surface, .. } => {
+                                    let rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(ui.available_width(), screen_height));
+                                    ui.allocate_rect(rect, egui::Sense::hover());
+                                    let mut screen_ui = ui.new_child(egui::UiBuilder::new().id_salt("matrix-screen").max_rect(rect));
+                                    let mut local_events = Vec::new();
+                                    crate::surface_v1::draw(&mut screen_ui, surface, &mut local_events);
+                                }
+                                _ => crate::surface::draw(ui, node.display_v0(), clicked),
+                            }
+                        };
                         if m.surface_id.as_deref() == Some("matrix") {
                             ui.push_id(("matrix", self.chat.matrix_epoch), |ui| {
-                                crate::surface::draw(ui, node, &mut clicked)
+                                draw_surface(ui, &mut clicked)
                             });
                         } else {
-                            ui.push_id(("surface", m.surface_id.as_deref(), m.surface_instance), |ui| crate::surface::draw(ui, node, &mut clicked));
+                            ui.push_id(("surface", m.surface_id.as_deref(), m.surface_instance), |ui| draw_surface(ui, &mut clicked));
                         }
                         for event in &mut clicked[first_event..] {
                             event.set_surface_seq(m.surface_seq);
@@ -1409,7 +1444,7 @@ mod tests {
     }
 
     #[test]
-    fn dual_surface_interaction_emits_one_v0_event_without_contract_context() {
+    fn unsupported_dual_surface_emits_one_v0_event_without_contract_context() {
         let (mut app, tx) = app();
         let (events, event_rx) = mpsc::channel();
         app.ui_event_tx = events;
@@ -1421,13 +1456,13 @@ mod tests {
                     {"type":"text", "value":"Fallback controls"},
                     {"type":"action", "label":"Refresh fallback", "event":"refresh"}
                 ]},
-                "matrix_surface":{"version":1, "root":{"type":"screen", "children":[
+                "matrix_surface":{"version":2, "root":{"type":"screen", "children":[
                     {"type":"text", "value":"Retained Matrix surface"}
                 ]}}
             }),
         }.into()).unwrap();
         app.drain_events();
-        assert!(app.chat.messages[0].surface.as_ref().unwrap().matrix_v1().is_some());
+        assert!(app.chat.messages[0].surface.as_ref().unwrap().matrix_v1().is_none());
 
         let ctx = egui::Context::default();
         crate::theme::install(&ctx);
@@ -1763,7 +1798,7 @@ mod tests {
     }
 
     #[test]
-    fn dual_surface_replaces_once_draws_fallback_and_advances_one_cursor() {
+    fn dual_surface_replaces_once_draws_matrix_and_advances_one_cursor() {
         let cursor = std::env::temp_dir().join(format!(
             "mote-client-contract-cursor-{}-{}",
             std::process::id(),
@@ -1832,8 +1867,8 @@ mod tests {
             egui::Shape::Text(text) => Some(text.galley.text()),
             _ => None,
         }).collect::<Vec<_>>().join("\n");
-        assert!(text.contains("Fallback dashboard"));
-        assert!(!text.contains("Matrix dashboard"));
+        assert!(!text.contains("Fallback dashboard"));
+        assert!(text.contains("Matrix dashboard"));
 
         std::fs::remove_file(cursor).ok();
     }

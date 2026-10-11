@@ -8,12 +8,18 @@ pub enum Surface {
         surface: v1::Surface,
         fallback: Node,
     },
+    Gallery {
+        legacy: Node,
+        matrix: v1::Surface,
+    },
 }
 
 impl Surface {
     pub fn display_v0(&self) -> &Node {
         match self {
-            Self::V0(node) | Self::V1 { fallback: node, .. } => node,
+            Self::V0(node)
+            | Self::V1 { fallback: node, .. }
+            | Self::Gallery { legacy: node, .. } => node,
         }
     }
 
@@ -22,6 +28,7 @@ impl Surface {
         match self {
             Self::V0(_) => None,
             Self::V1 { surface, .. } => Some(surface),
+            Self::Gallery { matrix, .. } => Some(matrix),
         }
     }
 }

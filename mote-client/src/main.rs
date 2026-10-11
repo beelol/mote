@@ -12,13 +12,16 @@ mod cursor;
 mod display_latency;
 mod fixture;
 mod gallery;
+mod matrix_submission;
 mod pipeline;
 mod state;
 mod stream;
 mod surface;
+mod surface_v1;
 mod theme;
 
 use std::sync::mpsc;
+use matrix_submission::submit_matrix;
 
 fn matrix_source(args: &[std::ffi::OsString]) -> Result<Option<String>, String> {
     if args.first().is_none_or(|argument| argument != "--matrix") {
@@ -33,25 +36,6 @@ fn matrix_source(args: &[std::ffi::OsString]) -> Result<Option<String>, String> 
     std::fs::read_to_string(&path)
         .map(Some)
         .map_err(|error| format!("cannot read matrix source {}: {error}", path.display()))
-}
-
-fn submit_matrix(socket: &std::path::Path, source: &str) -> Result<(), String> {
-    let mut client = mote_ipc::Client::connect(socket)
-        .map_err(|error| format!("cannot reach daemon: {error}"))?;
-    let response = client
-        .call(
-            "matrix.render",
-            serde_json::json!({"thread":"main", "source":source}),
-        )
-        .map_err(|error| format!("cannot submit matrix source: {error}"))?
-        .map_err(|error| format!("{}: {}", error.code, error.message))?;
-    if response["ok"].as_bool() == Some(true)
-        || (response["ok"].as_bool() == Some(false) && response["diagnostics"].is_array())
-    {
-        Ok(())
-    } else {
-        Err(format!("matrix source rejected: {}", response["diagnostics"]))
-    }
 }
 
 fn main() -> eframe::Result<()> {

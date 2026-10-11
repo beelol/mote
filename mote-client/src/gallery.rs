@@ -71,5 +71,12 @@ pub fn tree() -> Node {
 }
 
 pub fn preview() -> crate::contract::Surface {
-    crate::contract::Surface::V0(tree())
+    crate::contract::Surface::Gallery {
+        legacy: tree(),
+        matrix: matrix_tree(),
+    }
+}
+
+pub fn matrix_tree() -> mote_ui::v1::Surface {
+    mote_ui::v1::validate(br#"{"version":1,"root":{"type":"screen","title":"Matrix v1","children":[{"type":"header","children":[{"type":"text","value":"Matrix v1"}]},{"type":"col","children":[{"type":"slider","label":"Volume","field":"gallery_volume","value":4,"min":0,"max":10,"step":2},{"type":"toggle","label":"Enable Matrix preview","field":"gallery_matrix_enabled","value":true},{"type":"select","label":"Priority","field":"gallery_matrix_priority","options":["Low","Normal","High"],"value":"Normal"},{"type":"row","wrapping":"nowrap","children":[{"type":"text","value":"Remaining space","fill":true},{"type":"button","label":"Preview","event":"gallery.matrix"}]},{"type":"text","value":"Fill keeps the footer below this body.","fill":true}]},{"type":"footer","children":[{"type":"row","children":[{"type":"button","label":"Confirm action","event":"gallery.confirm","intent":"danger","confirm":true},{"type":"button","label":"Disabled","event":"gallery.disabled","disabled":true}]}]}]}}"#).expect("local Matrix gallery must validate")
 }
