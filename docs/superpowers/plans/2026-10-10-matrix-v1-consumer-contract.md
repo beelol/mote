@@ -90,10 +90,12 @@ Commit: `refactor(client): decode versioned surface contracts`
 Add a separate v1 renderer. Keep header and footer outside the scrolling body. Give the body the
 remaining height. Implement direct-child fill on the main axis. Implement the Vector slider with a
 36 point visual region, a 48 point hit region, AccessKit range semantics, pointer and keyboard
-input, bounded stepping and stable immediate-mode identity.
+input, bounded stepping and stable immediate-mode identity. Render disabled buttons as inert. A
+button carrying `confirm` must require an explicit local confirmation before emitting its action.
 
 Verify at 400 by 800 and 1200 by 800. Check anchor stability during body scrolling, clips, remaining
 space, overlap, focus order, slider pointer and keyboard input, event values and state retention.
+Verify disabled buttons never emit and confirmed buttons emit exactly once only after confirmation.
 
 Commit: `feat(client): render anchored Matrix slider layouts`
 

@@ -2,7 +2,8 @@
 
 Updated 2026-10-10. Replace this file, never append.
 
-Branch: `main`. Preserve untracked `.DS_Store` and `.superpowers/`. There is no remote.
+Branch: `main`. Preserve untracked `.DS_Store` and `.superpowers/`. `origin` is configured, but the
+push was rejected because its trust was not established by trusted user content. Do not push.
 
 The accepted plan is `docs/superpowers/plans/2026-10-10-matrix-v1-consumer-contract.md`.
 Task 1 is complete in commits `3cb25d1` and `5ab7641`. It adds the inactive version 1 consumer
