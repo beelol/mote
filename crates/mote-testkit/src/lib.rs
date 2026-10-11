@@ -5,6 +5,7 @@
 pub mod gateway;
 
 use serde_json::{json, Value};
+use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -28,6 +29,8 @@ pub struct ScriptState {
     pub chat_chunks: Vec<String>,
     /// HTTP status for POST /api/chat (404 simulates a missing model).
     pub chat_status: u16,
+    pub chat_queues: HashMap<String, VecDeque<Vec<String>>>,
+    pub model_digests: HashMap<String, String>,
 }
 
 impl Default for ScriptState {
@@ -41,6 +44,8 @@ impl Default for ScriptState {
                     .to_string(),
             ],
             chat_status: 200,
+            chat_queues: HashMap::new(),
+            model_digests: HashMap::new(),
         }
     }
 }
@@ -80,7 +85,12 @@ impl ScriptedServer {
             }
         });
 
-        Ok(Self { addr, recorded, state, running })
+        Ok(Self {
+            addr,
+            recorded,
+            state,
+            running,
+        })
     }
 
     /// Base URL, for example `http://127.0.0.1:52345`.
@@ -98,6 +108,24 @@ impl ScriptedServer {
 
     pub fn set_chat_status(&self, status: u16) {
         self.state.lock().unwrap().chat_status = status;
+    }
+
+    pub fn queue_chat_chunks(&self, model: &str, chunks: Vec<String>) {
+        self.state
+            .lock()
+            .unwrap()
+            .chat_queues
+            .entry(model.to_string())
+            .or_default()
+            .push_back(chunks);
+    }
+
+    pub fn set_model_digest(&self, model: &str, digest: &str) {
+        self.state
+            .lock()
+            .unwrap()
+            .model_digests
+            .insert(model.to_string(), digest.to_string());
     }
 
     /// Every request recorded so far.
@@ -162,15 +190,15 @@ fn handle(
     recorded.lock().unwrap().push(Recorded {
         method: method.clone(),
         path: path.clone(),
-        body,
+        body: body.clone(),
     });
 
-    let (status, payload) = route(&method, &path, &state);
+    let (status, payload) = route(&method, &path, &body, &state);
     write_response(&mut stream, status, &payload)
 }
 
-fn route(method: &str, path: &str, state: &Arc<Mutex<ScriptState>>) -> (u16, String) {
-    let st = state.lock().unwrap();
+fn route(method: &str, path: &str, body: &Value, state: &Arc<Mutex<ScriptState>>) -> (u16, String) {
+    let mut st = state.lock().unwrap();
     // Strip any query string.
     let path = path.split('?').next().unwrap_or(path);
     match (method, path) {
@@ -178,16 +206,25 @@ fn route(method: &str, path: &str, state: &Arc<Mutex<ScriptState>>) -> (u16, Str
             let models: Vec<Value> = st
                 .models
                 .iter()
-                .map(|(name, size)| json!({ "name": name, "size": size }))
+                .map(|(name, size)| json!({ "name": name, "size": size, "digest": st.model_digests.get(name) }))
                 .collect();
             (200, json!({ "models": models }).to_string())
         }
         ("POST", "/api/chat") => {
             if st.chat_status != 200 {
-                return (st.chat_status, json!({ "error": "model not found" }).to_string());
+                return (
+                    st.chat_status,
+                    json!({ "error": "model not found" }).to_string(),
+                );
             }
             // NDJSON: one JSON object per line.
-            (200, st.chat_chunks.join("\n"))
+            let chunks = body
+                .get("model")
+                .and_then(Value::as_str)
+                .and_then(|model| st.chat_queues.get_mut(model))
+                .and_then(VecDeque::pop_front)
+                .unwrap_or_else(|| st.chat_chunks.clone());
+            (200, chunks.join("\n"))
         }
         _ => (404, json!({ "error": "not found" }).to_string()),
     }
@@ -268,7 +305,8 @@ impl FakeHarness {
     /// Run `initialize`, `tools/list`, then `tools/call` for `tool` with `args`. `dispatch`
     /// stands in for the MCP server's message handler.
     pub fn call_tool<F: Fn(Value) -> Value>(dispatch: F, tool: &str, args: Value) -> Value {
-        let _ = dispatch(json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} }));
+        let _ =
+            dispatch(json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} }));
         let _ = dispatch(json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }));
         dispatch(json!({
             "jsonrpc": "2.0",

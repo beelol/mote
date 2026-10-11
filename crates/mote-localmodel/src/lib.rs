@@ -229,6 +229,32 @@ impl Ollama {
         Ok(out)
     }
 
+    /// Return the exact local digest for a named model, if Ollama reports one.
+    pub fn model_digest(&self, model: &str) -> Result<Option<String>, LmError> {
+        let url = format!("{}/api/tags", self.base_url);
+        let resp = match self.agent.get(&url).call() {
+            Ok(r) => r,
+            Err(ureq::Error::Status(code, r)) => {
+                return Err(LmError::Status(code, r.into_string().unwrap_or_default()))
+            }
+            Err(e) => return Err(LmError::Http(e.to_string())),
+        };
+        let v: Value = resp
+            .into_json()
+            .map_err(|e| LmError::Decode(e.to_string()))?;
+        Ok(v.get("models")
+            .and_then(Value::as_array)
+            .and_then(|models| {
+                models
+                    .iter()
+                    .find(|entry| entry.get("name").and_then(Value::as_str) == Some(model))
+            })
+            .and_then(|entry| entry.get("digest"))
+            .and_then(Value::as_str)
+            .filter(|digest| !digest.is_empty())
+            .map(str::to_owned))
+    }
+
     /// Names of currently loaded models (GET /api/ps).
     pub fn ps(&self) -> Result<Vec<String>, LmError> {
         let url = format!("{}/api/ps", self.base_url);
@@ -383,6 +409,45 @@ mod tests {
         assert_eq!(chat.body["keep_alive"], "30m");
         assert_eq!(chat.body["options"]["num_ctx"], 32768);
         assert_eq!(chat.body["stream"], true);
+    }
+
+    #[test]
+    fn scripted_chat_queues_are_isolated_by_model_and_keep_default_reply() {
+        let srv = ScriptedServer::start().unwrap();
+        srv.queue_chat_chunks(
+            "qwen3:4b",
+            vec![json!({"message":{"content":"first"},"done":true}).to_string()],
+        );
+        srv.queue_chat_chunks(
+            "qwen3:4b",
+            vec![json!({"message":{"content":"second"},"done":true}).to_string()],
+        );
+        let client = Ollama::new(srv.base_url());
+        let mut replies = Vec::new();
+        for model in ["qwen3:4b", "qwen3:0.6b", "qwen3:4b"] {
+            let mut answer = String::new();
+            client
+                .chat_stream(model, json!([]), &ChatOptions::new(32768), |chunk| {
+                    answer.push_str(&chunk.content)
+                })
+                .unwrap();
+            replies.push(answer);
+        }
+        assert_eq!(replies, ["first", "hi", "second"]);
+    }
+
+    #[test]
+    fn model_digest_requires_exact_named_nonempty_tag() {
+        let srv = ScriptedServer::start().unwrap();
+        srv.set_models(vec![("qwen3:4b".into(), 10), ("qwen3:0.6b".into(), 5)]);
+        srv.set_model_digest("qwen3:4b", "sha256:abc123");
+        let client = Ollama::new(srv.base_url());
+        assert_eq!(
+            client.model_digest("qwen3:4b").unwrap(),
+            Some("sha256:abc123".into())
+        );
+        assert_eq!(client.model_digest("qwen3:0.6b").unwrap(), None);
+        assert_eq!(client.model_digest("qwen3:4").unwrap(), None);
     }
 
     #[test]

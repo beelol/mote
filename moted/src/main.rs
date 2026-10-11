@@ -18,6 +18,7 @@ pub(crate) mod model_call;
 pub(crate) mod pipeline;
 mod service;
 mod shutdown;
+mod surface_activation;
 mod watchers;
 
 #[cfg(any(test, feature = "test-fixture"))]
@@ -597,15 +598,22 @@ impl Daemon {
         if let Some(client_message_id) = client_message_id {
             user_payload["client_message_id"] = json!(client_message_id);
         }
-        self.log
+        let user_event = self
+            .log
             .append(thread_id, "turn.user", &user_payload)
             .map_err(|error| RpcError::internal(format!("record turn: {error}")))?;
 
         let (talk_model, router_model, think_model, budget, think_budget, charter_prose) = {
             let cfg = self.config.lock().unwrap();
-            let talk = cfg.get_json("models.talk").and_then(|v| v.as_str().map(String::from));
-            let router = cfg.get_json("models.router").and_then(|v| v.as_str().map(String::from));
-            let think = cfg.get_json("models.think").and_then(|v| v.as_str().map(String::from));
+            let talk = cfg
+                .get_json("models.talk")
+                .and_then(|v| v.as_str().map(String::from));
+            let router = cfg
+                .get_json("models.router")
+                .and_then(|v| v.as_str().map(String::from));
+            let think = cfg
+                .get_json("models.think")
+                .and_then(|v| v.as_str().map(String::from));
             let budget = cfg
                 .get_json("packs.talk")
                 .and_then(|v| v.as_i64())
@@ -624,12 +632,21 @@ impl Daemon {
         let think_model = think_model.ok_or_else(|| RpcError::internal("models.think unset"))?;
 
         let store = self.store.lock().unwrap();
-        let profile = store.get_profile("profile").ok().flatten().unwrap_or_default();
+        let profile = store
+            .get_profile("profile")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
         let working_set = store.working_set_text(thread_id).unwrap_or_default();
         // The talk pack carries the last 8 memories by retrieval (v0.md section 6).
         let memories = store
             .memory_retrieve(message, 8)
-            .map(|hits| hits.iter().map(|h| h.text.clone()).collect::<Vec<_>>().join("\n"))
+            .map(|hits| {
+                hits.iter()
+                    .map(|h| h.text.clone())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
             .unwrap_or_default();
         let inputs = TalkInputs {
             charter: &charter_prose,
@@ -639,16 +656,33 @@ impl Daemon {
             turn: message,
         };
         let outcome = run_turn(
-            &self.log, &store, &self.client, thread_id, &talk_model, TALK_CTX, &router_model,
-            ROUTER_CTX, &inputs, budget,
+            &self.log,
+            &store,
+            &self.client,
+            thread_id,
+            &talk_model,
+            TALK_CTX,
+            &router_model,
+            ROUTER_CTX,
+            &inputs,
+            budget,
         );
         let turn_ts = now_ms();
-        Ok(match outcome {
-            TalkOutcome::Done { ledger_id, pack_id, answer } => {
+        let (response, completed_answer) = match outcome {
+            TalkOutcome::Done {
+                ledger_id,
+                pack_id,
+                answer,
+            } => {
                 lanes::record_turn(&store, thread_id, turn_ts, message, &answer);
-                json!({ "status": "done", "ledger_id": ledger_id, "pack_id": pack_id })
+                (
+                    json!({ "status": "done", "ledger_id": ledger_id, "pack_id": pack_id }),
+                    Some((false, answer)),
+                )
             }
-            TalkOutcome::Unavailable(reason) => json!({ "status": "unavailable", "reason": reason }),
+            TalkOutcome::Unavailable(reason) => {
+                (json!({ "status": "unavailable", "reason": reason }), None)
+            }
             // The router handed off: run the think lane against the thread's persistent server.
             TalkOutcome::Handoff => {
                 let think_inputs = ThinkInputs {
@@ -684,15 +718,22 @@ impl Daemon {
                                 )
                             },
                         ) {
-                            ThinkOutcome::Done { ledger_id, pack_id, answer } => {
+                            ThinkOutcome::Done {
+                                ledger_id,
+                                pack_id,
+                                answer,
+                            } => {
                                 lanes::record_turn(&store, thread_id, turn_ts, message, &answer);
-                                json!({
-                                    "status": "think_done", "ledger_id": ledger_id,
-                                    "pack_id": pack_id
-                                })
+                                (
+                                    json!({
+                                        "status": "think_done", "ledger_id": ledger_id,
+                                        "pack_id": pack_id
+                                    }),
+                                    Some((true, answer)),
+                                )
                             }
                             ThinkOutcome::Failed(reason) => {
-                                json!({ "status": "think_failed", "reason": reason })
+                                (json!({ "status": "think_failed", "reason": reason }), None)
                             }
                         }
                     }
@@ -702,11 +743,29 @@ impl Daemon {
                             "think.failed",
                             &json!({ "reason": reason.clone() }),
                         );
-                        json!({ "status": "think_failed", "reason": reason })
+                        (json!({ "status": "think_failed", "reason": reason }), None)
                     }
                 }
             }
-        })
+        };
+        drop(store);
+        if let Some((is_think, answer)) = completed_answer {
+            let local_only =
+                self.config.lock().unwrap().get_json("models.local_only") == Some(json!(true));
+            if local_only
+                && surface_activation::SurfaceActivationStore::new(&self.data_dir)
+                    .allows(&self.client)
+            {
+                let completion = if is_think {
+                    AnswerCompletion::ThinkDone(&answer)
+                } else {
+                    AnswerCompletion::TalkDone(&answer)
+                };
+                let _ =
+                    self.infer_surface_after_answer(thread_id, user_event.seq, message, completion);
+            }
+        }
+        Ok(response)
     }
 }
 
@@ -1945,6 +2004,191 @@ mod approval_dispatch_tests {
                 .count(),
             2
         );
+    }
+
+    fn activated_turn_server() -> mote_testkit::ScriptedServer {
+        let server = mote_testkit::ScriptedServer::start().unwrap();
+        server.set_models(vec![("qwen3:4b".into(), 1)]);
+        server.set_model_digest("qwen3:4b", "sha256:good");
+        server.queue_chat_chunks(
+            "qwen3:0.6b",
+            vec![json!({
+                "message":{"content":"{\"route\":\"talk\",\"reason\":\"simple\"}"},"done":true
+            })
+            .to_string()],
+        );
+        server.queue_chat_chunks(
+            "qwen3:4b",
+            vec![json!({
+                "message":{"content":"Here is your dashboard."},"done":true
+            })
+            .to_string()],
+        );
+        server
+    }
+
+    fn activate_turns(data: &Path) {
+        std::fs::write(
+            data.join("surface-activation.json"),
+            json!({
+                "model":"qwen3:4b",
+                "model_digest":"sha256:good",
+                "corpus_hash":bench::current_surface_corpus_hash(),
+                "compiler_contract_version":surface_activation::COMPILER_CONTRACT_VERSION,
+                "first_try_valid":190,
+                "sample_count":200
+            })
+            .to_string(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn inferred_production_turn_commits_one_surface_after_completed_prose() {
+        let server = activated_turn_server();
+        server.queue_chat_chunks("qwen3:4b", vec![json!({
+            "message":{"content":json!({"kind":"matrix","source":"screen { text \"Ready\" }"}).to_string()},"done":true
+        }).to_string()]);
+        let (data, _) = dirs("inferred-activated-turn");
+        activate_turns(&data);
+        let mut daemon = daemon(&data);
+        daemon.client = Ollama::new(server.base_url());
+
+        let result = daemon
+            .handle_turn(&json!({"thread":"main","message":"show a dashboard"}))
+            .unwrap();
+
+        assert_eq!(result["status"], "done");
+        let mut events = daemon.log.recent_since(0, 100).unwrap();
+        events.reverse();
+        let done = events
+            .iter()
+            .position(|event| event.kind == "talk.done")
+            .unwrap();
+        let surface = events
+            .iter()
+            .position(|event| event.kind == "ui.surface")
+            .unwrap();
+        assert!(done < surface);
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.kind == "ui.surface")
+                .count(),
+            1
+        );
+        let rows = daemon.store.lock().unwrap().ledger_since(0).unwrap();
+        assert_eq!(rows.iter().filter(|row| row.lane == "surface").count(), 1);
+        assert_eq!(rows.len(), 3);
+        let request = server
+            .recorded()
+            .into_iter()
+            .find(|request| request.body["format"].get("oneOf").is_some())
+            .unwrap();
+        assert!(request.body.to_string().contains("show a dashboard"));
+        assert!(request.body.to_string().contains("Here is your dashboard."));
+    }
+
+    #[test]
+    fn inferred_production_turn_keeps_prose_and_prior_surface_on_transport_failure() {
+        let server = activated_turn_server();
+        server.queue_chat_chunks("qwen3:4b", vec!["not json".into()]);
+        let (data, _) = dirs("inferred-transport-failure");
+        activate_turns(&data);
+        let mut daemon = daemon(&data);
+        daemon.client = Ollama::new(server.base_url());
+        daemon
+            .render_matrix("main", "screen { text \"Prior\" }", true)
+            .unwrap();
+        let prior = daemon.matrix_surfaces.lock().unwrap().clone();
+
+        let result = daemon
+            .handle_turn(&json!({"thread":"main","message":"show a dashboard"}))
+            .unwrap();
+
+        assert_eq!(result["status"], "done");
+        assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), prior);
+        assert_eq!(
+            daemon
+                .log
+                .recent_kind_since("ui.surface", i64::MIN, 10)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            daemon
+                .store
+                .lock()
+                .unwrap()
+                .ledger_since(0)
+                .unwrap()
+                .iter()
+                .filter(|row| row.lane == "surface")
+                .count(),
+            1
+        );
+        assert!(!daemon
+            .log
+            .recent_kind_since("talk.delta", i64::MIN, 10)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn inferred_incomplete_turn_never_checks_activation_or_calls_surface_model() {
+        let server = mote_testkit::ScriptedServer::start().unwrap();
+        server.set_chat_status(404);
+        let (data, _) = dirs("inferred-incomplete-turn");
+        activate_turns(&data);
+        let mut daemon = daemon(&data);
+        daemon.client = Ollama::new(server.base_url());
+
+        let result = daemon.handle_turn(&json!({"thread":"main","message":"show a dashboard"})).unwrap();
+
+        assert_ne!(result["status"], "done");
+        assert!(!server.hit("/api/tags"));
+        assert_eq!(daemon.store.lock().unwrap().ledger_since(0).unwrap().iter().filter(|row| row.lane == "surface").count(), 0);
+    }
+
+    #[test]
+    fn inferred_production_turn_retries_once_and_preserves_prior_surface_on_rejection() {
+        for (case, decisions, expected_new_surfaces, expected_attempts, expected_diagnostics) in [
+            ("none", vec![json!({"kind":"none"}).to_string()], 0, 1, 0),
+            ("recovered", vec![
+                json!({"kind":"matrix","source":"screen { text missing_binding }"}).to_string(),
+                json!({"kind":"matrix","source":"screen { text \"Recovered\" }"}).to_string(),
+            ], 1, 2, 0),
+            ("rejected", vec![
+                json!({"kind":"matrix","source":"screen { text missing_binding }"}).to_string(),
+                json!({"kind":"matrix","source":"screen { button \"Invented\" -> invented_action }"}).to_string(),
+            ], 0, 2, 1),
+        ] {
+            let server = activated_turn_server();
+            for decision in decisions {
+                server.queue_chat_chunks("qwen3:4b", vec![json!({"message":{"content":decision},"done":true}).to_string()]);
+            }
+            let (data, _) = dirs(&format!("inferred-production-{case}"));
+            activate_turns(&data);
+            let mut daemon = daemon(&data);
+            daemon.client = Ollama::new(server.base_url());
+            daemon.render_matrix("main", "screen { text \"Prior\" }", true).unwrap();
+            let prior = daemon.matrix_surfaces.lock().unwrap().clone();
+            let before = daemon.log.max_seq().unwrap();
+
+            let result = daemon.handle_turn(&json!({"thread":"main","message":"show a dashboard"})).unwrap();
+
+            assert_eq!(result["status"], "done", "{case}");
+            let new_events = daemon.log.recent_since(0, 100).unwrap().into_iter().filter(|event| event.seq > before).collect::<Vec<_>>();
+            assert_eq!(new_events.iter().filter(|event| event.kind == "ui.surface").count(), expected_new_surfaces, "{case}");
+            assert_eq!(new_events.iter().filter(|event| event.kind == "ui.diagnostic").count(), expected_diagnostics, "{case}");
+            assert_eq!(daemon.store.lock().unwrap().ledger_since(0).unwrap().iter().filter(|row| row.lane == "surface").count(), expected_attempts, "{case}");
+            assert_eq!(server.recorded().iter().filter(|request| request.body["format"].get("oneOf").is_some()).count(), expected_attempts, "{case}");
+            assert!(new_events.iter().any(|event| event.kind == "talk.delta"), "{case}");
+            if expected_new_surfaces == 0 {
+                assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), prior, "{case}");
+            }
+        }
     }
 
     #[test]

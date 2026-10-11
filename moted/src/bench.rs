@@ -500,6 +500,10 @@ fn surface_corpus_hash(cases: &[SurfaceCase]) -> String {
     hash_text(&canonical)
 }
 
+pub(crate) fn current_surface_corpus_hash() -> String {
+    surface_corpus_hash(&surface_corpus())
+}
+
 fn surface_category_counts(cases: &[SurfaceCase]) -> BTreeMap<String, usize> {
     let mut counts = BTreeMap::new();
     for case in cases {
