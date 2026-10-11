@@ -1,9 +1,11 @@
 # Vector theme
 
 Vector is the default theme. A surface inherits it when the runtime selects no other theme. Its
-identity is thin retro red on a dark base, an Atari vector line look. Structure is drawn with thin
-strokes, not filled boxes. There is one red accent. Elements materialize by drawing their strokes on,
-a line on reveal, using the one motion the runtime applies to every state transition.
+identity is a retro red digital barrier on a near-black base. Structure is drawn with thin red
+strokes, not filled boxes. Focus and active controls use a brighter red from the same family. When
+the resolved layout changes, old strokes break into square pixels and the new borders materialize
+from those pixels in one fast transition. The effect suggests that the agent is present behind the
+interface without delaying the new interface.
 
 Vector is a general base theme. It renders every element in [../catalog.md](../catalog.md). It adds
 no matrix syntax. It fills the theme hook in [../layout-and-theme.md](../layout-and-theme.md): a
@@ -20,8 +22,8 @@ Values are the theme's own. matrix source never contains them.
 | surface | `#0B0B0C` | The base background. Near black. |
 | text | `#E8E3DA` | Primary text. Warm bone. |
 | muted | `#8A8578` | Secondary text and captions. |
-| line | `#2E2E30` | Structural strokes: borders, dividers, control outlines. |
-| accent | `#E5484D` | The one red. Interactive strokes, focus, primary, carets, selection. |
+| line | `#681D24` | Structural strokes: borders, dividers, control outlines. |
+| accent | `#F0444C` | Bright red for focus, active controls, carets and selection. |
 
 ### Color, light
 
@@ -30,7 +32,7 @@ Values are the theme's own. matrix source never contains them.
 | surface | `#F4F1EA` |
 | text | `#1A1A1A` |
 | muted | `#6B6659` |
-| line | `#D8D3C8` |
+| line | `#9F3538` |
 | accent | `#C8322E` |
 
 The runtime follows the system light or dark setting. Dark is the native look.
@@ -74,12 +76,21 @@ An unknown name fails before render.
 
 | Token | Value |
 |---|---|
-| duration | 180 ms |
+| duration | 120 ms |
 | curve | ease out |
 
-The runtime uses this one duration and curve for every state transition. The materialize reveal
-draws an element's strokes from zero length to full over the duration. A leaving element draws its
-strokes back off and fades. Nothing in the theme sets a per element duration.
+This token specifies the future structural transition in UI-49. The delivered v0 runtime retains
+its separate 180 ms standard-control interaction timing and does not implement keyed materialize
+animation. The future runtime uses this one duration and curve for every structural state
+transition. Hit testing and focus move to the new resolved layout on the first frame. The animation
+never delays interaction.
+Only borders and structural strokes that were added, removed or moved participate. Text streaming,
+caret movement, progress updates and unchanged controls do not restart the effect.
+
+The transition is deterministic for a node identity. The old strokes split into square red pixels.
+Those pixels move along short paths into the new stroke geometry, which resolves fully within 120
+ms. Repeating the same transition produces the same frames, so golden tests remain stable. Reduced
+motion replaces particle travel with an immediate layout swap and a brief red outline pulse.
 
 ## How Vector draws each group
 

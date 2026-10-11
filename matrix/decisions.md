@@ -26,10 +26,11 @@ reverses them.
    independently, a flexbox pass fits them, and they draw in parallel. See [runtime.md](runtime.md).
 9. matrix design lives in its own folder and changes no production code.
    Its interim lowering target is the existing Mote v0 tree.
-10. The default theme is Vector: thin retro red, Atari vector line. Dark base, one red accent, thin
-    vector strokes instead of fills, sharp corners, no shadows, a mono type scale, tight but
-    comfortable spacing, status tones as thin colored strokes, and a materialize line on reveal
-    motion with one duration and curve. It is a general base theme that renders every element.
+10. The default theme is Vector: a near-black base, dim red structural strokes, a brighter red for
+    focus, sharp corners, no shadows, a mono type scale, tight but comfortable spacing and status
+    tones as thin colored strokes. On 2026-10-10 the owner replaced the earlier line-on-reveal idea
+    with a fast pixel materialization for structural layout changes. It is a general base theme that
+    renders every element.
 11. The layout model is locked and strict: two containers `col` and `row`, two anchors `header` and
     `footer`, the `fill` role (the owner's word is "stretch"), the align roles, and automatic
     scrolling. No grid tracks, no absolute, no z-index, no pixels. Anchors plus `fill` plus the
