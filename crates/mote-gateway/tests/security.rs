@@ -107,6 +107,55 @@ fn wrong_host_and_unknown_client_fail_before_transport() {
 }
 
 #[test]
+fn wrong_pinned_static_key_fails_noise_in_both_handshake_patterns() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = GatewayConfig::new(dir.path().join("host"));
+    let host = HostIdentity::load_or_create(&config.data_dir).unwrap();
+    let other = HostIdentity::load_or_create(&dir.path().join("other")).unwrap();
+    let store = DeviceStore::open(&config.data_dir.join("devices.db"), host.host_id()).unwrap();
+    let credential = pair(&config, &host, &store);
+    let wrong = ClientCredential::restore(
+        *other.public_key(),
+        *credential.private_key_for_secure_storage(),
+    )
+    .unwrap();
+    let (_, first) = wrong.begin_session(&config, 2).unwrap();
+    let error = PendingHandshake::session(&config, &host, &store, &first)
+        .err()
+        .unwrap();
+    assert!(
+        matches!(
+            error.downcast_ref::<snow::Error>(),
+            Some(snow::Error::Decrypt)
+        ),
+        "expected Noise decryption failure, got {error}"
+    );
+    let now = Instant::now();
+    let mut offer = PairingOffer::open(&config, &host, now, &[]).unwrap();
+    let mut bytes =
+        mote_gateway::base32::decode(offer.code().strip_prefix("MOTE1-").unwrap()).unwrap();
+    bytes[1..33].copy_from_slice(other.public_key());
+    let wrong = ClientCredential::from_pairing_code(
+        &config,
+        &format!("MOTE1-{}", mote_gateway::base32::encode(&bytes)),
+    )
+    .unwrap();
+    let (_, first) = wrong.begin_pairing(&config, "iPad", 1).unwrap();
+    let error = PendingHandshake::pairing(&config, &host, &mut offer, &first, now)
+        .err()
+        .unwrap();
+    assert!(
+        matches!(
+            error.downcast_ref::<snow::Error>(),
+            Some(snow::Error::Decrypt)
+        ),
+        "expected Noise decryption failure, got {error}"
+    );
+    assert!(offer.accepts_attempts(now));
+    connect(&config, &host, &store, &credential, 2);
+}
+
+#[test]
 fn encrypted_frames_are_ordered_bound_and_poison_on_error() {
     let dir = tempfile::tempdir().unwrap();
     let config = GatewayConfig::new(dir.path().join("host"));
@@ -320,7 +369,133 @@ fn large_frames_join_and_reader_size_failures_close_the_session() {
         request_id: RequestId::new("oversize").unwrap(),
         result: serde_json::json!("x".repeat(2_000_000)),
     };
-    assert!(server.write_host(&result).is_err());
+    let (_, mut fresh_server) = connect(&config, &host, &store, &credential, 4);
+    assert!(fresh_server.write_host(&result).is_err());
+    assert!(fresh_server
+        .write_host(&HostFrame::Result {
+            request_id: RequestId::new("small").unwrap(),
+            result: serde_json::json!({})
+        })
+        .is_err());
+}
+
+fn assert_no_credentials(bytes: &[u8], secrets: &[&[u8]]) {
+    let text = std::str::from_utf8(bytes).unwrap();
+    for secret in secrets {
+        assert!(!bytes.windows(secret.len()).any(|window| window == *secret));
+        assert!(!text.contains(&mote_gateway::noise::hex(secret)));
+        assert!(!text.contains(&mote_gateway::base32::encode(secret)));
+        assert!(!text.contains(&serde_json::to_string(secret).unwrap()));
+    }
+}
+
+#[test]
+fn decrypted_handshakes_and_frame_envelopes_exclude_credentials() {
+    use sha2::{Digest, Sha256};
+    let dir = tempfile::tempdir().unwrap();
+    let config = GatewayConfig::new(dir.path().join("host"));
+    let host = HostIdentity::load_or_create(&config.data_dir).unwrap();
+    let store = DeviceStore::open(&config.data_dir.join("devices.db"), host.host_id()).unwrap();
+    let now = Instant::now();
+    let mut offer = PairingOffer::open(&config, &host, now, &[]).unwrap();
+    let code = offer.code();
+    let bytes = mote_gateway::base32::decode(code.strip_prefix("MOTE1-").unwrap()).unwrap();
+    let pairing_secret = &bytes[33..49];
+    let psk = mote_gateway::noise::psk_from_secret(pairing_secret);
+    let credential = ClientCredential::from_pairing_code(&config, &code).unwrap();
+    let host_secret = std::fs::read(config.data_dir.join("host.key")).unwrap();
+    let secrets = [
+        &host_secret[..],
+        &credential.private_key_for_secure_storage()[..],
+        pairing_secret,
+        &psk[..],
+    ];
+    let client_id = mote_gateway::noise::hex(&Sha256::digest(credential.public_key()));
+    let welcome =
+        serde_json::json!({"host_id":host.host_id(),"client_id":client_id,"protocol_major":1});
+    let hello = serde_json::json!({"host_id":host.host_id(),"client_id":client_id,"protocol_major":1,"counter":1,"name":"iPad"});
+    let (pending_client, first) = credential.begin_pairing(&config, "iPad", 1).unwrap();
+    let mut reference_server =
+        snow::Builder::new(mote_gateway::noise::PATTERN_PAIRING.parse().unwrap())
+            .prologue(b"mote-gateway-v1")
+            .unwrap()
+            .local_private_key(&host_secret)
+            .unwrap()
+            .psk(1, &psk)
+            .unwrap()
+            .build_responder()
+            .unwrap();
+    let mut plaintext = [0; 4096];
+    let n = reference_server
+        .read_message(&first, &mut plaintext)
+        .unwrap();
+    assert_no_credentials(&plaintext[..n], &secrets);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&plaintext[..n]).unwrap(),
+        hello
+    );
+    let mut second = [0; 4096];
+    let n = reference_server
+        .write_message(welcome.to_string().as_bytes(), &mut second)
+        .unwrap();
+    let mut client = pending_client.finish(&second[..n]).unwrap();
+    let mut reference_server = reference_server.into_transport_mode().unwrap();
+    let call = ClientFrame::Call {
+        request_id: RequestId::new("inspect-client").unwrap(),
+        method: "state".into(),
+        params: serde_json::json!({}),
+    };
+    let frames = client.write_client(&call).unwrap();
+    let raw = mote_gateway::noise::Opener::new(config.max_message)
+        .open(&mut reference_server, &frames[0])
+        .unwrap()
+        .unwrap();
+    assert_no_credentials(&raw, &secrets);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&raw).unwrap(),
+        serde_json::json!({"host_id":host.host_id(),"client_id":client_id,"protocol_major":1,"frame":call})
+    );
+    let mut reference_client =
+        snow::Builder::new(mote_gateway::noise::PATTERN_PAIRING.parse().unwrap())
+            .prologue(b"mote-gateway-v1")
+            .unwrap()
+            .local_private_key(credential.private_key_for_secure_storage())
+            .unwrap()
+            .remote_public_key(host.public_key())
+            .unwrap()
+            .psk(1, &psk)
+            .unwrap()
+            .build_initiator()
+            .unwrap();
+    let mut first = [0; 4096];
+    let n = reference_client
+        .write_message(hello.to_string().as_bytes(), &mut first)
+        .unwrap();
+    let pending = PendingHandshake::pairing(&config, &host, &mut offer, &first[..n], now).unwrap();
+    let (mut server, second) = pending.confirm(&store, true, now).unwrap();
+    let n = reference_client
+        .read_message(&second, &mut plaintext)
+        .unwrap();
+    assert_no_credentials(&plaintext[..n], &secrets);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&plaintext[..n]).unwrap(),
+        welcome
+    );
+    let mut reference_client = reference_client.into_transport_mode().unwrap();
+    let reply = HostFrame::Result {
+        request_id: RequestId::new("inspect-host").unwrap(),
+        result: serde_json::json!({"ok":true}),
+    };
+    let frames = server.write_host(&reply).unwrap();
+    let raw = mote_gateway::noise::Opener::new(config.max_message)
+        .open(&mut reference_client, &frames[0])
+        .unwrap()
+        .unwrap();
+    assert_no_credentials(&raw, &secrets);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&raw).unwrap(),
+        serde_json::json!({"host_id":host.host_id(),"client_id":client_id,"protocol_major":1,"frame":reply})
+    );
 }
 
 #[test]

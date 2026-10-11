@@ -93,3 +93,72 @@ fn approved_overseer_vectors_stay_compatible() {
 fn mote_vectors_bind_the_mote_prologue() {
     check_vectors(include_str!("vectors/mote-noise.json"));
 }
+
+#[test]
+fn production_handshakes_interoperate_with_mote_vector_prologue() {
+    use mote_gateway::{base32, ClientCredential, GatewayConfig};
+    use sha2::{Digest, Sha256};
+    let dir = tempfile::tempdir().unwrap();
+    let config = GatewayConfig::new(dir.path().join("host"));
+    let doc: Value = serde_json::from_str(include_str!("vectors/mote-noise.json")).unwrap();
+    for v in doc["vectors"].as_array().unwrap() {
+        let responder_private = unhex(v["responder_static_private"].as_str().unwrap()).unwrap();
+        let responder_public: [u8; 32] = unhex(v["responder_static_public"].as_str().unwrap())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let psk = v["psk"]
+            .as_str()
+            .map(|s| <[u8; 32]>::try_from(unhex(s).unwrap()).unwrap());
+        let credential = if let Some(secret) = v["pairing_secret"].as_str() {
+            let mut bytes = vec![1];
+            bytes.extend_from_slice(&responder_public);
+            bytes.extend_from_slice(&unhex(secret).unwrap());
+            bytes.extend_from_slice(&47810u16.to_be_bytes());
+            bytes.push(0);
+            ClientCredential::from_pairing_code(
+                &config,
+                &format!("MOTE1-{}", base32::encode(&bytes)),
+            )
+            .unwrap()
+        } else {
+            ClientCredential::restore(
+                responder_public,
+                unhex(v["initiator_static_private"].as_str().unwrap())
+                    .unwrap()
+                    .try_into()
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+        let (pending, first) = if psk.is_some() {
+            credential
+                .begin_pairing(&config, "Test iPad", 1790000000000)
+                .unwrap()
+        } else {
+            credential.begin_session(&config, 1790000000000).unwrap()
+        };
+        let mut reference = Builder::new(v["pattern"].as_str().unwrap().parse().unwrap())
+            .prologue(v["prologue"].as_str().unwrap().as_bytes())
+            .unwrap()
+            .local_private_key(&responder_private)
+            .unwrap();
+        if let Some(psk) = &psk {
+            reference = reference.psk(1, psk).unwrap();
+        }
+        let mut reference = reference.build_responder().unwrap();
+        let mut plaintext = [0; 4096];
+        let n = reference.read_message(&first, &mut plaintext).unwrap();
+        let hello: Value = serde_json::from_slice(&plaintext[..n]).unwrap();
+        assert_eq!(
+            hello["host_id"],
+            mote_protocol::HostId::from_public_key(&responder_public).as_str()
+        );
+        let welcome = serde_json::json!({"host_id":credential.host_id(),"client_id":hex(&Sha256::digest(credential.public_key())),"protocol_major":1});
+        let mut second = [0; 4096];
+        let n = reference
+            .write_message(welcome.to_string().as_bytes(), &mut second)
+            .unwrap();
+        pending.finish(&second[..n]).unwrap();
+    }
+}
