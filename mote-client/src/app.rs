@@ -135,13 +135,7 @@ fn spawn_ui_event_worker(
     results: Sender<UiEventResult>,
 ) {
     spawn_ui_event_worker_with(requests, results, move |event| {
-        let mut client =
-            Client::connect(&socket).map_err(|error| format!("cannot reach daemon: {error}"))?;
-        client
-            .call("ui.event", ui_event_params(event))
-            .map_err(|error| format!("cannot send UI event: {error}"))?
-            .map(|_| ())
-            .map_err(|error| format!("{}: {}", error.code, error.message))
+        crate::stream::UnixHostAdapter::call(&socket, "ui.event", ui_event_params(event))
     });
 }
 
@@ -414,21 +408,14 @@ impl MoteApp {
         let socket = self.socket.clone();
         let result_tx = self.turn_tx.clone();
         std::thread::spawn(move || {
-            let result = match Client::connect(&socket) {
-                Ok(mut client) => match client.call(
+            let result = crate::stream::UnixHostAdapter::call(&socket,
                     "turn",
                     serde_json::json!({
                         "thread": "main",
                         "message": msg,
                         "client_message_id": request_id
                     }),
-                ) {
-                    Ok(Ok(_)) => Ok(()),
-                    Ok(Err(error)) => Err(format!("{}: {}", error.code, error.message)),
-                    Err(error) => Err(format!("cannot send turn: {error}")),
-                },
-                Err(error) => Err(format!("cannot reach daemon: {error}")),
-            };
+                );
             let _ = result_tx.send((pending, result));
         });
     }

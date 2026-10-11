@@ -8,6 +8,100 @@ use std::time::Duration;
 const MIN_RETRY: Duration = Duration::from_millis(20);
 const MAX_RETRY: Duration = Duration::from_secs(1);
 
+pub struct UnixHostAdapter {
+    host_id: mote_protocol::HostId,
+    path: std::path::PathBuf,
+}
+
+fn host_error(error: impl std::fmt::Display) -> mote_protocol::HostError {
+    mote_protocol::HostError::new(mote_protocol::HostErrorCode::Internal, error.to_string())
+}
+
+impl UnixHostAdapter {
+    fn verified_client(&self) -> Result<Client, mote_protocol::HostError> {
+        let mut client = Client::connect(&self.path).map_err(host_error)?;
+        let hello = client.call("hello", serde_json::json!({})).map_err(host_error)?.map_err(|error| host_error(error.message))?;
+        let current: mote_protocol::HostId = serde_json::from_value(hello["host_id"].clone()).map_err(host_error)?;
+        if current != self.host_id { return Err(mote_protocol::HostError::new(mote_protocol::HostErrorCode::IdentityChanged, "Unix host identity changed")); }
+        Ok(client)
+    }
+    pub fn connect(path: &Path) -> Result<Self, mote_protocol::HostError> {
+        let mut client = Client::connect(path).map_err(host_error)?;
+        let hello = client.call("hello", serde_json::json!({})).map_err(host_error)?.map_err(|error| host_error(error.message))?;
+        let host_id = serde_json::from_value(hello["host_id"].clone()).map_err(host_error)?;
+        Ok(Self { host_id, path: path.to_owned() })
+    }
+
+    pub fn dispatch(self, frame: mote_protocol::ClientFrame) -> Result<std::sync::mpsc::Receiver<mote_host_client::HostUpdate>, mote_protocol::HostError> {
+        let command = mote_host_client::HostCommand { host_id: self.host_id.clone(), frame };
+        let (commands, requests) = std::sync::mpsc::channel();
+        let (updates, replies) = std::sync::mpsc::channel();
+        mote_host_client::command_worker(self, requests, updates, || {});
+        commands.send(command).map_err(host_error)?;
+        Ok(replies)
+    }
+
+    pub fn call(path: &Path, method: &str, params: serde_json::Value) -> Result<(), String> {
+        let transport = Self::connect(path).map_err(|error| error.message)?;
+        let id = mote_protocol::RequestId::new(format!("local-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos())).map_err(|error| error.message)?;
+        let replies = transport.dispatch(mote_protocol::ClientFrame::Call { request_id: id, method: method.into(), params }).map_err(|error| error.message)?;
+        let mut outcome = Ok(());
+        for update in replies {
+            match update {
+                mote_host_client::HostUpdate::Failed { error, .. } => return Err(error.message),
+                mote_host_client::HostUpdate::Frame { frame: mote_protocol::HostFrame::Error { error, .. }, .. } => outcome = Err(error.message),
+                mote_host_client::HostUpdate::Frame { frame: mote_protocol::HostFrame::Acknowledgement { .. }, .. } => return outcome,
+                _ => {}
+            }
+        }
+        Err("host command ended without acknowledgement".into())
+    }
+}
+
+pub struct UnixHostStream {
+    host_id: mote_protocol::HostId,
+    stream: mote_ipc::EventStream,
+}
+
+impl mote_host_client::HostEventStream for UnixHostStream {
+    fn next(&mut self, host: &mote_protocol::HostId) -> Result<Option<mote_protocol::HostFrame>, mote_protocol::HostError> {
+        if host != &self.host_id { return Err(mote_protocol::HostError::new(mote_protocol::HostErrorCode::IdentityChanged, "stream belongs to another host")); }
+        self.stream.read_event().map(|event| event.map(|event| mote_protocol::HostFrame::Event { host_id: host.clone(), event })).map_err(host_error)
+    }
+}
+
+impl mote_host_client::HostRequestTransport for UnixHostAdapter {
+    fn request(&mut self, command: mote_host_client::HostCommand) -> Result<Vec<mote_protocol::HostFrame>, mote_protocol::HostError> {
+        use mote_protocol::{ClientFrame, HostError, HostErrorCode, HostFrame};
+        if command.host_id != self.host_id { return Err(HostError::new(HostErrorCode::IdentityChanged, "command belongs to another host")); }
+        let (request_id, method, params) = match command.frame {
+            ClientFrame::Call { request_id, method, params } => (request_id, method, params),
+            ClientFrame::Interaction { request_id, interaction } if interaction.host_id == self.host_id => (request_id, "ui.event".into(), serde_json::json!({"thread":interaction.thread,"surface_seq":interaction.surface_seq,"surface_contract":interaction.surface_contract,"node_path":interaction.node_path,"event":interaction.event,"args":interaction.args})),
+            _ => return Err(HostError::new(HostErrorCode::InvalidRequest, "unsupported local command")),
+        };
+        let mut client = self.verified_client()?;
+        let result = client.call(&method, params).map_err(host_error)?;
+        let frame = match result {
+            Ok(result) => HostFrame::Result { request_id: request_id.clone(), result },
+            Err(error) => HostFrame::Error { request_id: Some(request_id.clone()), error: host_error(error.message) },
+        };
+        Ok(vec![frame, HostFrame::Acknowledgement { host_id: self.host_id.clone(), request_id, cursor: mote_protocol::Cursor::new(self.host_id.clone(), 0)? }])
+    }
+}
+
+impl mote_host_client::HostTransport for UnixHostAdapter {
+    type EventStream = UnixHostStream;
+    fn send(&mut self, host: &mote_protocol::HostId, frame: &mote_protocol::ClientFrame) -> Result<(), mote_protocol::HostError> {
+        use mote_host_client::HostRequestTransport;
+        self.request(mote_host_client::HostCommand { host_id: host.clone(), frame: frame.clone() }).map(|_| ())
+    }
+    fn subscribe(&mut self, host: &mote_protocol::HostId, cursor: &mote_protocol::Cursor) -> Result<Self::EventStream, mote_protocol::HostError> {
+        if host != &self.host_id || &cursor.host_id != host { return Err(mote_protocol::HostError::new(mote_protocol::HostErrorCode::IdentityChanged, "cursor belongs to another host")); }
+        let stream = self.verified_client()?.subscribe("main", cursor.seq).map_err(host_error)?;
+        Ok(UnixHostStream { host_id: host.clone(), stream })
+    }
+}
+
 pub enum StreamUpdate {
     Event { event: Event, arrived_ns: u64 },
     Connected { replay_through: i64 },
@@ -175,6 +269,56 @@ mod tests {
     use std::io;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
+
+    #[test]
+    fn unix_and_fixture_frames_reduce_to_the_same_host_state() {
+        use mote_host_client::{HostDirectory, HostTransport, HostEventStream, HostUpdate, PairedHost};
+        use mote_protocol::{HostFrame, VersionRange};
+        let public_key = [7; 32];
+        let paired = PairedHost::new(public_key, "Fixture", None, VersionRange::current()).unwrap();
+        let id = paired.host_id().clone();
+        let path = std::env::temp_dir().join(format!("mote-host-parity-{}", std::process::id()));
+        std::fs::create_dir_all(&path).unwrap();
+        struct Dispatch(mote_protocol::HostId, mote_eventlog::EventLog);
+        impl mote_ipc::Dispatch for Dispatch {
+            fn call(&self, method: &str, _: serde_json::Value) -> Result<serde_json::Value, mote_ipc::RpcError> {
+                match method { "hello" => Ok(serde_json::json!({"host_id":self.0})), _ => Err(mote_ipc::RpcError::invalid_params("unknown method")) }
+            }
+            fn subscribe(&self, scope: &str, cursor: i64) -> Option<mote_eventlog::Subscription> { self.1.subscribe(scope, cursor).ok() }
+        }
+        let log = mote_eventlog::EventLog::open(&path.join("events.db")).unwrap();
+        let first = log.append("main", "turn.user", &serde_json::json!({"text":"hello"})).unwrap();
+        let second = log.append("main", "talk.delta", &serde_json::json!({"text":"reply"})).unwrap();
+        let server = mote_ipc::Server::bind(&path.join("host.sock"), std::sync::Arc::new(Dispatch(id.clone(), log))).unwrap();
+        let mut fixture = HostDirectory::default(); fixture.register(paired.clone()).unwrap(); fixture.select_host(&id).unwrap();
+        let mut unix = fixture.clone();
+        let mut adapter = UnixHostAdapter::connect(server.path()).unwrap();
+        let mut stream = adapter.subscribe(&id, unix.state(&id).unwrap().cursor()).unwrap();
+        for event in [first, second] {
+            fixture.reduce_update(HostUpdate::Frame { host_id: id.clone(), frame: HostFrame::Event { host_id: id.clone(), event } }).unwrap();
+            unix.reduce_update(HostUpdate::Frame { host_id: id.clone(), frame: stream.next(&id).unwrap().unwrap() }).unwrap();
+        }
+        assert_eq!(unix.state(&id).unwrap().threads()["main"].messages[0].text, "hello");
+        assert_eq!(unix.state(&id).unwrap().threads()["main"].messages[1].text, "reply");
+        assert_eq!(unix, fixture);
+        let replies = UnixHostAdapter::connect(server.path()).unwrap().dispatch(mote_protocol::ClientFrame::Call {
+            request_id: mote_protocol::RequestId::new("helper-error").unwrap(),
+            method: "unknown".into(), params: serde_json::json!({}),
+        }).unwrap();
+        let update = replies.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert_eq!(update.host_id(), &id);
+        assert!(matches!(update, HostUpdate::Frame { frame: HostFrame::Error { .. }, .. }));
+        assert!(matches!(replies.recv_timeout(Duration::from_secs(1)).unwrap(), HostUpdate::Frame { host_id, frame: HostFrame::Acknowledgement { .. } } if host_id == id));
+        assert!(UnixHostAdapter::call(server.path(), "unknown", serde_json::json!({})).unwrap_err().contains("unknown method"));
+        drop(server);
+        let other = mote_protocol::HostId::from_public_key(&[8; 32]);
+        let replacement = mote_ipc::Server::bind(&path.join("host.sock"), std::sync::Arc::new(Dispatch(other, mote_eventlog::EventLog::open(&path.join("events.db")).unwrap()))).unwrap();
+        use mote_host_client::HostRequestTransport;
+        let error = adapter.request(mote_host_client::HostCommand { host_id: id, frame: mote_protocol::ClientFrame::Call { request_id: mote_protocol::RequestId::new("changed-host").unwrap(), method:"effect".into(), params:serde_json::json!({}) } }).unwrap_err();
+        assert_eq!(error.code, mote_protocol::HostErrorCode::IdentityChanged);
+        drop(replacement);
+        std::fs::remove_dir_all(path).unwrap();
+    }
 
     struct FakeSource {
         reads: VecDeque<io::Result<Option<Event>>>,

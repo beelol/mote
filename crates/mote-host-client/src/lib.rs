@@ -1,9 +1,11 @@
 mod connection;
+mod channel;
 mod directory;
 mod outbox;
 mod state;
 
 pub use connection::{ConnectionState, HostEventStream, HostTransport};
+pub use channel::{command_worker, HostCommand, HostRequestTransport, HostUpdate};
 pub use directory::{CredentialStore, HostDirectory, PairedHost};
 pub use outbox::Outbox;
 pub use state::HostSessionState;

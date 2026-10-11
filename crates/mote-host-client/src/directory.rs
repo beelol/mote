@@ -129,6 +129,9 @@ impl TryFrom<UncheckedDirectory> for HostDirectory {
 }
 
 impl HostDirectory {
+    pub fn hosts(&self) -> impl Iterator<Item = &PairedHost> {
+        self.hosts.values().map(|entry| &entry.host)
+    }
     pub(crate) fn snapshot_frame(
         &mut self,
         host: &HostId,
