@@ -37,7 +37,7 @@ Commit `60652a3` contains the approved Simulator plans. HOST-01 was delivered in
 The independent task review found two important protocol gaps: unknown nested host event fields were
 accepted, and remote approval DTOs lacked exact action and expiry binding. The original implementer
 fixed both in `7e18050`. The scoped re-review passed. HOST-01 is checked with evidence. The
-driver-side full workspace rerun and strict clippy passed. `origin/main` is at `7e18050`. No Rust Apple
+driver-side full workspace rerun and strict clippy passed. No Rust Apple
 target, Xcode project, signing state, App Store Connect record or TestFlight build has been created.
 
 The configured remote is `https://github.com/beelol/mote.git` on `main`.
@@ -66,8 +66,14 @@ wake mechanism. Leave that clause and HOST-05 open while completing independent 
 
 The owner approved execution of the three plans on 2026-10-11. The active goal is attached to this
 chat. Host plan Task 1 is complete and pushed. Its progress ledger is
-`.superpowers/sdd/2026-10-11-ipad-simulator-host/progress.md`. Begin Task 2, per-host client
-directory and isolation. Keep UI work behind the published host interfaces
+`.superpowers/sdd/2026-10-11-ipad-simulator-host/progress.md`. Task 2, per-host client directory
+and isolation, is committed as `3332860` from base `8b93355`. Eleven focused isolation tests,
+five desktop cursor tests, 504 full workspace tests and strict clippy pass. Independent review
+approved the task with no blocking findings. The driver independently reran the workspace suite
+and strict clippy with exit 0. Commit `3332860` is pushed to `origin/main`. An accidental
+workspace-wide formatting pass was reversed on the previously clean unrelated paths.
+Current tracked changes are only this handoff.
+HOST-02 remains open until Task 4 pairs two fixture hosts. Keep UI work behind the published host interfaces
 and inspect every delegated result before integration. Run workspace test and clippy, write the
 relevant `docs/verification/<ID>.md`, commit, and push after every completed criterion.
 
