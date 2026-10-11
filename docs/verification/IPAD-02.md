@@ -1,5 +1,18 @@
 # IPAD-02: Offline iPad Simulator gallery
 
+## Post-browser integration smoke, 2026-10-11
+
+At 13:19 America/Los_Angeles, the driver launched the already-installed Mote app on the booted iPad Pro 11-inch (M5) iOS 27.0 Simulator. This used the app installed by the later native browser-approval journey. No Xcode rebuild or app-container replacement was needed.
+
+```text
+xcrun simctl launch 43F2F6ED-5C86-4121-B03F-40FE38891C4E local.mote.simulator --mote-offline
+local.mote.simulator: 81456
+xcrun simctl io 43F2F6ED-5C86-4121-B03F-40FE38891C4E screenshot /private/tmp/mote-gallery-current-settled-20261011.png
+Wrote screenshot to: /private/tmp/mote-gallery-current-settled-20261011.png
+```
+
+The [settled native capture](assets/IPAD-02/post-browser-11-portrait-gallery.png) shows all eight gallery page selectors, the offline status, the Layout page and its anchored header and footer. The initial immediate screenshot was still in startup and is not used as evidence. This smoke proves current app launch and visible gallery composition after browser integration. It does not repeat the earlier two-size, two-orientation control journey below.
+
 Status: verified for the Simulator acceptance clause. Display scanout is not measured.
 Date: 2026-10-11, America/Los_Angeles.
 Base: `1e47f41` on `main`.
