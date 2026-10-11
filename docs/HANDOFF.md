@@ -45,10 +45,9 @@ Do not check HOST-05 from scripted tests alone.
 IPAD-06 through IPAD-08 remain deferred until the owner can provide a physical iPad and distribution authority.
 
 The local `main` contains the browser coordinator, iPad approval client and native harness commits.
-`origin/main` ends at `33e52a6`.
-Pushes to `https://github.com/beelol/mote.git` were rejected by safety review pending explicit owner confirmation of that destination.
-Do not route around the rejection.
-Continue verified local commits and leave pushes pending until the destination is approved.
+On 2026-10-11 the owner confirmed the repository's configured `origin`, `https://github.com/beelol/mote.git`, as the push destination and requested pushes whenever work is ready.
+The 26 pending commits through `301736a` were pushed, and local `main` and `origin/main` matched afterward.
+Push later verified commits to this configured origin when ready.
 
 Preserve unrelated `.DS_Store` and ignored `.superpowers/` work.
 Do not check in pairing offers, private credentials, persisted client state, raw filled-page snapshots, host databases or Xcode derived data.
