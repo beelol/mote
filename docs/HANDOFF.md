@@ -56,7 +56,15 @@ p50 22.177875 ms and p95 32.372041 ms through first egui render-list constructio
 partial because GPU and compositor presentation are outside that boundary. The native UI-22 dump is
 still open because the invoking process lacks macOS Accessibility trust.
 
-The working tree contains documentation and evidence assets only. `cargo test --workspace` passed
-with local socket access. `cargo clippy --workspace -- -D warnings` passed. The exact next action is
-to inspect the final diff and commit the accepted evidence batch.
+Commit `67f019e` records the accepted UI-15, UI-16, UI-20, UI-40, V0-43 and V0-46 native evidence,
+adds the Storybook-like Gallery launch instructions, and checks V0-43 and V0-46. The workspace is
+clean except for preserved untracked `.DS_Store` and `.superpowers/`. `cargo test --workspace` and
+`cargo clippy --workspace -- -D warnings` passed before the commit. The exact next action is to
+capture the remaining independent native client evidence, starting with V0-44 message states and
+V0-47 pipeline navigation, without waiting on the gated Matrix catalog or hardware clauses.
+
+An isolated live `file.write` request produced the native approval card while the outside target
+remained absent and its row remained pending. V0-52 is checked with native evidence in
+`V0-52-native-approval-card.png`. The next action remains V0-44 message states and V0-47 pipeline
+navigation.
 No model was invoked and `MOTE_LIVE` was unset.
