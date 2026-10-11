@@ -30,6 +30,7 @@ egui-wgpu = "=0.31.0"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
 
 [dev-dependencies]
+mote-eventlog.workspace = true
 mote-client-core = { workspace = true, features = ["test-observation"] }
 mote-testkit.workspace = true
 mote-ipc.workspace = true

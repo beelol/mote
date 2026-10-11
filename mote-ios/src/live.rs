@@ -411,27 +411,18 @@ impl LiveRuntime {
             let saved_configs = saved_configs.clone();
             let select = directory.selected_host().is_none() && commands.len() == 1;
             std::thread::spawn(move || {
-                let result = attach_host(
+                HostWorker {
                     config,
                     cursor,
                     select,
-                    command_rx,
-                    &updates,
+                    commands: Some(command_rx),
+                    updates,
                     store,
-                    saved_configs,
-                    &config_path,
-                    repaint,
-                );
-                if let Err(error) = result {
-                    let _ = updates.send(HostUpdate::Failed {
-                        host_id: id.clone(),
-                        error: failure(error),
-                    });
-                    let _ = updates.send(HostUpdate::Connection {
-                        host_id: id,
-                        state: ConnectionState::Offline,
-                    });
+                    configs: saved_configs,
+                    config_path,
+                    ctx: repaint,
                 }
+                .run();
             });
         }
         Ok(Some(Self {
@@ -656,14 +647,76 @@ impl LiveRuntime {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn attach_host(
+struct HostWorker<S> {
     config: HostConfig,
     cursor: Cursor,
     select: bool,
-    commands: Receiver<HostCommand>,
+    commands: Option<Receiver<HostCommand>>,
+    updates: Sender<HostUpdate>,
+    store: Arc<Mutex<S>>,
+    configs: Arc<Mutex<Vec<HostConfig>>>,
+    config_path: PathBuf,
+    ctx: egui::Context,
+}
+
+impl<S: CredentialStore<Credential = StoredCredential> + Send + 'static> HostWorker<S> {
+    fn run(mut self) {
+        let id = HostId::from_public_key(&self.config.public_key);
+        let mut delay = Duration::from_millis(250);
+        loop {
+            let result = attach_host(
+                self.config.clone(),
+                self.cursor.clone(),
+                self.select,
+                &mut self.commands,
+                &self.updates,
+                self.store.clone(),
+                self.configs.clone(),
+                &self.config_path,
+                self.ctx.clone(),
+            );
+            let Err(error) = result else { return };
+            if self
+                .updates
+                .send(HostUpdate::Failed {
+                    host_id: id.clone(),
+                    error: failure(error),
+                })
+                .is_err()
+                || self
+                    .updates
+                    .send(HostUpdate::Connection {
+                        host_id: id.clone(),
+                        state: ConnectionState::Offline,
+                    })
+                    .is_err()
+            {
+                return;
+            }
+            self.ctx.request_repaint();
+            let saved = self
+                .store
+                .lock()
+                .ok()
+                .and_then(|store| store.load(&id).ok().flatten())
+                .is_some();
+            if !saved || self.commands.is_none() {
+                return;
+            }
+            std::thread::sleep(delay);
+            delay = delay.saturating_mul(2).min(Duration::from_secs(5));
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn attach_host<S: CredentialStore<Credential = StoredCredential> + Send + 'static>(
+    config: HostConfig,
+    cursor: Cursor,
+    select: bool,
+    commands: &mut Option<Receiver<HostCommand>>,
     updates: &Sender<HostUpdate>,
-    store: Arc<Mutex<crate::keychain::KeychainStore>>,
+    store: Arc<Mutex<S>>,
     configs: Arc<Mutex<Vec<HostConfig>>>,
     config_path: &Path,
     ctx: egui::Context,
@@ -813,6 +866,9 @@ fn attach_host(
     let stream = event_network.subscribe(&resume_cursor)?;
     let command_updates = updates.clone();
     let repaint = ctx.clone();
+    let commands = commands
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("host command worker already started"))?;
     mote_host_client::command_worker(network, commands, command_updates, move || {
         repaint.request_repaint()
     });
@@ -942,5 +998,160 @@ fn documents() -> Result<PathBuf> {
         Ok(std::env::var_os("MOTE_SIMULATOR_DATA")
             .map(PathBuf::from)
             .unwrap_or(std::env::temp_dir().join("mote-ios-offline")))
+    }
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    use super::*;
+    use mote_gateway::GatewayServer;
+    use mote_ipc::Dispatch;
+    use mote_testkit::ScriptedServer;
+    use std::{collections::BTreeMap, io};
+
+    #[derive(Default)]
+    struct MemoryStore(BTreeMap<HostId, StoredCredential>);
+    impl CredentialStore for MemoryStore {
+        type Credential = StoredCredential;
+        fn load(&self, id: &HostId) -> io::Result<Option<StoredCredential>> {
+            Ok(self.0.get(id).cloned())
+        }
+        fn save(&mut self, id: &HostId, credential: &StoredCredential) -> io::Result<()> {
+            self.0.insert(id.clone(), credential.clone());
+            Ok(())
+        }
+        fn delete(&mut self, id: &HostId) -> io::Result<()> {
+            self.0.remove(id);
+            Ok(())
+        }
+    }
+
+    struct Forward<D: Dispatch>(mote_testkit::gateway::LoopbackHost<D>);
+    impl<D: Dispatch> Dispatch for Forward<D> {
+        fn call_with_context(
+            &self,
+            actor: &mote_ipc::Actor,
+            method: &str,
+            params: serde_json::Value,
+        ) -> std::result::Result<serde_json::Value, mote_ipc::RpcError> {
+            self.0.daemon().call_with_context(actor, method, params)
+        }
+        fn subscribe_host(&self, cursor: i64) -> Option<mote_eventlog::Replay> {
+            self.0.daemon().subscribe_host(cursor)
+        }
+        fn call(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> std::result::Result<serde_json::Value, mote_ipc::RpcError> {
+            self.0.daemon().call(method, params)
+        }
+    }
+
+    #[test]
+    fn saved_host_recovers_after_unavailable_app_launch() {
+        let models = ScriptedServer::start().unwrap();
+        let mut host = moted::test_fixture::start(&models).unwrap();
+        let store = Arc::new(Mutex::new(MemoryStore::default()));
+        let offer = host.open_pairing().unwrap();
+        let paired = std::thread::scope(|scope| {
+            let pair = scope.spawn(|| {
+                NetworkHost::pair(
+                    host.endpoint().unwrap(),
+                    GatewayConfig::new(host.root()),
+                    &offer,
+                    "iPad",
+                    store.clone(),
+                )
+            });
+            while !pair.is_finished() {
+                host.confirm_pending(true).unwrap();
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            pair.join().unwrap().unwrap()
+        });
+        drop(paired);
+        let id = host.host_id().clone();
+        let endpoint = host.endpoint().unwrap();
+        let config = HostConfig {
+            name: "Saved host".into(),
+            public_key: *host.public_key(),
+            endpoint,
+            offer: None,
+        };
+        let mut gateway_config = GatewayConfig::new(host.root().join("data"));
+        gateway_config.bind = endpoint;
+        host.suspend();
+        let root = tempfile::tempdir().unwrap();
+        let (updates, received) = mpsc::channel();
+        let (commands, command_rx) = mpsc::channel();
+        let worker = HostWorker {
+            configs: Arc::new(Mutex::new(vec![config.clone()])),
+            config,
+            cursor: Cursor::new(id.clone(), 0).unwrap(),
+            select: true,
+            commands: Some(command_rx),
+            updates,
+            store,
+            config_path: root.path().join("live-hosts.json"),
+            ctx: egui::Context::default(),
+        };
+        let worker = std::thread::spawn(move || worker.run());
+        loop {
+            let update = received.recv_timeout(Duration::from_secs(5)).unwrap();
+            assert_eq!(update.host_id(), &id);
+            if matches!(
+                update,
+                HostUpdate::Connection {
+                    state: ConnectionState::Offline,
+                    ..
+                }
+            ) {
+                break;
+            }
+        }
+        let dispatch = Arc::new(Forward(host));
+        let resumed = GatewayServer::bind_loopback(gateway_config, dispatch.clone()).unwrap();
+        loop {
+            let update = received.recv_timeout(Duration::from_secs(8)).unwrap();
+            assert_eq!(update.host_id(), &id);
+            if matches!(
+                update,
+                HostUpdate::Frame {
+                    frame: HostFrame::Snapshot { .. },
+                    ..
+                }
+            ) {
+                break;
+            }
+        }
+        commands
+            .send(HostCommand {
+                host_id: id.clone(),
+                frame: ClientFrame::Call {
+                    request_id: RequestId::new("first-command-after-startup-recovery").unwrap(),
+                    method: "ping".into(),
+                    params: serde_json::json!({}),
+                },
+            })
+            .unwrap();
+        loop {
+            let update = received.recv_timeout(Duration::from_secs(5)).unwrap();
+            assert_eq!(update.host_id(), &id);
+            if matches!(
+                update,
+                HostUpdate::Frame {
+                    frame: HostFrame::Result { .. },
+                    ..
+                }
+            ) {
+                break;
+            }
+        }
+        drop(commands);
+        drop(received);
+        dispatch.call("matrix.render", serde_json::json!({"thread":"main","source":"screen { text \"End recovery test\" }"})).unwrap();
+        worker.join().unwrap();
+        drop(resumed);
     }
 }
