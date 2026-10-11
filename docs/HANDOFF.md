@@ -60,8 +60,14 @@ fix exposes an opt-in external test fixture without changing the production CLI 
 The independent review and scoped re-review passed. The driver reran workspace tests, the external
 fixture test, default strict workspace clippy and feature-enabled strict workspace clippy with
 exit 0. HOST-04 and HOST-05 remain open for Simulator discovery and literal Mac sleep/wake.
-The next action is UI plan Task 1, WGPU compatibility and Apple targets, assigned to a UI subagent
-after a pushed handoff checkpoint. The host plan ledger is
+UI plan Task 1 was pushed in `5c6312f`. Both Apple Rust targets are installed. The prechange
+Simulator check reproduced glutin's missing backend error. WGPU now passes
+`cargo check -p mote-client --target aarch64-apple-ios-sim`. The Mac client suite passed all 164
+tests. The independent review found no blocking issue. The driver reran workspace tests, strict
+clippy and Simulator target check with exit 0. IPAD-01 remains open until the native shell builds.
+The next action is UI plan Task 2, the behavior-neutral shared Rust client core. Its brief is
+`.superpowers/sdd/2026-10-11-ipad-simulator-ui/task-2-brief.md`.
+The host plan ledger is
 `.superpowers/sdd/2026-10-11-ipad-simulator-host/progress.md`. The UI plan ledger is
 `.superpowers/sdd/2026-10-11-ipad-simulator-ui/progress.md`. The UI subagent has not yet been
 dispatched because the reviewed host foundation interfaces are still being completed.
