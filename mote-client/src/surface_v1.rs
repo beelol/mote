@@ -15,6 +15,44 @@ pub enum Event {
     },
 }
 
+impl Event {
+    pub fn into_rpc(self, ui: &egui::Ui, surface: &Surface) -> crate::surface::SurfaceEvent {
+        let path = match &self {
+            Self::Action { path, .. } | Self::Change { path, .. } => path,
+        };
+        let mut node = &surface.root;
+        for index in path {
+            node = match node {
+                Node::Screen { children, .. }
+                | Node::Col { children, .. }
+                | Node::Row { children, .. }
+                | Node::Header { children }
+                | Node::Footer { children } => &children[*index],
+                _ => unreachable!(),
+            };
+        }
+        let state_id = ui.id().with("matrix-contract-1").with((kind(node), path));
+        let context = crate::surface::SurfaceContext {
+            surface_seq: None,
+            surface_contract: Some(1),
+            node_path: path.clone(),
+        };
+        match self {
+            Self::Action { event, .. } => crate::surface::SurfaceEvent::Action { event, context },
+            Self::Change { field, value, .. } => crate::surface::SurfaceEvent::Change {
+                field,
+                value,
+                state_id,
+                context,
+            },
+        }
+    }
+}
+
+pub fn discard_change(ctx: &egui::Context, state_id: egui::Id) {
+    ctx.data_mut(|data| data.remove::<State>(state_id));
+}
+
 #[derive(Clone, Default)]
 struct State {
     host: Option<serde_json::Value>,

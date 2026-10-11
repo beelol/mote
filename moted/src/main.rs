@@ -118,7 +118,7 @@ struct MatrixCommit<'a> {
     sources: &'a mut HashMap<String, String>,
     snapshots: &'a mut HashMap<String, matrix::HostSnapshot>,
     thread: &'a str,
-    surface: &'a Value,
+    surface: &'a matrix::CompiledSurface,
     source: Option<&'a str>,
     bindings: &'a matrix::HostBindings,
     host: matrix::HostSnapshot,
@@ -169,13 +169,13 @@ impl Daemon {
         &self,
         source: &str,
         host: &matrix::HostSnapshot,
-    ) -> Result<(Value, matrix::HostBindings), Value> {
+    ) -> Result<(matrix::CompiledSurface, matrix::HostBindings), Value> {
         let snapshot = self.pipeline_snapshot().map_err(|error| {
             json!([{"code":"E_HOST","severity":"error","message":error.message}])
         })?;
         let bindings = matrix::host_bindings(&snapshot.config, &snapshot, host)
             .map_err(|errors| matrix::diagnostics(&errors))?;
-        matrix::compile(source, &bindings)
+        matrix::compile_contract(source, &bindings)
             .map(|surface| (surface, bindings))
             .map_err(|errors| matrix::diagnostics(&errors))
     }
@@ -183,7 +183,7 @@ impl Daemon {
     #[cfg(test)]
     fn compile_matrix(&self, source: &str) -> Result<Value, Value> {
         self.compile_matrix_with_host(source, &matrix::HostSnapshot::default())
-            .map(|(surface, _)| surface)
+            .map(|(surface, _)| surface.fallback)
     }
 
     fn render_matrix_with_sources(
@@ -229,14 +229,11 @@ impl Daemon {
     }
 
     fn commit_matrix(&self, commit: MatrixCommit<'_>) -> Result<Value, RpcError> {
-        let (node, valid) = validate_surface(commit.surface);
-        let typed = serde_json::from_value(node.clone())
-            .map_err(|error| RpcError::internal(format!("decode surface contract: {error}")))?;
-        let mut committed =
-            matrix::CommittedMatrixSurface::new(typed, &commit.bindings.manifest);
+        let (payload, mut committed) = commit.surface.prepare(&commit.bindings.manifest)
+            .map_err(|error| RpcError::internal(format!("validate surface contract: {error}")))?;
         let event = self
             .log
-            .append(commit.thread, "ui.surface", &matrix::surface_payload(&node))
+            .append(commit.thread, "ui.surface", &payload)
             .map_err(|error| RpcError::internal(format!("commit surface: {error}")))?;
         committed.seq = event.seq;
         self.matrix_surfaces
@@ -249,7 +246,7 @@ impl Daemon {
         commit
             .snapshots
             .insert(commit.thread.into(), commit.host);
-        Ok(matrix::render_success(valid))
+        Ok(matrix::render_success(true))
     }
 
     fn matrix_candidate(&self, params: &Value) -> Result<Value, RpcError> {
@@ -325,7 +322,7 @@ impl Daemon {
                 return Ok(MatrixCandidateFinalization::Rejected(matrix::diagnostics(&errors)));
             }
         };
-        match matrix::compile_surface(&parsed, &bindings) {
+        match matrix::compile_surface_contract(&parsed, &bindings) {
             Ok(surface) => {
                 let source = matrix_lang::format_surface(&parsed);
                 let mut response = self.commit_matrix(MatrixCommit {
@@ -809,6 +806,7 @@ impl Dispatch for Daemon {
                     });
                 if let Some((approve, id)) = approval {
                     if params.get("surface_seq").is_some()
+                        || params.get("surface_contract").is_some()
                         || params.get("node_path").is_some()
                         || args.as_object().is_none_or(|args| !args.is_empty())
                     {
@@ -1063,6 +1061,180 @@ mod approval_dispatch_tests {
     use super::*;
     use charter::FrontMatter;
     use config::AllowAll;
+
+    #[test]
+    fn matrix_first_slice_commits_one_dual_event_with_independent_paths() {
+        let (data, _) = dirs("dual-contract");
+        let daemon = daemon(&data);
+        let source = "screen { button \"Refresh\" -> refresh }";
+        assert_eq!(daemon.render_matrix("main", source, true).unwrap()["valid"], true);
+        let seq = daemon.log.max_seq().unwrap();
+        assert_eq!(seq, 1);
+        let event = daemon.log.get(seq).unwrap().unwrap();
+        assert_eq!(event.payload, json!({
+            "surface_id":"matrix",
+            "surface":{"type":"action","label":"Refresh","event":"refresh"},
+            "matrix_surface":{"version":1,"root":{"type":"screen","children":[
+                {"type":"button","label":"Refresh","event":"refresh"}
+            ]}}
+        }));
+        mote_ui::v1::validate_envelope(&serde_json::to_vec(&event.payload).unwrap()).unwrap();
+        let committed = daemon.matrix_surfaces.lock().unwrap()["main"].clone();
+        for (contract, path, accepted) in [(None, json!([]), true), (None, json!([0]), false), (Some(json!(1)), json!([0]), true), (Some(json!(1)), json!([]), false)] {
+            let mut params = json!({"surface_seq":seq,"node_path":path});
+            if let Some(contract) = contract { params["surface_contract"] = contract; }
+            assert_eq!(committed.accepts(&params, "refresh", &json!({})), accepted);
+        }
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn matrix_anchored_fill_uses_exact_inert_fallback() {
+        let (data, _) = dirs("dual-anchors");
+        let daemon = daemon(&data);
+        let source = "screen { header { text \"Header\" } col { text \"Body\" fill } footer { button \"Refresh\" -> refresh } }";
+        assert_eq!(daemon.render_matrix("main", source, true).unwrap()["valid"], true);
+        let event = daemon.log.get(1).unwrap().unwrap();
+        assert_eq!(event.payload["surface"], json!({"type":"text","value":"This Matrix surface requires a newer Mote client."}));
+        assert_eq!(event.payload["matrix_surface"], json!({"version":1,"root":{"type":"screen","children":[
+            {"type":"header","children":[{"type":"text","value":"Header"}]},
+            {"type":"col","children":[{"type":"text","value":"Body","fill":true}]},
+            {"type":"footer","children":[{"type":"button","label":"Refresh","event":"refresh"}]}
+        ]}}));
+        mote_ui::v1::validate_envelope(&serde_json::to_vec(&event.payload).unwrap()).unwrap();
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn rejected_versioned_events_have_no_observable_side_effects() {
+        let server = mote_testkit::ScriptedServer::start().unwrap();
+        let (data, _) = dirs("v1-rpc-rejections");
+        let mut daemon = daemon(&data);
+        daemon.client = Ollama::new(server.base_url());
+        let mut manifest = matrix_lang::Manifest::default();
+        manifest.fields.insert("volume".into(), matrix_lang::manifest::FieldDefinition {
+            binding: matrix_lang::Type::Number.into(), initial: json!(0.3),
+        });
+        manifest.actions.insert("refresh".into(), matrix_lang::manifest::ActionContract::default());
+        let bindings = matrix::HostBindings { manifest, snapshot: matrix_lang::BindingSnapshot::default() };
+        let compiled = matrix::compile_contract("screen { slider \"Volume\" volume min 0 max 1.05 step 0.1 button \"Refresh\" disabled -> refresh }", &bindings).unwrap();
+        let (payload, mut committed) = compiled.prepare(&bindings.manifest).unwrap();
+        let seq = daemon.log.append("main", "ui.surface", &payload).unwrap().seq;
+        committed.seq = seq;
+        daemon.matrix_surfaces.lock().unwrap().insert("main".into(), committed);
+        daemon.matrix_sources.lock().unwrap().insert("main".into(), "must remain untouched".into());
+        daemon.matrix_snapshots.lock().unwrap().insert("main".into(), matrix::HostSnapshot::ready(0.25, ["Prior"]));
+        let baseline = json!({"event":"change","args":{"field":"volume","value":0.3},"surface_contract":1,"surface_seq":seq,"node_path":[0]});
+        let mut cases = Vec::new();
+        for value in [json!("0.3"), json!(false), Value::Null, json!([]), json!({}), json!(-0.1), json!(1.1), json!(0.35), json!(1.05)] {
+            let mut params = baseline.clone(); params["args"]["value"] = value; cases.push(params);
+        }
+        for (key, value) in [
+            ("surface_contract", json!(0)), ("surface_contract", json!(2)), ("surface_contract", Value::Null),
+            ("surface_contract", json!("1")), ("surface_contract", json!(true)), ("surface_contract", json!(1.0)),
+            ("surface_seq", json!(seq - 1)), ("surface_seq", json!(seq + 1)), ("surface_seq", Value::Null),
+            ("node_path", json!([])), ("node_path", json!([9])), ("node_path", json!([0.0])),
+            ("event", json!("refresh")), ("args", json!({"field":"other","value":0.3})),
+            ("args", json!({"field":"volume","value":0.3,"extra":0})),
+        ] {
+            let mut params = baseline.clone(); params[key] = value; cases.push(params);
+        }
+        for key in ["surface_contract", "surface_seq", "node_path", "args"] {
+            let mut params = baseline.clone(); params.as_object_mut().unwrap().remove(key); cases.push(params);
+        }
+        cases.push(json!({"event":"refresh","args":{},"surface_contract":1,"surface_seq":seq,"node_path":[1]}));
+        let config_file = std::fs::read(data.join("config.toml")).unwrap();
+        let config = daemon.pipeline_snapshot().unwrap().config;
+        let sources = daemon.matrix_sources.lock().unwrap().clone();
+        let snapshots = daemon.matrix_snapshots.lock().unwrap().clone();
+        let surfaces = daemon.matrix_surfaces.lock().unwrap().clone();
+        for params in cases {
+            assert!(daemon.call("ui.event", params.clone()).is_err(), "{params}");
+            assert_eq!(daemon.log.max_seq().unwrap(), seq, "{params}");
+            assert_eq!(daemon.log.get(seq).unwrap().unwrap().payload, payload);
+            assert_eq!(std::fs::read(data.join("config.toml")).unwrap(), config_file);
+            assert_eq!(daemon.pipeline_snapshot().unwrap().config, config);
+            assert_eq!(*daemon.matrix_sources.lock().unwrap(), sources);
+            assert_eq!(*daemon.matrix_snapshots.lock().unwrap(), snapshots);
+            assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), surfaces);
+            assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), 0);
+            assert_eq!(daemon.store.lock().unwrap().count_packs().unwrap(), 0);
+            assert!(server.recorded().is_empty());
+        }
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn dual_append_failure_preserves_snapshot_and_both_tables_then_v0_replaces_them() {
+        let (data, _) = dirs("dual-append-failure");
+        let mut daemon = daemon(&data);
+        let database = data.join("events.db");
+        daemon.log = EventLog::open(&database).unwrap();
+        let source = "screen { col { toggle \"Local\" models.local_only button \"Refresh\" -> refresh } }";
+        daemon.render_matrix("main", source, true).unwrap();
+        daemon.refresh_matrix_host_snapshot("main", matrix::HostSnapshot::ready(0.25, ["Prior"])).unwrap();
+        let seq = daemon.log.max_seq().unwrap();
+        let sources = daemon.matrix_sources.lock().unwrap().clone();
+        let snapshots = daemon.matrix_snapshots.lock().unwrap().clone();
+        let surfaces = daemon.matrix_surfaces.lock().unwrap().clone();
+        let connection = rusqlite::Connection::open(&database).unwrap();
+        connection.execute_batch("CREATE TRIGGER reject_surface BEFORE INSERT ON events WHEN NEW.kind = 'ui.surface' BEGIN SELECT RAISE(FAIL, 'surface storage unavailable'); END;").unwrap();
+        assert!(daemon.render_matrix("main", "screen { header { text \"Replacement\" } }", true).is_err());
+        assert!(daemon.refresh_matrix_host_snapshot("main", matrix::HostSnapshot::ready(0.5, ["Replacement"])).is_err());
+        assert_eq!(daemon.log.max_seq().unwrap(), seq);
+        assert_eq!(*daemon.matrix_sources.lock().unwrap(), sources);
+        assert_eq!(*daemon.matrix_snapshots.lock().unwrap(), snapshots);
+        assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), surfaces);
+        let (mut invalid, bindings) = daemon.compile_matrix_with_host(source, &matrix::HostSnapshot::default()).unwrap();
+        invalid.fallback = json!({"type":"unknown"});
+        assert!(daemon.commit_matrix(MatrixCommit {
+            sources: &mut daemon.matrix_sources.lock().unwrap(),
+            snapshots: &mut daemon.matrix_snapshots.lock().unwrap(),
+            thread: "main", surface: &invalid, source: Some("Invalid replacement"),
+            bindings: &bindings, host: matrix::HostSnapshot::ready(0.75, ["Invalid"]),
+        }).is_err());
+        assert_eq!(daemon.log.max_seq().unwrap(), seq);
+        assert_eq!(*daemon.matrix_sources.lock().unwrap(), sources);
+        assert_eq!(*daemon.matrix_snapshots.lock().unwrap(), snapshots);
+        assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), surfaces);
+        for (contract, path) in [(None, json!([1])), (Some(1), json!([0,1]))] {
+            let mut params = json!({"surface_seq":seq,"node_path":path});
+            if let Some(contract) = contract { params["surface_contract"] = json!(contract); }
+            assert!(surfaces["main"].accepts(&params, "refresh", &json!({})));
+        }
+        connection.execute_batch("DROP TRIGGER reject_surface;").unwrap();
+        daemon.render_matrix("main", MATRIX_DASHBOARD, true).unwrap();
+        let seq = daemon.log.max_seq().unwrap();
+        let latest = daemon.log.get(seq).unwrap().unwrap();
+        assert!(latest.payload.get("matrix_surface").is_none());
+        assert!(!daemon.matrix_surfaces.lock().unwrap()["main"].accepts(&json!({"surface_contract":1,"surface_seq":seq,"node_path":[0,1]}), "refresh", &json!({})));
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn versioned_host_controls_store_only_event_body_and_refresh_once() {
+        let (data, _) = dirs("v1-host-events");
+        let daemon = daemon(&data);
+        let source = "screen { toggle \"Local\" models.local_only select \"Talk\" models.talk options model_options button \"Refresh\" -> refresh }";
+        daemon.render_matrix("main", source, true).unwrap();
+        for (index, event, args) in [
+            (0, "change", json!({"field":"models.local_only","value":true})),
+            (1, "change", json!({"field":"models.talk","value":"qwen3:0.6b"})),
+            (2, "refresh", json!({})),
+        ] {
+            let before = daemon.log.max_seq().unwrap();
+            assert!(daemon.call("ui.event", json!({"surface_contract":1,"surface_seq":before,"node_path":[index],"event":event,"args":args})).is_ok());
+            let events = (before + 1..=daemon.log.max_seq().unwrap())
+                .map(|seq| daemon.log.get(seq).unwrap().unwrap()).collect::<Vec<_>>();
+            assert_eq!(events.iter().filter(|event| event.kind == "ui.surface").count(), 1);
+            let stored = events.iter().filter(|event| event.kind == "ui.event").collect::<Vec<_>>();
+            assert_eq!(stored.len(), 1);
+            assert_eq!(stored[0].payload, json!({"event":event,"args":args}));
+            assert!(events.last().unwrap().payload.get("matrix_surface").is_some());
+        }
+        assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), 0);
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
 
     fn daemon(data_dir: &Path) -> Daemon {
         let log = EventLog::open_in_memory().unwrap();
@@ -2015,7 +2187,7 @@ mod approval_dispatch_tests {
             .render_matrix("main", HOST_SNAPSHOT_DASHBOARD, true)
             .unwrap();
         let initial = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().unwrap();
-        let mut client = ObservationHarness::default();
+        let mut client = ObservationHarness::legacy();
         client.event(&initial);
         assert_eq!(client.switches, 1);
         let initial_display = client.frame(vec![]);
@@ -2373,7 +2545,7 @@ mod approval_dispatch_tests {
                 let daemon = daemon(&data);
                 daemon.call("matrix.render", json!({"thread":"main", "source":prior_source})).unwrap();
                 let prior = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().unwrap();
-                let mut harness = ObservationHarness::default();
+                let mut harness = ObservationHarness::legacy();
                 harness.event(&prior);
                 let display = harness.frame(vec![]);
                 let event = json!({"thread":"main", "event":"refresh", "args":{}, "surface_seq":prior.seq, "node_path":[8]});
@@ -2385,7 +2557,7 @@ mod approval_dispatch_tests {
                     "screen { toggle \"Candidate field\" models.local_only button \"Candidate submit\" -> refresh }"
                 };
                 let probe_surface = daemon.compile_matrix(probe_source).unwrap();
-                let mut probe = ObservationHarness::default();
+                let mut probe = ObservationHarness::legacy();
                 probe.event(&mote_eventlog::Event { seq: prior.seq + 1, ts: 0, scope_id: "main".into(), kind: "ui.surface".into(),
                     payload: json!({"surface_id":"matrix", "surface":probe_surface}) });
                 let positions: Vec<_> = probe.frame(vec![]).iter().filter(|node| {
@@ -2642,7 +2814,7 @@ mod approval_dispatch_tests {
                 .unwrap();
             assert_eq!(
                 event.payload,
-                json!({"surface_id":"matrix", "surface":{"type":"stack","children":[{"type":"text","value":"Prior"},{"type":"action","label":"Refresh","event":"refresh"}]}})
+                json!({"surface_id":"matrix", "surface":{"type":"stack","children":[{"type":"text","value":"Prior"},{"type":"action","label":"Refresh","event":"refresh"}]},"matrix_surface":{"version":1,"root":{"type":"screen","children":[{"type":"text","value":"Prior"},{"type":"button","label":"Refresh","event":"refresh"}]}}})
             );
         }
         assert_eq!(
@@ -2687,7 +2859,7 @@ mod approval_dispatch_tests {
                 .unwrap();
             assert_eq!(
                 event.payload,
-                json!({"surface_id":"matrix", "surface":{"type":"text", "value":text}})
+                json!({"surface_id":"matrix", "surface":{"type":"text", "value":text},"matrix_surface":{"version":1,"root":{"type":"screen","children":[{"type":"text","value":text}]}}})
             );
         }
         assert_eq!(
@@ -2949,7 +3121,7 @@ mod approval_dispatch_tests {
         let config_file = std::fs::read(data.join("config.toml")).unwrap();
         let config = daemon.pipeline_snapshot().unwrap().config;
         let sources = daemon.matrix_sources.lock().unwrap().clone();
-        let mut harness = ObservationHarness::default();
+        let mut harness = ObservationHarness::legacy();
         harness.event(&original);
         let display = harness.frame(vec![]);
         let secret = "ghp_0123456789abcdefghijklmnopqrstuvwx";
@@ -3038,7 +3210,7 @@ mod approval_dispatch_tests {
             "type":"field","label":"Name","name":"name","value":"host value"
         }})).unwrap();
         let original = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().unwrap();
-        let mut field = ObservationHarness::default();
+        let mut field = ObservationHarness::legacy();
         field.event(&original);
         field.frame(vec![]);
         field.tab_past_navigation();
@@ -3070,7 +3242,7 @@ mod approval_dispatch_tests {
         ] {
             let committed = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().unwrap();
             assert_eq!(committed.kind, "ui.surface");
-            let mut harness = ObservationHarness::default();
+            let mut harness = ObservationHarness::legacy();
             harness.event(&committed);
             harness.frame(vec![]);
             harness.tab_past_navigation();
@@ -3135,8 +3307,8 @@ mod approval_dispatch_tests {
                     assert_eq!(daemon.call("matrix.render", json!({"source":source})).unwrap()["ok"], true);
                 }
                 let event = daemon.log.get(daemon.log.max_seq().unwrap()).unwrap().unwrap();
-                assert_eq!(event.payload, json!({"surface_id":"matrix", "surface":{"type":"text","value":literal}}));
-                let mut harness = ObservationHarness::default();
+                assert_eq!(event.payload, json!({"surface_id":"matrix", "surface":{"type":"text","value":literal},"matrix_surface":{"version":1,"root":{"type":"screen","children":[{"type":"text","value":literal}]}}}));
+                let mut harness = ObservationHarness::legacy();
                 harness.event(&event);
                 let (display, output) = harness.frame_output(vec![]);
                 assert_eq!(display.len(), 1);
@@ -3279,7 +3451,7 @@ mod approval_dispatch_tests {
             assert_eq!(event.kind, "ui.surface");
             assert_eq!(
                 event.payload,
-                json!({"surface_id":"matrix","surface":{"type":"stack","children":[{"type":"text","value":"Retained source"},{"type":"action","label":"Refresh","event":"refresh"}]}})
+                json!({"surface_id":"matrix","surface":{"type":"stack","children":[{"type":"text","value":"Retained source"},{"type":"action","label":"Refresh","event":"refresh"}]},"matrix_surface":{"version":1,"root":{"type":"screen","children":[{"type":"text","value":"Retained source"},{"type":"button","label":"Refresh","event":"refresh"}]}}})
             );
             assert!(events.recv_timeout(Duration::from_millis(2)).is_none());
             std::fs::remove_dir_all(data.parent().unwrap()).ok();

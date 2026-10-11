@@ -7,6 +7,7 @@ use crate::accessibility::{self, Value as AccessibilityValue};
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SurfaceContext {
     pub surface_seq: Option<i64>,
+    pub surface_contract: Option<u64>,
     pub node_path: Vec<usize>,
 }
 
@@ -58,6 +59,10 @@ pub fn discard_change(ctx: &egui::Context, event: &SurfaceEvent) {
     let SurfaceEvent::Change { state_id, .. } = event else {
         return;
     };
+    if event.context().surface_contract == Some(1) {
+        crate::surface_v1::discard_change(ctx, *state_id);
+        return;
+    }
     ctx.data_mut(|data| {
         data.remove::<(bool, bool)>(*state_id);
         data.remove::<(String, String)>(*state_id);
@@ -224,7 +229,7 @@ fn draw_at(
             live.insert(id, response.id);
             if response.changed() {
                 events.push(SurfaceEvent::Change {
-                    context: SurfaceContext { surface_seq: None, node_path: path.clone() },
+                    context: SurfaceContext { surface_seq: None, surface_contract: None, node_path: path.clone() },
                     field: name.clone(),
                     value: serde_json::Value::Bool(edited),
                     state_id: id,
@@ -268,7 +273,7 @@ fn draw_at(
                                 if activated && selected != *option {
                                     selected = option.clone();
                                     events.push(SurfaceEvent::Change {
-                                        context: SurfaceContext { surface_seq: None, node_path: path.clone() },
+                                        context: SurfaceContext { surface_seq: None, surface_contract: None, node_path: path.clone() },
                                         field: name.clone(),
                                         value: serde_json::Value::String(selected.clone()),
                                         state_id: id,
@@ -295,7 +300,7 @@ fn draw_at(
             live.insert(id, response.id);
             if response.clicked() {
                 events.push(SurfaceEvent::Action {
-                    context: SurfaceContext { surface_seq: None, node_path: path.clone() },
+                    context: SurfaceContext { surface_seq: None, surface_contract: None, node_path: path.clone() },
                     event: event.clone(),
                 });
             }

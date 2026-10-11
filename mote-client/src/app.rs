@@ -41,6 +41,9 @@ fn ui_event_params(event: &crate::surface::SurfaceEvent) -> serde_json::Value {
         params["surface_seq"] = serde_json::json!(seq);
         params["node_path"] = serde_json::json!(event.context().node_path);
     }
+    if let Some(contract) = event.context().surface_contract {
+        params["surface_contract"] = serde_json::json!(contract);
+    }
     params
 }
 
@@ -493,6 +496,7 @@ impl MoteApp {
                                     let mut screen_ui = ui.new_child(egui::UiBuilder::new().id_salt("matrix-screen").max_rect(rect));
                                     let mut local_events = Vec::new();
                                     crate::surface_v1::draw(&mut screen_ui, surface, &mut local_events);
+                                    clicked.extend(local_events.into_iter().map(|event| event.into_rpc(&screen_ui, surface)));
                                 }
                                 _ => {
                                     let screen_ui = ui.new_child(egui::UiBuilder::new().id_salt("matrix-screen"));
@@ -1449,6 +1453,55 @@ mod tests {
     }
 
     #[test]
+    fn live_matrix_slider_reaches_worker_once_with_contract_context_and_rolls_back() {
+        let (mut app, tx) = app();
+        let (requests, request_rx) = mpsc::channel();
+        let (results, result_rx) = mpsc::channel();
+        let (observed, observed_rx) = mpsc::channel();
+        app.ui_event_tx = requests;
+        spawn_ui_event_worker_with(request_rx, results, move |event| {
+            observed.send(ui_event_params(event)).unwrap();
+            Err("Rejected slider".into())
+        });
+        tx.send(Event {
+            seq: 29, ts: 0, scope_id: "main".into(), kind: "ui.surface".into(),
+            payload: serde_json::json!({"surface_id":"matrix",
+                "surface":{"type":"text","value":"This Matrix surface requires a newer Mote client."},
+                "matrix_surface":{"version":1,"root":{"type":"screen","children":[
+                    {"type":"col","children":[{"type":"slider","label":"Volume","field":"volume","value":2,"min":0,"max":10,"step":2}]}
+                ]}}
+            }),
+        }.into()).unwrap();
+        app.drain_events();
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        crate::theme::install(&ctx);
+        let render = |app: &mut MoteApp, events| ctx.run(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 800.0))),
+            events, ..Default::default()
+        }, |ctx| { egui::CentralPanel::default().show(ctx, |ui| app.chat_view(ui)); });
+        let output = render(&mut app, vec![]);
+        let slider = output.platform_output.accesskit_update.unwrap().nodes.into_iter()
+            .find(|(_, node)| node.role() == accesskit::Role::Slider).unwrap().0;
+        render(&mut app, vec![egui::Event::AccessKitActionRequest(accesskit::ActionRequest {
+            action: accesskit::Action::SetValue, target: slider,
+            data: Some(accesskit::ActionData::NumericValue(6.0)),
+        })]);
+        assert_eq!(observed_rx.recv_timeout(std::time::Duration::from_secs(1)).unwrap(), serde_json::json!({
+            "thread":"main","event":"change","args":{"field":"volume","value":6.0},
+            "surface_contract":1,"surface_seq":29,"node_path":[0,0]
+        }));
+        assert!(observed_rx.try_recv().is_err());
+        let (event, result) = result_rx.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
+        app.record_ui_event_result(&ctx, event, result);
+        let output = render(&mut app, vec![]);
+        let node = output.platform_output.accesskit_update.unwrap().nodes.into_iter()
+            .find(|(_, node)| node.role() == accesskit::Role::Slider).unwrap().1;
+        assert_eq!(node.numeric_value(), Some(2.0));
+        assert_eq!(app.status_line, "Rejected slider");
+    }
+
+    #[test]
     fn unsupported_dual_surface_emits_one_v0_event_without_contract_context() {
         let (mut app, tx) = app();
         let (events, event_rx) = mpsc::channel();
@@ -1515,7 +1568,7 @@ mod tests {
     #[test]
     fn ui_event_params_include_typed_field_change_args() {
         let event = crate::surface::SurfaceEvent::Change {
-            context: crate::surface::SurfaceContext { surface_seq: Some(23), node_path: vec![1] },
+            context: crate::surface::SurfaceContext { surface_seq: Some(23), surface_contract: None, node_path: vec![1] },
             field: "models.local_only".into(),
             value: serde_json::Value::Bool(true),
             state_id: egui::Id::NULL,

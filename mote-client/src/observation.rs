@@ -39,6 +39,7 @@ pub struct ObservationHarness {
     bytes: IncomingBytes,
     ctx: egui::Context,
     viewport: egui::Vec2,
+    legacy: bool,
     pub switches: usize,
 }
 
@@ -97,16 +98,26 @@ impl Default for ObservationHarness {
             bytes: Default::default(),
             ctx,
             viewport: egui::vec2(800.0, 600.0),
+            legacy: false,
             switches: 0,
         }
     }
 }
 
 impl ObservationHarness {
+    pub fn legacy() -> Self {
+        Self { legacy: true, ..Self::default() }
+    }
+
     pub fn feed(&mut self, bytes: &[u8]) -> io::Result<usize> {
         self.bytes.0.extend(bytes);
         let mut delivered = 0;
-        while let Some(event) = self.decoder.read(&mut self.bytes)? {
+        while let Some(mut event) = self.decoder.read(&mut self.bytes)? {
+            if self.legacy {
+                if let Some(payload) = event.payload.as_object_mut() {
+                    payload.remove("matrix_surface");
+                }
+            }
             let before = self.surface();
             self.incoming.send(event.into()).unwrap();
             self.app.drain_events();
@@ -983,7 +994,7 @@ mod matrix_renderer_tests {
     }
 
     #[test]
-    fn live_matrix_draws_v1_but_never_sends_v1_actions_to_daemon() {
+    fn live_matrix_draws_v1_and_sends_one_action_with_contract_context() {
         for viewport in [egui::vec2(400.0,800.0),egui::vec2(1200.0,800.0)] {
             let mut h=ObservationHarness {viewport,..Default::default()};
             h.event(&Event{seq:17,ts:0,scope_id:"main".into(),kind:"ui.surface".into(),payload:payload(1)});
@@ -994,7 +1005,7 @@ mod matrix_renderer_tests {
             let update=out.platform_output.accesskit_update.unwrap();
             let bounds=update.nodes.iter().find(|(_,node)|node.label()==Some("Matrix action")).unwrap().1.bounds().unwrap();
             h.click(egui::pos2(((bounds.x0+bounds.x1)/2.0) as f32,((bounds.y0+bounds.y1)/2.0) as f32));
-            assert!(h.queued().is_empty());
+            assert_eq!(h.queued(), [serde_json::json!({"thread":"main","event":"matrix.test","args":{},"surface_contract":1,"surface_seq":17,"node_path":[0]})]);
         }
     }
 
@@ -1042,6 +1053,7 @@ mod matrix_renderer_tests {
             let bounds=|out:&egui::FullOutput,label:&str|out.platform_output.accesskit_update.as_ref().unwrap().nodes.iter().find(|(_,node)|node.label()==Some(label)).unwrap().1.bounds().unwrap();
             let (_,out)=h.frame_output(vec![]);let slider=bounds(&out,"Volume");
             h.click(egui::pos2((slider.x1-8.0) as f32,((slider.y0+slider.y1)/2.0) as f32));
+            assert_eq!(h.queued(), [serde_json::json!({"thread":"main","event":"change","args":{"field":"volume","value":10.0},"surface_contract":1,"surface_seq":20,"node_path":[0]})]);
             let (_,out)=h.frame_output(vec![]);assert!(out.platform_output.accesskit_update.as_ref().unwrap().nodes.iter().any(|(_,node)|node.numeric_value()==Some(10.0)));
             let action=bounds(&out,"Delete");h.click(egui::pos2(((action.x0+action.x1)/2.0) as f32,((action.y0+action.y1)/2.0) as f32));h.frame(vec![]);
             h.event(&event(21,serde_json::json!({"surface_id":"matrix","surface":{"type":"text","value":"Only legacy"}})));h.frame(vec![]);

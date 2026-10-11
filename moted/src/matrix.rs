@@ -1,7 +1,7 @@
 use crate::pipeline::PipelineSnapshot;
 use matrix_lang::manifest::{ActionContract, EnumDefinition, FieldDefinition, RecordDefinition};
 use matrix_lang::{
-    lower_v0, parse_surface, resolve, BindingSnapshot, Diagnostic, Manifest, Surface, Type,
+    lower_v0, lower_v1, parse_surface, resolve, BindingSnapshot, Diagnostic, Manifest, Surface, Type,
 };
 use mote_ui::Node;
 use serde_json::{json, Value};
@@ -37,6 +37,7 @@ pub struct CommittedMatrixSurface {
     pub seq: i64,
     surface: Node,
     controls: BTreeMap<Vec<usize>, ControlContract>,
+    matrix: Option<matrix_lang::lower_v1::LoweredSurface>,
 }
 
 impl CommittedMatrixSurface {
@@ -47,6 +48,7 @@ impl CommittedMatrixSurface {
             seq: 0,
             surface,
             controls,
+            matrix: None,
         }
     }
 
@@ -68,6 +70,18 @@ impl CommittedMatrixSurface {
         let Some(args) = args.as_object() else {
             return false;
         };
+        match params.get("surface_contract") {
+            None => {}
+            Some(version) if version.as_u64() == Some(1) => {
+                return self.matrix.as_ref().is_some_and(|matrix| {
+                    matrix
+                        .controls
+                        .get(&path)
+                        .is_some_and(|control| accepts_v1(control, event, args))
+                });
+            }
+            Some(_) => return false,
+        }
         match self.controls.get(&path) {
             Some(ControlContract::Action { name, contract }) => {
                 event == name && contract.parameters.is_empty() && args.is_empty()
@@ -90,6 +104,119 @@ impl CommittedMatrixSurface {
             None => false,
         }
     }
+}
+
+fn accepts_v1(
+    control: &matrix_lang::lower_v1::ControlContract,
+    event: &str,
+    args: &serde_json::Map<String, Value>,
+) -> bool {
+    use matrix_lang::lower_v1::ControlContract;
+    let field = match control {
+        ControlContract::Button {
+            event: name,
+            disabled,
+        } => {
+            return !disabled && event == name && args.is_empty();
+        }
+        ControlContract::Toggle { field }
+        | ControlContract::Select { field, .. }
+        | ControlContract::Slider { field, .. } => field,
+    };
+    if event != "change"
+        || args.len() != 2
+        || args.get("field").and_then(Value::as_str) != Some(field)
+    {
+        return false;
+    }
+    let Some(value) = args.get("value") else {
+        return false;
+    };
+    match control {
+        ControlContract::Toggle { .. } => value.is_boolean(),
+        ControlContract::Select { options, .. } => value
+            .as_str()
+            .is_some_and(|value| options.iter().any(|option| option == value)),
+        ControlContract::Slider { min, max, step, .. } => value.as_f64().is_some_and(|value| {
+            mote_ui::v1::Surface {
+                version: 1,
+                root: mote_ui::v1::Node::Screen {
+                    title: None,
+                    children: vec![mote_ui::v1::Node::Slider {
+                        label: field.clone(),
+                        field: field.clone(),
+                        value,
+                        min: *min,
+                        max: *max,
+                        step: *step,
+                        fill: false,
+                    }],
+                },
+            }
+            .validate()
+            .is_ok()
+        }),
+        ControlContract::Button { .. } => unreachable!(),
+    }
+}
+
+pub struct CompiledSurface {
+    pub fallback: Value,
+    matrix: Option<matrix_lang::lower_v1::LoweredSurface>,
+}
+
+impl CompiledSurface {
+    pub fn prepare(&self, manifest: &Manifest) -> Result<(Value, CommittedMatrixSurface), String> {
+        let surface = mote_ui::validate(&serde_json::to_vec(&self.fallback).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+        let mut committed = CommittedMatrixSurface::new(surface, manifest);
+        let mut payload = surface_payload(&self.fallback);
+        if let Some(matrix) = &self.matrix {
+            payload["matrix_surface"] =
+                serde_json::to_value(&matrix.surface).map_err(|e| e.to_string())?;
+            mote_ui::v1::validate_envelope(&serde_json::to_vec(&payload).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+            committed.matrix = Some(matrix.clone());
+        }
+        Ok((payload, committed))
+    }
+}
+
+pub fn compile_contract(
+    source: &str,
+    bindings: &HostBindings,
+) -> Result<CompiledSurface, Vec<Diagnostic>> {
+    let parsed = parse_surface(source)?;
+    compile_surface_contract(&parsed, bindings)
+}
+
+pub fn compile_surface_contract(
+    parsed: &Surface,
+    bindings: &HostBindings,
+) -> Result<CompiledSurface, Vec<Diagnostic>> {
+    let resolved = resolve(parsed, &bindings.manifest, &bindings.snapshot)?;
+    let matrix = lower_v1(&resolved);
+    let fallback = lower_v0(&resolved);
+    let (fallback, matrix) = match (fallback, matrix) {
+        (Ok(fallback), Ok(matrix)) => (fallback, Some(matrix)),
+        (Ok(fallback), Err(_)) => (fallback, None),
+        (Err(_), Ok(matrix)) => (
+            Node::Text {
+                value: "This Matrix surface requires a newer Mote client.".into(),
+            },
+            Some(matrix),
+        ),
+        (Err(errors), Err(_)) => return Err(errors),
+    };
+    let fallback = serde_json::to_value(fallback).map_err(|error| vec![Diagnostic {
+        code: matrix_lang::DiagnosticCode::LowerLimit,
+        severity: matrix_lang::Severity::Error,
+        span: parsed.screen.span,
+        declaration_path: vec!["screen".into()],
+        message: format!("Could not encode the compact surface: {error}"),
+        hint: None,
+    }])?;
+    Ok(CompiledSurface { fallback, matrix })
 }
 
 fn collect_controls(
@@ -349,4 +476,108 @@ pub fn diagnostics(errors: &[Diagnostic]) -> Value {
             })
             .collect(),
     )
+}
+
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+    use matrix_lang::manifest::FieldDefinition;
+
+    fn bindings(value: Value) -> HostBindings {
+        let mut manifest = Manifest::default();
+        manifest.fields.insert("volume".into(), FieldDefinition {
+            binding: Type::Number.into(), initial: value,
+        });
+        manifest.fields.insert("enabled".into(), FieldDefinition {
+            binding: Type::Boolean.into(), initial: json!(true),
+        });
+        manifest.enums.insert("Mode".into(), EnumDefinition::new(["quiet", "normal"]));
+        manifest.fields.insert("mode".into(), FieldDefinition {
+            binding: Type::Enum("Mode".into()).into(), initial: json!("quiet"),
+        });
+        manifest.actions.insert("refresh".into(), ActionContract::default());
+        HostBindings { manifest, snapshot: BindingSnapshot::default() }
+    }
+
+    fn committed(source: &str, value: Value) -> (Value, CommittedMatrixSurface) {
+        let bindings = bindings(value);
+        let compiled = compile_contract(source, &bindings).unwrap();
+        let (payload, mut committed) = compiled.prepare(&bindings.manifest).unwrap();
+        committed.seq = 37;
+        (payload, committed)
+    }
+
+    #[test]
+    fn slider_dual_surface_and_decimal_admission_follow_frozen_validator() {
+        let (payload, committed) = committed("screen { slider \"Volume\" volume min 0 max 1 step 0.1 }", json!(0.3));
+        assert_eq!(payload["surface"], json!({"type":"text","value":"This Matrix surface requires a newer Mote client."}));
+        assert_eq!(payload["matrix_surface"], json!({"version":1,"root":{"type":"screen","children":[
+            {"type":"slider","label":"Volume","field":"volume","value":0.3,"min":0.0,"max":1.0,"step":0.1}
+        ]}}));
+        mote_ui::v1::validate_envelope(&serde_json::to_vec(&payload).unwrap()).unwrap();
+        let params = json!({"surface_contract":1,"surface_seq":37,"node_path":[0]});
+        for value in [json!(0), json!(0.3), json!(0.30000000000000004), json!(1)] {
+            assert!(committed.accepts(&params, "change", &json!({"field":"volume","value":value})), "{value}");
+        }
+        for value in [json!("0.3"), json!(true), Value::Null, json!([]), json!({}), json!(-0.1), json!(1.1), json!(0.35)] {
+            assert!(!committed.accepts(&params, "change", &json!({"field":"volume","value":value})), "{value}");
+        }
+    }
+
+    #[test]
+    fn slider_admission_handles_extreme_scales_and_non_aligned_maxima() {
+        for (min, max, step, valid, invalid) in [
+            ("0", "1.05", "0.1", json!(1.0), json!(1.05)),
+            ("0", "1000000001", "2", json!(1000000000), json!(1000000001)),
+            ("0", "1e308", "1e-308", json!(1e-308), json!(1e308)),
+            ("1e308", "1.7e308", "1e308", json!(1e308), json!(1.7e308)),
+            ("0", "1e-300", "1e-301", json!(3e-301), json!(3.5e-301)),
+        ] {
+            let source = format!("screen {{ slider \"Volume\" volume min {min} max {max} step {step} }}");
+            let (_, committed) = committed(&source, json!(min.parse::<f64>().unwrap()));
+            let params = json!({"surface_contract":1,"surface_seq":37,"node_path":[0]});
+            assert!(committed.accepts(&params, "change", &json!({"field":"volume","value":valid})), "{source}: {valid}");
+            assert!(!committed.accepts(&params, "change", &json!({"field":"volume","value":invalid})), "{source}: {invalid}");
+        }
+    }
+
+    #[test]
+    fn contract_tables_require_exact_context_and_compiled_control_types() {
+        let (_, committed) = committed("screen { col { toggle \"Enabled\" enabled select \"Mode\" mode options [\"quiet\",\"normal\"] slider \"Volume\" volume min 0 max 10 step 2 button \"Refresh\" -> refresh button \"Disabled\" disabled -> refresh } }", json!(2));
+        let params = json!({"surface_contract":1,"surface_seq":37,"node_path":[0,2]});
+        let args = json!({"field":"volume","value":4});
+        assert!(committed.accepts(&params, "change", &args));
+        for (key, value) in [
+            ("surface_contract", json!(0)), ("surface_contract", json!(2)),
+            ("surface_contract", Value::Null), ("surface_contract", json!("1")),
+            ("surface_contract", json!(true)), ("surface_contract", json!(1.0)),
+            ("surface_seq", json!(36)), ("surface_seq", json!(38)),
+            ("surface_seq", Value::Null), ("surface_seq", json!(37.0)),
+            ("node_path", json!([])), ("node_path", json!([2])),
+            ("node_path", json!([0,2.0])), ("node_path", json!([0,-1])),
+        ] {
+            let mut invalid = params.clone(); invalid[key] = value;
+            assert!(!committed.accepts(&invalid, "change", &args), "{invalid}");
+        }
+        for key in ["surface_contract", "surface_seq", "node_path"] {
+            let mut invalid = params.clone(); invalid.as_object_mut().unwrap().remove(key);
+            assert!(!committed.accepts(&invalid, "change", &args));
+        }
+        for (event, args) in [("refresh", json!({})), ("change", json!({"field":"enabled","value":4})), ("change", json!({"field":"volume","value":4,"extra":0})), ("change", json!({"field":"volume"})), ("change", json!([]))] {
+            assert!(!committed.accepts(&params, event, &args));
+        }
+        for (index, event, args) in [
+            (0, "change", json!({"field":"enabled","value":false})),
+            (1, "change", json!({"field":"mode","value":"normal"})),
+            (2, "change", json!({"field":"volume","value":4})),
+            (3, "refresh", json!({})),
+        ] {
+            let params = json!({"surface_contract":1,"surface_seq":37,"node_path":[0,index]});
+            assert!(committed.accepts(&params, event, &args));
+            for wrong in [json!({"field":"enabled","value":"false"}), json!({"field":"mode","value":true}), json!({"field":"mode","value":"unknown"}), json!({"extra":0})] {
+                assert!(!committed.accepts(&params, event, &wrong));
+            }
+        }
+        assert!(!committed.accepts(&json!({"surface_contract":1,"surface_seq":37,"node_path":[0,4]}), "refresh", &json!({})));
+    }
 }

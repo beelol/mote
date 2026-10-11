@@ -4,9 +4,10 @@ Version 1 is the immutable first Matrix consumer contract. It carries slider, an
 layout and fill plus the v0-equivalent elements required to compose that surface. It is separate
 from the frozen v0 tree and from the host binding manifest version.
 
-This contract is not active in production yet. The daemon must not emit `matrix_surface` until the
-version 1 compiler, client renderer, accessibility tree, layout checks and event admission land
-together. Until then, a client treats version 1 as unsupported and displays `surface`.
+The daemon emits this contract for the frozen slice after the version 1 compiler, client renderer,
+accessibility tree, layout checks and event admission land together. Valid sources outside this
+slice retain their lossless v0 emission. A supporting client prefers version 1 and sends its explicit
+contract context. Unsupported clients display `surface`.
 
 ## Event payload
 
@@ -45,11 +46,11 @@ when both representations are invalid.
 
 ## Interaction context
 
-The stored `ui.event` body remains `{"event": name, "args": {...}}`. The RPC context later adds an
+The stored `ui.event` body remains `{"event": name, "args": {...}}`. The RPC context adds an
 optional integer `surface_contract`. Omission means v0. Version 1 interaction sends
 `surface_contract: 1`. The daemon binds the contract number and `surface_seq` to a control table
 compiled for that exact representation. It does not assume the v0 fallback path matches the Matrix
-path. Task 1 defines this rule but changes no RPC or daemon code.
+path.
 
 ## Version 1 surface
 

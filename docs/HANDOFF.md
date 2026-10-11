@@ -1,56 +1,53 @@
 # Handoff: Matrix v1 consumer contract
 
-Updated 2026-10-10. Replace this file, never append.
+Updated 2026-10-10 in America/Los_Angeles.
 
-Branch: `main`. Preserve untracked `.DS_Store` and `.superpowers/`. `origin` is configured, but the
-push was rejected because its trust was not established by trusted user content. Do not push.
+Branch: `main`.
+Preserve untracked `.DS_Store` and `.superpowers/`.
+Do not push.
 
 The accepted plan is `docs/superpowers/plans/2026-10-10-matrix-v1-consumer-contract.md`.
-Task 1 is complete in commits `3cb25d1` and `5ab7641`. Task 2 is complete in commit `f54c1ad`.
+Tasks 1 through 5 are implemented.
+Task 5 uses the commit subject `feat(matrix): commit versioned consumer surfaces`.
+Its detailed evidence is `.superpowers/sdd/2026-10-10-matrix-v1-consumer-contract/task-5-report.md`.
 
-Task 3 added one version-aware client decoder. A valid dual payload retains the strict version 1
-surface and its mandatory valid v0 fallback as one reduced message. Missing, unknown or malformed
-`matrix_surface` data uses the valid v0 fallback. An invalid v0 fallback rejects the update even
-when version 1 is valid. Rejected updates preserve the committed display and render revision while
-the receipt cursor still advances for the received event.
+The daemon resolves each source once.
+The frozen v1 slice emits one dual `ui.surface` event.
+The v0 fallback is faithful only when the whole resolved source lowers losslessly.
+Anchors, fill, slider and other v1-only semantics use the exact approved inert Text fallback.
+Valid sources outside the v1 slice retain their lossless v0 emission.
+The frozen v0 tree, schema and fixtures remain unchanged.
 
-Task 4 adds the separate renderer in `mote-client/src/surface_v1.rs`.
-Live chat and local previews now draw validated version 1 surfaces.
-Unsupported or invalid Matrix data still uses the valid version 0 fallback.
-The version 0 renderer and gallery catalog remain unchanged.
+Each committed sequence owns separate v0 and v1 control tables.
+Omitted `surface_contract` admits against v0.
+Exact integer `surface_contract: 1` admits against v1.
+All other explicit contract values reject.
+Every interaction requires the exact committed sequence and structural path.
+Slider admission uses the frozen validator's bounded decimal alignment checks.
+It rejects half steps and nonfinite intermediate arithmetic.
+It does not require the total range step count to fit a finite float.
+Validation and append failure preserve the prior source, snapshot, both tables and sequence.
+Stored `ui.event` bodies contain only `event` and `args`.
 
-Screen reserves Header and Footer outside the scrolling body.
-The body owns the remaining height and supports horizontal nowrap overflow.
-Fill children share remaining main-axis space after intrinsic siblings and standard gaps.
-They split equally unless a control minimum needs a larger allocation.
-Controls keep their minimum hit extents and narrow nowrap layouts overflow without overlap.
-Filled text keeps its measured minimum extent, so narrowing cannot create unmeasured wrapping.
-The exact nested column and nowrap row regression checks clipped text paint against its next button.
-Wrap, nowrap, alignment and between or around distribution are implemented.
-The Vector slider has a 36 point visual region and a 48 point hit region.
-Pointer, arrow, Home, End and AccessKit range input produce bounded local changes.
-Step alignment uses the frozen validator tolerance at decimal endpoints.
-Finite small step changes do not require the total step count to fit in a finite float.
-Contract, type and structural path define runtime identity.
-Host value and constraint replacements reset edits.
-Removed controls clear state, focus and select popups.
-Switching from version 1 to a version 0 fallback clears version 1 state before rendering.
-Returning to version 1 cannot restore old edits or pending confirmation.
-Disabled buttons are inert.
-Confirmed buttons require explicit local confirmation.
-Changed events, labels or confirmation flags clear an armed confirmation.
+The live client forwards v1 renderer events once with contract 1 context.
+Rejected changes restore the host value and show the worker error.
+Preview and Gallery interactions remain local.
+Legacy integration tests explicitly use a legacy client observation mode.
+Version-aware checks use the supported v1 renderer.
 
-The preview-only Gallery variant cannot be produced by decoding.
-It keeps the original version 0 catalog followed by a bounded version 1 slice in one outer scroll.
-Gallery interactions update local preview status without a daemon.
+Verification passed on macOS 26.6.2 arm64 with Rust and Cargo 1.89.0.
+The workspace test run passed 469 tests with local socket access.
+The focused daemon suite passed 125 tests.
+The focused client binary suite passed 156 tests.
+Workspace clippy passed with denied warnings.
+The diff check passed.
 
-Version 1 events remain renderer-internal.
-Live chat never forwards them to `send_ui_event`.
-No `surface_contract` argument is sent.
-Production `matrix.render` and daemon emission remain on version 0.
-Task 5 must add contract-specific control binding and event admission before activation.
-Surface persistence across restart or binary upgrade remains outside this task.
-
-The full implementation and verification report is
-`.superpowers/sdd/2026-10-10-matrix-v1-consumer-contract/task-4-report.md`.
-It records headless checks at 400 by 800 and 1200 by 800, workspace verification and gallery smoke.
+Task 6 remains open.
+Update the live dashboard with header, footer and fill.
+Keep slider in Gallery until a real numeric host field is published with its write behavior.
+The current production manifest intentionally exposes no numeric field.
+Slider admission tests use compiled numeric test bindings.
+No numeric configuration field or model configuration was added.
+Run the gallery and live dashboard and update the relevant evidence.
+Surface persistence across restart or binary upgrade remains out of scope.
+The later catalog and native Mac, Pi and iPad checks remain open.
