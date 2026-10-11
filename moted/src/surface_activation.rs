@@ -39,13 +39,30 @@ impl SurfaceActivationStore {
         first_try_valid: u64,
         sample_count: u64,
     ) -> std::io::Result<bool> {
+        self.record_with_revocation_sync(
+            model_digest,
+            corpus_hash,
+            first_try_valid,
+            sample_count,
+            |parent| std::fs::File::open(parent)?.sync_all(),
+        )
+    }
+
+    fn record_with_revocation_sync(
+        &self,
+        model_digest: &str,
+        corpus_hash: &str,
+        first_try_valid: u64,
+        sample_count: u64,
+        sync_parent: impl FnOnce(&Path) -> std::io::Result<()>,
+    ) -> std::io::Result<bool> {
         if model_digest.is_empty()
             || corpus_hash != super::bench::current_surface_corpus_hash()
             || sample_count != 200
             || !(190..=200).contains(&first_try_valid)
         {
             match std::fs::remove_file(&self.path) {
-                Ok(()) => {}
+                Ok(()) => sync_parent(self.path.parent().unwrap())?,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => return Err(error),
             }
@@ -59,7 +76,9 @@ impl SurfaceActivationStore {
             first_try_valid,
             sample_count,
         };
-        let temporary = self.path.with_extension(format!("{}.{}.tmp", std::process::id(), crate::now_ms()));
+        let temporary =
+            self.path
+                .with_extension(format!("{}.{}.tmp", std::process::id(), crate::now_ms()));
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -117,6 +136,24 @@ mod tests {
             "first_try_valid": 190,
             "sample_count": 200
         })
+    }
+
+    #[test]
+    fn inferred_activation_revocation_reports_directory_sync_failure() {
+        let dir = data_dir("sync-failure");
+        let store = SurfaceActivationStore::new(&dir);
+        let corpus = crate::bench::current_surface_corpus_hash();
+        assert!(store.record("sha256:good", &corpus, 190, 200).unwrap());
+        let error = store
+            .record_with_revocation_sync("sha256:good", &corpus, 189, 200, |parent| {
+                assert_eq!(parent, dir);
+                assert!(!dir.join("surface-activation.json").exists());
+                Err(std::io::Error::other("directory sync failed"))
+            })
+            .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+        assert_eq!(error.to_string(), "directory sync failed");
+        assert!(!dir.join("surface-activation.json").exists());
     }
 
     #[test]
