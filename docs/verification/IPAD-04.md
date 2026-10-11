@@ -292,7 +292,11 @@ The ordinary native typed tap and all three refused interactions make no extra m
 The [artifact directory](artifacts/ipad-inferred-2026-10-11/) contains the exact build, native and harness logs, public host state, redacted events, ledger counts and four PNG captures.
 No pairing offer, private credential, host database or displaced prior Documents state is checked in.
 The harness deletes only its temporary native Keychain credential and confirms that it is missing.
-It stops the app and restores all displaced prior Documents files.
+The [deletion record](artifacts/ipad-inferred-2026-10-11/credential-deletion.json) comes from a
+second complete paired native journey after the cleanup guard was added.
+It stops the app and restores all displaced prior Documents files, including on test failure.
+The XCUITest child is killed and waited on if the harness exits early.
+The prior-state backup is preserved if restoration fails.
 Temporary host storage is then removed by the fixture lifecycle.
 No physical iPad, Apple account, provisioning, distribution signing or TestFlight work occurs.
 
@@ -329,3 +333,20 @@ The native inference test was separately enabled and passed above.
 The exact final outputs are included as [workspace.log](artifacts/ipad-inferred-2026-10-11/workspace.log) and [clippy.log](artifacts/ipad-inferred-2026-10-11/clippy.log).
 Every IPAD-04 Verify clause now has evidence.
 The README acceptance checkbox is checked.
+
+## Cleanup hardening review
+
+Independent review found that the original harness restored displaced Simulator Documents files
+only after all assertions. A failure could leave fixture state in the Simulator.
+The cleanup guard is installed before the first rename and restores the prior files on unwind.
+The focused `native_state_guard_restores_prior_files_after_failure` and
+`native_state_guard_preserves_backup_when_restore_fails` tests pass.
+It also runs temporary credential deletion on failure and preserves its backup if restoration fails.
+The second complete native journey passed with the hardened harness in the same iOS 27 iPad Pro
+11-inch Simulator. It took 111.94 seconds and again recorded four turns, 14 model calls, 14 ledger
+rows, 14 packs, one visible terminal diagnostic and three typed refusals.
+Its `credential-deletion.json` records `keychain_deleted` with `missing: true`.
+The first attempt at this rerun failed before pairing because the restricted shell could not
+contact CoreSimulator. An unrestricted local Simulator-service check found the booted device, and
+the identical test binary then passed with service access. No application code changed between
+those attempts.
