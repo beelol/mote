@@ -3,6 +3,7 @@
 //! renderer lives in [`render`].
 
 pub mod render;
+pub mod v1;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

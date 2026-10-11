@@ -4,27 +4,35 @@ Date: 2026-10-10
 
 ## Goal
 
-Add a versioned Matrix consumer contract without changing the frozen v0 tree. Deliver slider,
-header, footer and fill through the real immediate-mode client first. Continue through the closed
-catalog in bounded families after the first production slice is verified.
+Add a versioned Matrix consumer contract without changing the frozen v0 tree. Version 1 is the
+immutable first slice for slider, header, footer and fill plus the v0-equivalent elements needed to
+compose them. Later catalog families use later contract versions unless their complete semantics are
+resolved before version 1 is activated.
 
 ## Compatibility contract
 
 - Keep `mote_ui::Node`, `mote_ui::validate`, the v0 fixtures and `schemas/tree.v0.json` unchanged.
-- Add `mote_ui::v1::Surface` and `schemas/tree.matrix.v1.json`.
+- Add `mote_ui::v1::Surface` and `schemas/tree.matrix.v1.json` for the exact first slice only.
 - Keep the `ui.surface` event kind and durable cursor behavior unchanged.
-- Carry a mandatory valid v0 fallback beside the versioned Matrix surface in one event payload.
+- Carry a mandatory valid v0 fallback in `surface` beside the versioned Matrix surface in
+  `matrix_surface` in one event payload.
+- Use the exact faithful v0 lowering only when the complete source is lossless in v0. Otherwise use
+  one approved v0 Text fallback that says the Matrix surface needs a newer Mote client. Never
+  flatten unsupported structure or controls into an approximate interactive tree.
 - Let new clients prefer a valid supported Matrix surface. Fall back to v0 when the Matrix surface
   is missing, malformed or has an unknown version.
-- Keep the `ui.event` request and stored event body unchanged.
+- Add an optional `surface_contract` number to the `ui.event` RPC context. Omission means v0 for
+  legacy clients. Bind the value to `surface_seq` and the matching committed control table. Keep the
+  stored `ui.event` body unchanged. Fallback and Matrix paths are not assumed to be isomorphic.
 - Keep production v1 emission disabled until the compiler, client, accessibility, layout and event
   admission checks for the emitted variants pass together.
 
 ## Task 1: Freeze the contract
 
-Create the approval artifact, typed contract, strict validator, deterministic schema and catalog
-inventory. Include exact slider, header, footer and fill fixtures. Record unresolved full-catalog
-wire choices explicitly. Do not change production emission.
+Create the approval artifact, typed contract, strict validator and deterministic schema for the
+exact first slice. Include exact slider, header, footer and fill fixtures. Record unresolved later
+catalog wire choices explicitly. Freeze and test the dual payload shape. Do not change production
+emission.
 
 Files:
 
@@ -36,7 +44,9 @@ Files:
 - Modify `crates/mote-ui/src/lib.rs` only to export the new module.
 
 Verify strict version, type, key, bound, depth, node, byte, slider and layout validation. Verify the
-v0 schema and fixtures remain unchanged. Verify schema generation is deterministic.
+v0 schema and fixtures remain unchanged. Verify schema generation is deterministic. Verify a legacy
+decoder consumes `surface`, a v1-aware decoder can inspect `matrix_surface`, and the single event
+advances one durable cursor without losing the fallback across an upgrade.
 
 Commit: `feat(ui): add Matrix v1 consumer contract`
 
@@ -57,9 +67,10 @@ Commit: `feat(matrix): lower slider and anchored layout to v1`
 
 ## Task 3: Decode versioned surfaces safely
 
-Add a client surface enum and one payload decoder. Preserve all v0 behavior. Prefer valid version 1
-and otherwise validate and display the v0 fallback. Reject both-invalid updates without replacing
-the prior committed surface.
+Add a client surface enum and one payload decoder. Preserve all v0 behavior. Parse version 1 but
+treat it as unsupported and display v0 until the renderer lands in Task 4. After Task 4, prefer a
+valid supported version 1 and otherwise validate and display the v0 fallback. Reject both-invalid
+updates without replacing the prior committed surface.
 
 Files:
 
@@ -83,9 +94,11 @@ Commit: `feat(client): render anchored Matrix slider layouts`
 ## Task 5: Commit and validate the dual contract
 
 Compile the supported v1 slice in the daemon. Commit the mandatory v0 fallback and the v1 tree
-atomically. Save the exact matching control table at the event sequence. Admit a slider change only
-when sequence, path, field, numeric type, range and step match. Reject every invalid event before a
-stored event, configuration write or model call.
+atomically. Use faithful v0 lowering only for a wholly lossless source. Otherwise emit the approved
+noninteractive v0 Text fallback. Add `surface_contract` to the RPC interaction context, bind it to
+the committed sequence and save separate matching control tables rather than assuming fallback and
+v1 paths match. Admit a slider change only when version, sequence, path, field, numeric type, range
+and step match. Reject every invalid event before a stored event, configuration write or model call.
 
 Commit: `feat(matrix): commit versioned consumer surfaces`
 
@@ -100,9 +113,12 @@ Commit: `feat(matrix): activate anchored v1 dashboard surfaces`
 
 ## Full catalog continuation
 
-Deliver the remaining closed catalog in five families. Each family requires a source fixture, JSON
-fixture, schema inventory, lowerer check, client rendering, accessibility, layout, daemon event
-admission, gallery coverage, evidence, workspace tests and clippy before production emission.
+Deliver the remaining closed catalog in five families. Each later immutable version is a cumulative
+superset, so one surface can combine earlier layout and input nodes with later nodes. Freeze each
+family in a later contract version unless its complete semantics were resolved before version 1
+activation. Each family requires a source fixture, JSON fixture, schema inventory, lowerer check,
+client rendering, accessibility, layout, daemon event admission, gallery coverage, evidence,
+workspace tests and clippy before production emission.
 
 1. Text and media. Freeze constrained Markdown, asset fetching and status tone mapping first.
 2. Inputs and forms. Include typed action arguments and pending action state.

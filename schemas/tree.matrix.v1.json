@@ -1,0 +1,407 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "Alignment": {
+      "enum": [
+        "start",
+        "center",
+        "end"
+      ],
+      "type": "string"
+    },
+    "ButtonIntent": {
+      "enum": [
+        "primary",
+        "danger"
+      ],
+      "type": "string"
+    },
+    "Distribution": {
+      "enum": [
+        "between",
+        "around"
+      ],
+      "type": "string"
+    },
+    "Node": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "children": {
+              "default": [],
+              "items": {
+                "$ref": "#/definitions/Node"
+              },
+              "type": "array"
+            },
+            "title": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "screen"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "alignment": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Alignment"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "children": {
+              "default": [],
+              "items": {
+                "$ref": "#/definitions/Node"
+              },
+              "type": "array"
+            },
+            "distribution": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Distribution"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "fill": {
+              "type": "boolean"
+            },
+            "type": {
+              "enum": [
+                "col"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "alignment": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Alignment"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "children": {
+              "default": [],
+              "items": {
+                "$ref": "#/definitions/Node"
+              },
+              "type": "array"
+            },
+            "distribution": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Distribution"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "fill": {
+              "type": "boolean"
+            },
+            "type": {
+              "enum": [
+                "row"
+              ],
+              "type": "string"
+            },
+            "wrapping": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Wrapping"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "children": {
+              "default": [],
+              "items": {
+                "$ref": "#/definitions/Node"
+              },
+              "type": "array"
+            },
+            "type": {
+              "enum": [
+                "header"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "children": {
+              "default": [],
+              "items": {
+                "$ref": "#/definitions/Node"
+              },
+              "type": "array"
+            },
+            "type": {
+              "enum": [
+                "footer"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "fill": {
+              "type": "boolean"
+            },
+            "type": {
+              "enum": [
+                "text"
+              ],
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "field": {
+              "type": "string"
+            },
+            "fill": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "toggle"
+              ],
+              "type": "string"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "field",
+            "label",
+            "type",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "field": {
+              "type": "string"
+            },
+            "fill": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string"
+            },
+            "options": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": {
+              "enum": [
+                "select"
+              ],
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "field",
+            "label",
+            "options",
+            "type",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "field": {
+              "type": "string"
+            },
+            "fill": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string"
+            },
+            "max": {
+              "format": "double",
+              "type": "number"
+            },
+            "min": {
+              "format": "double",
+              "type": "number"
+            },
+            "step": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "slider"
+              ],
+              "type": "string"
+            },
+            "value": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "field",
+            "label",
+            "max",
+            "min",
+            "type",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "confirm": {
+              "type": "boolean"
+            },
+            "disabled": {
+              "type": "boolean"
+            },
+            "event": {
+              "type": "string"
+            },
+            "fill": {
+              "type": "boolean"
+            },
+            "intent": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ButtonIntent"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "button"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "event",
+            "label",
+            "type"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Wrapping": {
+      "enum": [
+        "wrap",
+        "nowrap"
+      ],
+      "type": "string"
+    }
+  },
+  "properties": {
+    "root": {
+      "$ref": "#/definitions/Node"
+    },
+    "version": {
+      "format": "uint32",
+      "maximum": 1.0,
+      "minimum": 1.0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "root",
+    "version"
+  ],
+  "title": "Surface",
+  "type": "object"
+}
