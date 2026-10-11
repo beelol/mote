@@ -73,8 +73,22 @@ approved the task with no blocking findings. The driver independently reran the 
 and strict clippy with exit 0. Commit `3332860` is pushed to `origin/main`. An accidental
 workspace-wide formatting pass was reversed on the previously clean unrelated paths.
 Current tracked changes are only this handoff.
-HOST-02 remains open until Task 4 pairs two fixture hosts. Keep UI work behind the published host interfaces
-and inspect every delegated result before integration. Run workspace test and clippy, write the
+HOST-02 remains open until Task 4 pairs two fixture hosts. Host plan Task 3 is now owned by
+`gateway_pairing_impl` from base `784a6cf`. Its brief and report target are in the SDD workspace.
+The standalone gateway core is locally committed as `78c2c83`. Twenty focused unit, vector,
+pairing and security tests pass, including malformed hello, replay, revocation, expiry, tamper and
+host-key-creation races. Full workspace tests passed with approved local socket access, and strict
+workspace clippy passed. Pairing is owner-confirmed and single-use. Sessions bind encrypted frames
+to the host identity. Independent security review found no production confirmation bypass but found
+one important test gap: wrong-static-key tests stop at earlier identity guards. It also found three
+minor negative-test gaps. The original implementer added deeper tests in round 1. Temporary
+negative controls showed failures when wrong-key rejection, the Mote prologue, writer limits or
+private-key exclusion were deliberately weakened. Those controls were restored. Fix commit
+`7716594` has 23 gateway tests, full workspace tests and strict clippy passing. Scoped re-review is
+clean with all four findings addressed. The driver independently reran workspace tests and strict
+clippy with exit 0. Both gateway commits are pushed to `origin/main`. HOST-03 stays open until the
+authenticated loopback daemon gateway is verified.
+Keep UI work behind the published host interfaces and inspect every delegated result before integration. Run workspace test and clippy, write the
 relevant `docs/verification/<ID>.md`, commit, and push after every completed criterion.
 
 Do not mark a criterion complete from a partial test. If IPAD-04's live 200-prompt gate scores below
