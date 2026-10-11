@@ -32,18 +32,23 @@ host-bound approval from the Simulator.
 
 ## Delivery state
 
-Commit `424ea3f` contains the approved design and original HOST/IPAD board. The Simulator planning
-batch narrows execution to the active criteria, links the three implementation plans and updates this
-handoff. No implementation code, Rust Apple target, Xcode project, signing state, App Store Connect
-record or TestFlight build has been created.
+Commit `60652a3` contains the approved Simulator plans. HOST-01 was delivered in `b60e1ef` and
+`7e18050`, adding the protocol crate, Unix boundary conversion, goldens, review fixes and evidence.
+The independent task review found two important protocol gaps: unknown nested host event fields were
+accepted, and remote approval DTOs lacked exact action and expiry binding. The original implementer
+fixed both in `7e18050`. The scoped re-review passed. HOST-01 is checked with evidence. The
+driver-side full workspace rerun and strict clippy passed. `origin/main` is at `7e18050`. No Rust Apple
+target, Xcode project, signing state, App Store Connect record or TestFlight build has been created.
 
 The configured remote is `https://github.com/beelol/mote.git` on `main`.
 
 ## Verified environment and limits
 
-The last full verification passed 478 workspace tests and clippy on 2026-10-11. Local Unix socket
-tests require execution with local socket access. Xcode 27.0 and iOS Simulator SDK 27 are installed.
-The Rust iOS targets are not installed. Available Simulator devices have not yet been enumerated.
+The final HOST-01 run passed 493 workspace tests and strict clippy on 2026-10-11. Local Unix socket tests
+required an approved rerun with socket access. Xcode 27.0 and iOS Simulator SDK 27 are installed.
+The Rust iOS targets are not installed. `xcrun simctl list devices available` confirms iPad Pro,
+iPad Air, iPad mini and base iPad simulators at iOS 26.5 and 27.0. The restricted shell could not
+reach CoreSimulator, but the approved local command succeeded.
 
 AccessKit's current iOS adapter cannot provide physical VoiceOver evidence. IPAD-06 remains open for
 that and all other physical-device checks. No local-network privacy prompt, signing identity, bundle
@@ -59,10 +64,12 @@ wake mechanism. Leave that clause and HOST-05 open while completing independent 
 
 ## Exact next action
 
-Review the three implementation plans as one dependency chain. After approval, use
-`superpowers:subagent-driven-development`. Start host plan Task 1. Keep UI work behind the published
-host interfaces and inspect every delegated result before integration. Run workspace test and clippy,
-write the relevant `docs/verification/<ID>.md`, commit, and push after every completed criterion.
+The owner approved execution of the three plans on 2026-10-11. The active goal is attached to this
+chat. Host plan Task 1 is complete and pushed. Its progress ledger is
+`.superpowers/sdd/2026-10-11-ipad-simulator-host/progress.md`. Begin Task 2, per-host client
+directory and isolation. Keep UI work behind the published host interfaces
+and inspect every delegated result before integration. Run workspace test and clippy, write the
+relevant `docs/verification/<ID>.md`, commit, and push after every completed criterion.
 
 Do not mark a criterion complete from a partial test. If IPAD-04's live 200-prompt gate scores below
 190 first-try valid surfaces, leave automatic inference disabled and IPAD-04 open while continuing
