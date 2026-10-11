@@ -153,7 +153,11 @@ enum CompilerBudget {
 }
 
 fn compiler_budget(os: &str, arch: &str, hardware: &str, p95_ns: u64) -> CompilerBudget {
-    let limit_ns = if os == "macos" && arch == "aarch64" {
+    let apple_m_series = hardware
+        .strip_prefix("Apple M")
+        .and_then(|suffix| suffix.chars().next())
+        .is_some_and(|generation| generation.is_ascii_digit());
+    let limit_ns = if os == "macos" && arch == "aarch64" && apple_m_series {
         Some(2_000_000)
     } else if os == "linux"
         && arch == "aarch64"
@@ -228,7 +232,7 @@ fn hardware_name() -> String {
             .filter(|output| output.status.success())
             .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
             .filter(|name| !name.is_empty())
-            .unwrap_or_else(|| "unknown Apple Silicon".to_string());
+            .unwrap_or_else(|| "unknown macOS arm64 hardware".to_string());
     }
     #[cfg(target_os = "linux")]
     {
@@ -1077,6 +1081,14 @@ mod tests {
             CompilerBudget::Failed {
                 limit_ns: 2_000_000
             }
+        );
+        assert_eq!(
+            compiler_budget("macos", "aarch64", "unknown Apple Silicon", 100),
+            CompilerBudget::Unsupported
+        );
+        assert_eq!(
+            compiler_budget("macos", "aarch64", "Apple A14", 100),
+            CompilerBudget::Unsupported
         );
         assert_eq!(
             compiler_budget(
