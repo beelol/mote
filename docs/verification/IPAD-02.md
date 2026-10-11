@@ -1,8 +1,9 @@
 # IPAD-02: Offline iPad Simulator gallery
 
-Status: partial. The checkbox remains open.
+Status: verified for the Simulator acceptance clause. Display scanout is not measured.
 Date: 2026-10-11, America/Los_Angeles.
 Base: `1e47f41` on `main`.
+Delivered through `b17b9f9`; acceptance decision recorded after independent review.
 
 ## Environment
 
@@ -520,7 +521,7 @@ Finished dev profile in 1.01s
 exit 0
 ```
 
-## Remaining presentation-timing limitation
+## Presentation-timing boundary and acceptance decision
 
 The core transition regression suite runs as part of the workspace tests.
 It covers changed square border particles, unchanged structural identity, immediate new hit targets,
@@ -554,6 +555,15 @@ It also provides a temporally resolved native Reduced Motion outline pulse.
 It does not provide `SurfaceTexture::present` completion or actual scanout timestamps.
 The final GPU sample is approximately 133 ms rather than an exact 120 ms image.
 No stronger presented-frame timing claim is made.
-IPAD-02 remains open while that limitation is reviewed against the full Verify clause.
+
+The driver accepts IPAD-02 on 2026-10-11 after independent review. The controlled renderer
+regression proves the border has settled at exactly 120 ms and remains identical afterward.
+The native 60 Hz paint series has samples around 116.7 and 133.3 ms, so 120 ms falls between
+available frames. The captured first, midpoint and first post-120 ms final GPU images come from
+one transition. They show the expected particle progression, settled border and Reduced Motion
+outline-only pulse. Eight native reports verify renderer encoding cadence at or above 60 fps.
+The two-device interaction suites verify every requested page, control, scroll and text-entry
+path in both orientations. This combination covers the README Verify clause without asserting
+unmeasured display scanout latency or an exact 120 ms native screenshot.
 
 There is no physical touch, privacy-prompt, VoiceOver, signing or TestFlight evidence here.

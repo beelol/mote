@@ -32,53 +32,42 @@ IPAD-01 is checked with `docs/verification/IPAD-01.md`. The shared Rust client c
 both Apple targets. The Xcode 27 native shell launched on an iOS 27 iPad Simulator. XCUITest passed
 startup, and the driver independently relaunched the app.
 
-UI plan Task 4 delivered eight validated Matrix v1 gallery pages and a checked-in Dashboard
-fixture in `8798d92`. The host-side compiler test pins the fixture. The frozen v1 contract has no
-text input, so the shell Preview note composer supplies the IPAD-02 text-entry route.
-
-UI plan Task 5 delivered immediate new-layout hit testing, stable unchanged strokes, 120 ms red
-square-pixel border materialization, an 8,192 particle cap and Reduced Motion outline pulse.
-Commits `2763573`, `1c7cd86`, `cfe0d8b` and `551e254` are pushed. Independent review found and
-fixed new-slider drag ownership, moved old-bounds state and Escape cancellation including
-simultaneous release. Driver workspace tests, strict clippy and Apple Simulator core check passed.
-
-UI plan Task 6 has a reviewed interactive slice in `42d5044` and test hardening in `8a22702`,
-both pushed. The iPad shell selects all eight pages immediately, exposes local typed interactions,
-has a scrollable 20-row List and a keyboard-safe Preview note composer. Both iOS 27 iPad sizes
-passed final seven-test native suites in portrait and landscape with zero failures. Workspace
-tests passed 615 cases with zero failures and two ignored; strict clippy and Apple Simulator target
-check passed. The driver independently reran the Rust checks. Evidence and five retained
-screenshots are in `docs/verification/IPAD-02.md`. IPAD-02 remains open. Simulator screen recording
-is variable-rate and cannot prove first, midpoint and final transition frames at 60 fps, sustained
-60 fps or temporal Reduced Motion pulse.
+IPAD-02 is checked with `docs/verification/IPAD-02.md`. The offline iPad gallery has eight
+selectable Matrix v1 pages, a scrollable List and a keyboard-safe Preview note composer. The
+frozen v1 contract was not expanded for text entry. Both iOS 27 iPad sizes passed final native
+interaction suites in portrait and landscape. Normal motion uses immediate new hit targets and
+120 ms red square-pixel border materialization. Reduced Motion swaps immediately with a fading
+outline pulse. The opt-in Simulator probe captured distinct GPU images from each live transition
+at 0, about 66.7 and about 133.3 ms and measured at least 60 renderer paint encodings per second
+over ten seconds in eight device, orientation and motion combinations. Controlled core tests
+prove exact 120 ms completion. The first available live 60 Hz frame after that boundary is about
+133.3 ms. The acceptance decision combines these complementary facts and explicitly does not
+claim display scanout timestamps. Independent review recalculated the raw reports and inspected
+the images. The driver independently reran workspace tests, strict clippy and Apple target check
+with exit 0. The gallery, test hardening and timing-probe commits through `b17b9f9` are pushed.
 
 ## Current work and next action
 
-`main` and `origin/main` contain the UI work through `dda4478`. `docs/HANDOFF.md` is the only
-controller-owned tracked work in progress. The UI plan ledger is
-`.superpowers/sdd/2026-10-11-ipad-simulator-ui/progress.md`. The UI implementer
-`ipad_sim_gallery_impl` owns Task 6 follow-up code and must not edit this handoff or push.
+`main` and `origin/main` contain the timing probe through `b17b9f9`. This handoff, the IPAD-02
+acceptance decision and README checkbox are the only intended tracked work in progress. The UI
+plan ledger is `.superpowers/sdd/2026-10-11-ipad-simulator-ui/progress.md`.
 
-Independent re-review approved `8a22702` with no Critical or Important issue. It found one Minor
-assertion gap: substring matching for `Changed volume: 0.0` could accept `0.01`. The original
-implementer fixed it in `dda4478`, with a red negative case and three green focused native tests.
-Scoped re-review found no remaining issue. The driver independently reran workspace tests, strict
-clippy and Apple Simulator target check with exit 0, then pushed the commit.
-
-The implementer is now building an opt-in Simulator-only GPU screenshot and repaint-cadence probe. The
-probe must retain raw frame sequence, timestamps and images, not override egui input time, and
-distinguish app update, renderer paint callback, GPU copy and unknown present/scanout timing.
-Report rendered-frame cadence without claiming display scanout timestamps. Check IPAD-02 only if
-the full live temporal Verify clause is demonstrated. Review every new commit, independently run
-workspace tests and strict clippy, then push verified commits. Next UI Task 7 connects the shell
-to the authenticated localhost gateway for live chat, Matrix and cursor recovery. Then follow the
-inferred UI and contained browser plan for IPAD-04 and IPAD-05.
+Run `git diff --check`, workspace tests and strict clippy before committing the IPAD-02 acceptance
+decision and this handoff, then push. Dispatch a fresh UI implementation subagent for Task 7 in
+`docs/superpowers/plans/2026-10-11-ipad-simulator-ui.md`. Task 7 must connect the Simulator to
+the authenticated localhost gateway, pair with host identity proof, persist credentials in the
+Simulator Keychain, discover Bonjour, stream live chat and Matrix events, return typed controls,
+resume from cursor after relaunch and isolate two hosts with colliding IDs. It can close HOST-04
+and IPAD-03 only with their full live Verify clauses and evidence. Review every subagent result,
+independently verify, commit and push. After Task 7, follow the inferred UI and contained browser
+plan for IPAD-04 and IPAD-05.
 
 ## Limits
 
 The pinned iOS AccessKit backend exposes one window TextView to XCUITest. Native journeys use
 Vision-recognized text, exact state assertions, measured hit regions and screenshot evidence.
-Do not claim individual accessibility nodes from that workaround. Xcode debugger diagnostics in
+Do not claim individual accessibility nodes from that workaround. Simulator GPU capture and
+renderer encoding cadence are not display scanout measurements. Xcode debugger diagnostics in
 successful native logs are documented non-failing tooling noise.
 
 The desktop queries host identity at startup. If the host is unavailable, cursor persistence waits
