@@ -1,0 +1,19 @@
+<!doctype html><title>Local WebRTC boundary</title><h1>WebRTC fixture</h1><p id="result">Script not run</p>
+<script>
+const results=[];
+function probe(realm,name){
+  const ctor=realm.RTCPeerConnection||realm.webkitRTCPeerConnection;
+  results.push(name+(typeof ctor==='function'?' available':' blocked'));
+  if(typeof ctor==='function'){
+    const peer=new ctor({iceServers:[{urls:'stun:127.0.0.1:{{STUN_PORT}}'}]});
+    (window.peers||=[]).push(peer);
+    peer.createDataChannel('fixture');
+    peer.createOffer().then(offer=>peer.setLocalDescription(offer));
+  }
+}
+probe(window,'inline');
+try{Object.defineProperty(window,'RTCPeerConnection',{value:function(){}})}catch(error){results.push('replacement rejected')}
+const frame=document.createElement('iframe');document.body.append(frame);
+probe(frame.contentWindow,'blank frame');
+document.getElementById('result').textContent=results.join('; ');
+</script>

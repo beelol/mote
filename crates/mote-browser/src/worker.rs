@@ -258,6 +258,17 @@ async fn install_boundary(
     evidence: Arc<Mutex<BrowserEvidence>>,
     references: Arc<Mutex<SnapshotMap>>,
 ) -> Result<()> {
+    page.execute(
+        page::AddScriptToEvaluateOnNewDocumentParams::builder()
+            .source("(()=>{for(const name of ['RTCPeerConnection','webkitRTCPeerConnection','RTCIceTransport','RTCDtlsTransport','RTCSctpTransport'])Object.defineProperty(globalThis,name,{value:undefined,writable:false,configurable:false})})()")
+            .run_immediately(true)
+            .build()
+            .map_err(|error| anyhow!(error))?,
+    ).await?;
+    let rtc_disabled: bool = page.evaluate("['RTCPeerConnection','webkitRTCPeerConnection','RTCIceTransport','RTCDtlsTransport','RTCSctpTransport'].every(name=>{const descriptor=Object.getOwnPropertyDescriptor(globalThis,name);return descriptor?.value===undefined&&descriptor?.writable===false&&descriptor?.configurable===false})").await?.into_value()?;
+    if !rtc_disabled {
+        bail!("WebRTC boundary could not be installed");
+    }
     let mut requests = page.event_listener::<fetch::EventRequestPaused>().await?;
     let target = page.clone();
     tokio::spawn(async move {
@@ -452,6 +463,8 @@ async fn execute(
             let mut text = String::new();
             let mut truncated = false;
             let mut nodes = Vec::new();
+            let cap = token_cap.min(8192);
+            let notice = "[snapshot token cap reached]";
             for node in ax.nodes {
                 if node.ignored {
                     continue;
@@ -504,7 +517,11 @@ async fn execute(
                     serde_json::to_string(&node.value)?
                 );
                 let candidate = format!("{text}{line}");
-                if tokenizer.encode_ordinary(&candidate).len() > token_cap.min(8192) {
+                if tokenizer
+                    .encode_ordinary(&format!("{candidate}{notice}"))
+                    .len()
+                    > cap
+                {
                     truncated = true;
                     break;
                 }
@@ -517,8 +534,8 @@ async fn execute(
                     .map(|node| node.reference.clone())
                     .collect::<Vec<_>>(),
             );
-            if truncated {
-                text.push_str("[snapshot token cap reached]");
+            if truncated && tokenizer.encode_ordinary(&format!("{text}{notice}")).len() <= cap {
+                text.push_str(notice);
             }
             Ok(BrowserResult::Snapshot(BrowserSnapshot {
                 url,

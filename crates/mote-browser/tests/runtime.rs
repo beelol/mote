@@ -322,7 +322,7 @@ fn headed_runtime_reads_fills_and_blocks_effects() {
         panic!("snapshot expected")
     };
     assert!(capped.truncated);
-    assert!(capped.text.contains("snapshot token cap reached"));
+    assert!(capped.text.is_empty());
     assert!(capped.nodes.is_empty());
     assert!(session
         .command(BrowserCommand::Fill {
@@ -331,6 +331,25 @@ fn headed_runtime_reads_fills_and_blocks_effects() {
         })
         .is_err());
     assert!(session.command(BrowserCommand::Screenshot).is_ok());
+    let tokenizer = tiktoken_rs::o200k_base().unwrap();
+    for cap in [0, 1, 4, 8, 16, 32, 64, 80, 8192, 10000] {
+        let BrowserResult::Snapshot(bounded) = session
+            .command(BrowserCommand::Snapshot {
+                interactive_only: false,
+                token_cap: cap,
+            })
+            .unwrap()
+        else {
+            panic!("snapshot expected")
+        };
+        assert!(
+            tokenizer.encode_ordinary(&bounded.text).len() <= cap.min(8192),
+            "snapshot exceeds cap {cap}"
+        );
+        if cap == 16 {
+            assert!(bounded.text.contains("snapshot token cap reached"));
+        }
+    }
     for route in [
         "submit",
         "purchase",
@@ -542,4 +561,66 @@ fn browser_session_never_inherits_profile_cookies_or_workers() {
         snapshot.text
     );
     assert!(!snapshot.text.contains("inherited worker state"));
+}
+
+#[test]
+#[ignore = "requires MOTE_LIVE=1 and pinned headed Chrome"]
+fn webrtc_is_unavailable_before_inline_scripts_and_sends_no_datagrams() {
+    use mote_browser::{BrowserCommand, BrowserHost, BrowserResult};
+    use mote_testkit::browser_fixture::BrowserDatagramFixture;
+    assert_eq!(std::env::var("MOTE_LIVE").as_deref(), Ok("1"));
+    let fixture = mote_testkit::browser_fixture::BrowserFixture::start().unwrap();
+    let datagrams = BrowserDatagramFixture::start().unwrap();
+    let route = format!("/webrtc/{}", datagrams.port());
+    let data = tempfile::tempdir().unwrap();
+    for generation in 0..2 {
+        let config = LaunchConfig::new(
+            data.path(),
+            "webrtc",
+            Path::new(&std::env::var("MOTE_CHROME").unwrap()),
+        )
+        .unwrap();
+        let policy = BrowserPolicy::new(ApprovedOrigins::new([fixture.base_url()]).unwrap())
+            .with_read_paths([route.clone(), "/read".into()]);
+        let browser = BrowserHost::launch(config, policy).unwrap();
+        let session = browser.session();
+        for navigation in 0..2 {
+            session
+                .command(BrowserCommand::Navigate {
+                    url: fixture.url(&route),
+                })
+                .unwrap();
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            assert_eq!(
+                datagrams.count(),
+                0,
+                "WebRTC datagrams escaped in context {generation}, navigation {navigation}"
+            );
+            let BrowserResult::Snapshot(snapshot) = session
+                .command(BrowserCommand::Snapshot {
+                    interactive_only: false,
+                    token_cap: 2000,
+                })
+                .unwrap()
+            else {
+                panic!("snapshot expected")
+            };
+            assert!(
+                snapshot.text.contains("inline blocked"),
+                "first inline script retained WebRTC: {}",
+                snapshot.text
+            );
+            assert!(snapshot.text.contains("replacement rejected"));
+            assert!(
+                snapshot.text.contains("blank frame blocked"),
+                "fresh realm retained WebRTC: {}",
+                snapshot.text
+            );
+            session
+                .command(BrowserCommand::Navigate {
+                    url: fixture.url("/read"),
+                })
+                .unwrap();
+        }
+    }
 }

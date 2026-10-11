@@ -1,13 +1,57 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub struct BrowserFixture {
     addr: SocketAddr,
     counts: Arc<Mutex<HashMap<String, usize>>>,
     running: Arc<AtomicBool>,
+}
+
+pub struct BrowserDatagramFixture {
+    port: u16,
+    packets: Arc<AtomicUsize>,
+    running: Arc<AtomicBool>,
+}
+
+impl BrowserDatagramFixture {
+    pub fn start() -> std::io::Result<Self> {
+        let socket = UdpSocket::bind("127.0.0.1:0")?;
+        socket.set_read_timeout(Some(std::time::Duration::from_millis(100)))?;
+        let port = socket.local_addr()?.port();
+        let packets = Arc::new(AtomicUsize::new(0));
+        let running = Arc::new(AtomicBool::new(true));
+        let count = packets.clone();
+        let run = running.clone();
+        std::thread::spawn(move || {
+            let mut bytes = [0; 4096];
+            while run.load(Ordering::Acquire) {
+                if socket.recv_from(&mut bytes).is_ok() {
+                    count.fetch_add(1, Ordering::Release);
+                }
+            }
+        });
+        Ok(Self {
+            port,
+            packets,
+            running,
+        })
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+    pub fn count(&self) -> usize {
+        self.packets.load(Ordering::Acquire)
+    }
+}
+
+impl Drop for BrowserDatagramFixture {
+    fn drop(&mut self) {
+        self.running.store(false, Ordering::Release);
+    }
 }
 
 impl BrowserFixture {
@@ -90,7 +134,12 @@ fn serve(mut stream: TcpStream, counts: Arc<Mutex<HashMap<String, usize>>>) -> s
     let mut status = "200 OK";
     let mut extra = String::new();
     let mut content_type = "text/html";
-    let response = if let Some(effect) = path.strip_prefix("/effect/") {
+    let response = if let Some(port) = path
+        .strip_prefix("/webrtc/")
+        .and_then(|port| port.parse::<u16>().ok())
+    {
+        include_str!("../fixtures/browser/webrtc.html").replace("{{STUN_PORT}}", &port.to_string())
+    } else if let Some(effect) = path.strip_prefix("/effect/") {
         *counts.lock().unwrap().entry(effect.into()).or_default() += 1;
         if effect == "download" {
             extra = "Content-Disposition: attachment; filename=fixture.txt\r\n".into();
