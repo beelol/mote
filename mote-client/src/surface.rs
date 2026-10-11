@@ -201,6 +201,9 @@ fn draw_at(
                 let response = ui.add_sized([ui.available_width().min(320.0), 36.0],
                     egui::TextEdit::singleline(&mut edited).id(id));
                 let response = padded_response(ui, response);
+                if ui.input(|input| input.has_accesskit_action_request(response.id, accesskit::Action::Click)) {
+                    response.request_focus();
+                }
                 accessibility::leaf(ui, response.id, accesskit::Role::TextInput, Some(label), AccessibilityValue::Text(&edited), Some(&response));
                 #[cfg(any(test, feature = "test-observation"))]
                 observation::control(ui, "Field", path, &response);

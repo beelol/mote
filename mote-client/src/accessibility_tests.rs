@@ -148,6 +148,10 @@ fn accessibility_field_keeps_real_focus_and_text_selection_actions() {
     assert!(field.supports_text_ranges());
     let text_run = field.children().find(|child| child.role() == accesskit::Role::TextRun).unwrap();
 
+    action(&mut harness, field_id_in_tree, accesskit::Action::Click, None);
+    assert_eq!(harness.ctx.memory(|memory| memory.focused()), Some(field_id));
+
+    harness.ctx.memory_mut(|memory| memory.surrender_focus(field_id));
     action(&mut harness, field_id_in_tree, accesskit::Action::Focus, None);
     assert_eq!(harness.ctx.memory(|memory| memory.focused()), Some(field_id));
 

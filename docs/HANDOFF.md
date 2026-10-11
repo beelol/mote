@@ -3,7 +3,9 @@
 Updated 2026-10-10. Replace this file, never append.
 
 Branch: `main`. Base: `895cbb1`.
-Commit: `fix(client): expose surface accessibility roles`.
+Commits: `fix(client): expose surface accessibility roles`,
+`fix(client): route accessibility actions to controls` and
+`fix(client): focus fields on accessibility click`.
 Preserve untracked `.DS_Store` and `.superpowers/`. Do not push.
 
 The production egui surface renderer now emits current-v0 AccessKit roles, names and values from
@@ -12,9 +14,10 @@ tables, fields, toggles, selects, actions, progress and chat. Duplicate visual l
 from AccessKit after their names are assigned, so the filtered tree has no duplicate nodes.
 
 Fix Round 1 moved Field, Toggle, Select and Action semantics onto their real egui response ids.
-AccessKit focus and click requests now reach those controls. Field keeps egui's native TextRun
-children, text range metadata and `SetTextSelection` handling. Only duplicate visual labels and
-scroll interaction nodes are hidden.
+Fix Round 2 explicitly converts an AccessKit Field click into an egui focus request because
+TextEdit's native click handling requires a pointer position. The emitted Field id now handles both
+focus and click. Field keeps egui's native TextRun children, text range metadata and
+`SetTextSelection` handling. Only duplicate visual labels and scroll interaction nodes are hidden.
 
 The observation harness captures the real AccessKit update through `MoteApp::draw_shell` and
 traverses an `accesskit_consumer::Tree` with the macOS adapter's `common_filter`. Eleven checked-in
