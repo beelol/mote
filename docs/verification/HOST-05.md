@@ -193,3 +193,30 @@ The environment and the two ignored live Bonjour tests are unchanged.
 The implementation commit containing this followup is titled
 `fix(host): replay all scopes and chunk recovery snapshots`.
 HOST-05 remains unchecked because the literal Mac sleep and wake run is still open.
+
+## Loopback acceptance followup, 2026-10-11
+
+Base: `3811d8e`. Implementation: `test(gateway): verify paired loopback host`.
+The environment and complete command results are in [HOST-01](HOST-01.md#reusable-loopback-acceptance-2026-10-11).
+
+`cargo test -p moted loopback_acceptance -- --nocapture` passed two tests with no failures.
+The first drops the event client, reconnects with its credential and resumes after its saved cursor.
+The retained events arrive in sequence without earlier events.
+The second stops the gateway while a paired subscription is live and observes transport loss.
+It adds 5,001 heartbeat events to exceed retention and adds a message in another thread.
+It resumes the gateway and reconnects to the same host from the old cursor.
+The gateway sends resync followed by an authoritative snapshot.
+The snapshot preserves the earlier message, the committed Matrix surface and the bound pending approval.
+It includes the other thread's message added during suspension.
+The shared client moves from offline through connecting to online without changing host selection.
+A later live event is applied once even when the reducer receives it twice.
+The pending file remains unwritten.
+
+`cargo test --workspace` passed 580 tests with no failures.
+The existing restart, request-fragment, version-mismatch, changed-identity, outbox and chunked-snapshot
+tests remain in that run. The two live Bonjour tests remain ignored.
+`cargo clippy --workspace -- -D warnings` exited 0.
+
+The scripted suspension stops the gateway only. It does not suspend the Mac or restart the daemon.
+The literal Mac sleep and wake run was not attempted because no safe wake mechanism was configured.
+HOST-05 remains unchecked. This does not prove live iPad connection-state presentation.

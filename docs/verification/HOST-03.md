@@ -206,3 +206,21 @@ Workspace output: `/private/tmp/mote-task4-review.NHXtxx/workspace-final.log`.
 Clippy output: `/private/tmp/mote-task4-review.NHXtxx/clippy-final.log`.
 The workspace test warning still names the unchanged unused observation helpers.
 This correction does not add retry scheduling, native iPad recovery or automatic reconciliation.
+
+## Loopback acceptance followup, 2026-10-11
+
+Base: `3811d8e`. Implementation: `test(gateway): verify paired loopback host`.
+The environment and complete command results are in [HOST-01](HOST-01.md#reusable-loopback-acceptance-2026-10-11).
+
+`cargo test -p moted loopback_acceptance -- --nocapture` passed both real-daemon journeys.
+The reusable harness opens an actual MOTE1 offer and confirms the pending device.
+Pairing and subsequent application frames use the production Noise gateway and client.
+Reconnections retain the credential and advance its counter.
+The host-bound approval writes nothing before approval or after a wrong-host refusal.
+A valid approval writes the file once. Its same request ID returns the stored result after port rotation.
+The redaction assertion checks stored events, and the chat journey counts two model ledger rows.
+
+`cargo test --workspace` passed 580 tests with no failures, including the shared Noise vectors,
+offer expiry and reuse, identity alteration, counter replay, tampering and revoked-device cases.
+`cargo clippy --workspace -- -D warnings` exited 0.
+HOST-03 remains checked. No model was pulled or called outside the local scripted service.

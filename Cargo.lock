@@ -2701,8 +2701,14 @@ dependencies = [
 name = "mote-testkit"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
+ "mote-eventlog",
+ "mote-gateway",
+ "mote-ipc",
+ "mote-protocol",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

@@ -2,6 +2,8 @@
 //! fixtures. The scripted server speaks the subset of the Ollama HTTP API that
 //! `mote-localmodel` uses, records every request, and lets a test drive the responses.
 
+pub mod gateway;
+
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};

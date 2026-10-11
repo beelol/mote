@@ -215,3 +215,21 @@ The live test discovers the registration before signaling the daemon.
 It checks that the advertiser PID is gone and a fresh browser no longer finds the host afterward.
 The offline signal test keeps discovery disabled.
 The fixtures serialize their fixed gateway listener within the test harness.
+
+## Loopback endpoint acceptance followup, 2026-10-11
+
+Base: `3811d8e`. Implementation: `test(gateway): verify paired loopback host`.
+The environment and complete command results are in [HOST-01](HOST-01.md#reusable-loopback-acceptance-2026-10-11).
+
+`cargo test -p moted loopback_acceptance -- --nocapture` passed both journeys.
+The first binds a new loopback port while the old listener still holds its port.
+It confirms the endpoint changed and reconnects with the existing pinned Noise credential.
+The host identity stays the same and an acknowledged approval returns its recorded outcome.
+`cargo test --workspace` also reran the discovery and impersonator rejection tests successfully.
+Its result was 580 passed, no failures and two ignored live Bonjour checks.
+`cargo clippy --workspace -- -D warnings` exited 0.
+
+Discovery is disabled in this reusable acceptance harness.
+This run adds authenticated endpoint movement evidence, not Simulator network-stack evidence.
+HOST-04 remains open until Simulator discovery and local-network purpose text are verified.
+No physical-device privacy prompt or IPAD criterion is closed here.

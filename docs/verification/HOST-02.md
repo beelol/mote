@@ -113,3 +113,15 @@ The final `cargo clippy --workspace -- -D warnings` run completed with exit stat
 Outputs: `/private/tmp/mote-task4-review.NHXtxx/workspace-final.log` and
 `/private/tmp/mote-task4-review.NHXtxx/clippy-final.log`.
 The workspace test warning still names the unchanged unused observation helpers.
+
+## Loopback acceptance followup, 2026-10-11
+
+Base: `3811d8e`. Implementation: `test(gateway): verify paired loopback host`.
+The environment and complete command results are in [HOST-01](HOST-01.md#reusable-loopback-acceptance-2026-10-11).
+
+`cargo test --workspace` passed 580 tests with no failures.
+It reran `paired_hosts_with_colliding_ids_keep_state_and_actions_isolated` successfully.
+That existing test retains the literal two-host, colliding-ID and repeated-switch evidence.
+The new `loopback_acceptance` tests also preserve the selected cryptographic host across a moved
+endpoint and authoritative resync. They reject a wrong-host approval without writing its file.
+HOST-02 remains checked. No Simulator host-switch journey is claimed by this harness.

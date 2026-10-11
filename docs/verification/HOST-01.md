@@ -202,3 +202,51 @@ exit status: 0
 The existing mote-client test warning remains unchanged.
 All 34 suites passed, including documentation tests.
 The full HOST-01 Verify clause remains covered after both fixes.
+
+## Reusable loopback acceptance, 2026-10-11
+
+Base: `3811d8e` on `main`.
+Implementation: the commit containing this section, `test(gateway): verify paired loopback host`.
+Environment: Apple Silicon Mac, macOS 26.6.2 build 25G83, Rust 1.89.0, Cargo 1.89.0, Rust 2021.
+Socket tests used approved local socket access. `MOTE_LIVE` was unset.
+
+`mote_testkit::gateway::LoopbackHost` owns temporary storage and the real encrypted gateway.
+Its factory supplies the real daemon dispatcher and the daemon's event log.
+It exposes the MOTE1 offer, owner confirmation, paired client, endpoint rotation, gateway suspension,
+reconnection, retention fill and retained event inspection.
+The daemon fixture uses scripted Ollama responses, a real persisted event log and approval store.
+Its context store is in memory. Its model calls still pass through the real lane and ledger.
+No production daemon behavior was changed.
+
+The new journey pairs on `127.0.0.1`, exchanges hello and subscribes to `main`.
+It sends a turn and receives ordered chat events and a validated committed Matrix envelope.
+It sends a typed Refresh interaction, reconnects from the cursor and receives only later events.
+It executes a host-bound approval once and retrieves its recorded outcome after endpoint rotation.
+
+```text
+cargo test -p moted loopback_acceptance -- --nocapture
+test result: ok. 2 passed; 0 failed; 0 ignored
+cargo test --workspace
+exit 0
+aggregate: passed=580 failed=0 ignored=2 suites=48
+cargo clippy --workspace -- -D warnings
+Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.02s
+exit 0
+```
+
+The full run includes protocol goldens and the existing Unix reconnect suite.
+The two ignored tests require the live Mac Bonjour stack.
+The existing test-only warning names unused `set_viewport` and `legacy` observation helpers.
+Strict workspace clippy reports no warnings.
+Logs: `/private/tmp/mote-task7-focused.log`, `/private/tmp/mote-task7-workspace.log` and
+`/private/tmp/mote-task7-clippy.log`.
+After tightening the Matrix retention assertion, the focused suite and full workspace suite passed
+again with the same counts. Final workspace log: `/private/tmp/mote-task7-final-workspace.log`.
+
+The test-first run exited 101 because `mote_testkit::gateway` did not yet exist.
+The first executable run inside the sandbox could not bind local sockets.
+An approved run then exposed an incorrect test expectation: wrong-host frames are rejected by the
+client and close its Noise session. The test now checks that refusal and reconnects before approval.
+These were test setup corrections. They did not require changing production authentication.
+
+HOST-01 remains checked. This harness alone does not close any IPAD criterion.

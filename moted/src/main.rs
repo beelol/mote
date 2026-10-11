@@ -1087,6 +1087,9 @@ mod surface_tests {
 
 #[cfg(test)]
 mod approval_dispatch_tests {
+    mod loopback_acceptance {
+        include!("gateway_acceptance_tests.rs");
+    }
     use super::*;
     use charter::FrontMatter;
     use config::AllowAll;
