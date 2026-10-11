@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/mote-browser",
     "crates/matrix-lang",
     "crates/mote-redact",
     "crates/mote-paths",
@@ -27,6 +28,7 @@ license = "MIT OR Apache-2.0"
 rust-version = "1.89"
 
 [workspace.dependencies]
+mote-browser = { path = "crates/mote-browser" }
 mote-redact = { path = "crates/mote-redact" }
 mote-paths = { path = "crates/mote-paths" }
 mote-eventlog = { path = "crates/mote-eventlog" }

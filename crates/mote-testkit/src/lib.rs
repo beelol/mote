@@ -3,6 +3,7 @@
 //! `mote-localmodel` uses, records every request, and lets a test drive the responses.
 
 pub mod gateway;
+pub mod browser_fixture;
 
 use serde_json::{json, Value};
 use std::collections::{HashMap, VecDeque};
