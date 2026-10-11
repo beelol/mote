@@ -1,10 +1,12 @@
 use mote_localmodel::Ollama;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 pub(crate) const COMPILER_CONTRACT_VERSION: u64 = 1;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct SurfaceAttestation {
     model: String,
@@ -28,6 +30,46 @@ impl SurfaceActivationStore {
 
     pub(crate) fn allows(&self, client: &Ollama) -> bool {
         self.allows_for_corpus(client, &super::bench::current_surface_corpus_hash())
+    }
+
+    pub(crate) fn record(
+        &self,
+        model_digest: &str,
+        corpus_hash: &str,
+        first_try_valid: u64,
+        sample_count: u64,
+    ) -> std::io::Result<bool> {
+        if model_digest.is_empty()
+            || corpus_hash != super::bench::current_surface_corpus_hash()
+            || sample_count != 200
+            || !(190..=200).contains(&first_try_valid)
+        {
+            match std::fs::remove_file(&self.path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
+            return Ok(false);
+        }
+        let attestation = SurfaceAttestation {
+            model: super::inferred_ui::SURFACE_MODEL.to_string(),
+            model_digest: model_digest.to_string(),
+            corpus_hash: corpus_hash.to_string(),
+            compiler_contract_version: COMPILER_CONTRACT_VERSION,
+            first_try_valid,
+            sample_count,
+        };
+        let temporary = self.path.with_extension(format!("{}.{}.tmp", std::process::id(), crate::now_ms()));
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&temporary)?;
+        file.write_all(&serde_json::to_vec(&attestation)?)?;
+        file.sync_all()?;
+        std::fs::rename(&temporary, &self.path)?;
+        std::fs::File::open(self.path.parent().unwrap())?.sync_all()?;
+        Ok(true)
     }
 
     fn allows_for_corpus(&self, client: &Ollama, corpus_hash: &str) -> bool {
@@ -75,6 +117,31 @@ mod tests {
             "first_try_valid": 190,
             "sample_count": 200
         })
+    }
+
+    #[test]
+    fn inferred_activation_persists_a_passing_gate_and_revokes_a_failed_gate() {
+        let dir = data_dir("record");
+        let server = ScriptedServer::start().unwrap();
+        server.set_models(vec![("qwen3:4b".into(), 1)]);
+        server.set_model_digest("qwen3:4b", "sha256:good");
+        let client = Ollama::new(server.base_url());
+        let store = SurfaceActivationStore::new(&dir);
+        let corpus = crate::bench::current_surface_corpus_hash();
+        assert!(store.record("sha256:good", &corpus, 190, 200).unwrap());
+        assert!(store.allows(&client));
+        assert!(!store.record("sha256:good", &corpus, 189, 200).unwrap());
+        assert!(!store.allows(&client));
+        assert!(!dir.join("surface-activation.json").exists());
+        for (digest, hash, valid, samples) in [
+            ("", corpus.as_str(), 200, 200),
+            ("sha256:good", "stale", 200, 200),
+            ("sha256:good", corpus.as_str(), 201, 200),
+            ("sha256:good", corpus.as_str(), 190, 199),
+        ] {
+            assert!(!store.record(digest, hash, valid, samples).unwrap());
+            assert!(!store.allows(&client));
+        }
     }
 
     #[test]

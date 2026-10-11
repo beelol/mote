@@ -521,6 +521,7 @@ struct AttemptTrace {
     v0_lowered: bool,
     none: bool,
     diagnostics: String,
+    rejected_source: String,
 }
 
 impl AttemptTrace {
@@ -533,6 +534,7 @@ impl AttemptTrace {
             v0_lowered: false,
             none: false,
             diagnostics: String::new(),
+            rejected_source: String::new(),
         }
     }
 
@@ -554,6 +556,7 @@ impl AttemptTrace {
             v0_lowered: false,
             none: false,
             diagnostics: "host resolution failed".to_string(),
+            rejected_source: "screen { text absent }".to_string(),
         }
     }
 
@@ -566,6 +569,7 @@ impl AttemptTrace {
             v0_lowered: true,
             none: false,
             diagnostics: String::new(),
+            rejected_source: String::new(),
         }
     }
 
@@ -591,6 +595,9 @@ struct SurfaceMetrics {
     retries: usize,
     first_attempt_rate: f64,
     after_retry_rate: f64,
+    first_try_by_category: BTreeMap<String, usize>,
+    terminal_failures: BTreeMap<String, usize>,
+    rejected_sources: BTreeMap<String, String>,
 }
 
 impl SurfaceMetrics {
@@ -601,6 +608,25 @@ impl SurfaceMetrics {
             ..Self::default()
         };
         for (case, attempts) in cases.iter().zip(traces) {
+            let valid = attempts.first().is_some_and(|attempt| attempt.valid_for(case));
+            *metrics.first_try_by_category.entry(case.category.clone()).or_default() +=
+                usize::from(valid);
+            if let Some(last) = attempts.last().filter(|attempt| !attempt.valid_for(case)) {
+                if !last.rejected_source.is_empty() {
+                    metrics.rejected_sources.entry(case.category.clone())
+                        .or_insert_with(|| last.rejected_source.clone());
+                }
+                let failure = if !last.envelope_valid {
+                    "invalid_envelope".to_string()
+                } else if last.none {
+                    format!("{}: unexpected_none", case.category)
+                } else if !case.expects_surface && last.v0_lowered {
+                    "unexpected_matrix".to_string()
+                } else {
+                    format!("{}: {}", case.category, mote_redact::redact(&last.diagnostics))
+                };
+                *metrics.terminal_failures.entry(failure).or_default() += 1;
+            }
             metrics.attempts += attempts.len();
             metrics.retries += attempts.len().saturating_sub(1);
             for attempt in attempts {
@@ -679,6 +705,7 @@ fn evaluate_decision(
                 envelope_valid: true,
                 matrix_decision: true,
                 diagnostics: matrix::diagnostics(&errors).to_string(),
+                rejected_source: mote_redact::redact(&source),
                 ..AttemptTrace::envelope_failure()
             };
         }
@@ -691,6 +718,7 @@ fn evaluate_decision(
                 matrix_decision: true,
                 matrix_parsed: true,
                 diagnostics: matrix::diagnostics(&errors).to_string(),
+                rejected_source: mote_redact::redact(&source),
                 ..AttemptTrace::envelope_failure()
             };
         }
@@ -703,6 +731,7 @@ fn evaluate_decision(
             matrix_parsed: true,
             host_resolved: true,
             diagnostics: matrix::diagnostics(&errors).to_string(),
+            rejected_source: mote_redact::redact(&source),
             ..AttemptTrace::envelope_failure()
         },
     }
@@ -751,6 +780,8 @@ struct SurfaceReport {
     name: &'static str,
     revision: String,
     model: &'static str,
+    model_digest: Option<String>,
+    compiler_contract_version: u64,
     corpus_hash: String,
     category_counts: BTreeMap<String, usize>,
     status: &'static str,
@@ -776,6 +807,8 @@ fn unavailable_surface_report(cases: &[SurfaceCase], reason: String) -> SurfaceR
         name: "surface",
         revision: revision(),
         model: inferred_ui::SURFACE_MODEL,
+        model_digest: None,
+        compiler_contract_version: super::surface_activation::COMPILER_CONTRACT_VERSION,
         corpus_hash: surface_corpus_hash(cases),
         category_counts: surface_category_counts(cases),
         status: "unavailable",
@@ -786,6 +819,22 @@ fn unavailable_surface_report(cases: &[SurfaceCase], reason: String) -> SurfaceR
             ..SurfaceMetrics::default()
         },
     }
+}
+
+fn persist_surface_gate(data_dir: &Path, report: &mut SurfaceReport) -> std::io::Result<()> {
+    let valid = if report.status == "complete" && report.reason.is_none() {
+        report.metrics.first_attempt_valid
+    } else {
+        0
+    };
+    report.activation_passed = super::surface_activation::SurfaceActivationStore::new(data_dir)
+        .record(
+            report.model_digest.as_deref().unwrap_or(""),
+            &report.corpus_hash,
+            valid as u64,
+            report.metrics.samples as u64,
+        )?;
+    Ok(())
 }
 
 fn run_surface(log: &EventLog, store: &ContextStore, client: &Ollama) -> SurfaceReport {
@@ -814,20 +863,33 @@ fn run_surface(log: &EventLog, store: &ContextStore, client: &Ollama) -> Surface
             ),
         );
     }
+    let digest = match client.model_digest(inferred_ui::SURFACE_MODEL) {
+        Ok(Some(digest)) if !digest.is_empty() => digest,
+        _ => return unavailable_surface_report(&cases, "model digest unavailable".to_string()),
+    };
     match bench_surface_cases(&cases, log, store, client) {
-        Ok(metrics) => SurfaceReport {
-            name: "surface",
-            revision: revision(),
-            model: inferred_ui::SURFACE_MODEL,
-            corpus_hash: surface_corpus_hash(&cases),
-            category_counts: surface_category_counts(&cases),
-            status: "complete",
-            reason: None,
-            activation_passed: surface_activation(Some((
-                metrics.first_attempt_valid,
-                metrics.samples,
-            ))),
-            metrics,
+        Ok(metrics) => {
+            let stable_digest = matches!(client.model_digest(inferred_ui::SURFACE_MODEL), Ok(Some(current)) if current == digest);
+            SurfaceReport {
+                name: "surface",
+                revision: revision(),
+                model: inferred_ui::SURFACE_MODEL,
+                model_digest: Some(digest),
+                compiler_contract_version: super::surface_activation::COMPILER_CONTRACT_VERSION,
+                corpus_hash: surface_corpus_hash(&cases),
+                category_counts: surface_category_counts(&cases),
+                status: "complete",
+                reason: if stable_digest {
+                    None
+                } else {
+                    Some("model digest changed during benchmark".to_string())
+                },
+                activation_passed: stable_digest && surface_activation(Some((
+                    metrics.first_attempt_valid,
+                    metrics.samples,
+                ))),
+                metrics,
+            }
         },
         Err(error) => unavailable_surface_report(&cases, error),
     }
@@ -995,7 +1057,11 @@ pub fn run_named(
     let bench_path = data_dir.join("bench.jsonl");
     let result = match name {
         "surface" => {
-            let report = run_surface(log, store, client);
+            let mut report = run_surface(log, store, client);
+            if let Err(error) = persist_surface_gate(data_dir, &mut report) {
+                report.activation_passed = false;
+                report.reason = Some(format!("could not persist activation gate: {error}"));
+            }
             let line = serde_json::to_string(&report).expect("surface report serializes");
             if let Err(error) = append_surface_report(&bench_path, &report) {
                 eprintln!("moted bench surface: could not append result: {error}");
@@ -1178,6 +1244,94 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires MOTE_LIVE=1 and isolated MOTE_HOME for a ledgered live diagnostic"]
+    fn live_surface_table_diagnostic() {
+        assert_eq!(std::env::var("MOTE_LIVE").as_deref(), Ok("1"));
+        let dir = std::path::PathBuf::from(std::env::var("MOTE_HOME").unwrap());
+        assert!(dir.starts_with("/private/tmp"));
+        let path = dir.join("mote.db");
+        let log = EventLog::open(&path).unwrap();
+        let store = ContextStore::open(&path).unwrap();
+        let case = surface_corpus().into_iter().find(|case| case.category == "table").unwrap();
+        let metrics = bench_surface_cases(&[case], &log, &store, &Ollama::new("http://127.0.0.1:11434")).unwrap();
+        println!("{}", serde_json::to_string(&metrics).unwrap());
+        assert_eq!(metrics.samples, 1);
+    }
+
+    #[test]
+    fn surface_rejection_keeps_redacted_source_for_compiler_diagnosis() {
+        let trace = evaluate_decision(Ok(inferred_ui::SurfaceDecision::Matrix {
+            source: "screen { text \"sk-abcdefghijklmnopqrstuvwxyz\"".to_string(),
+        }), &surface_bindings().unwrap());
+        assert!(!trace.matrix_parsed);
+        assert_eq!(trace.rejected_source, "screen { text \"[redacted]\"");
+    }
+
+    #[test]
+    fn surface_report_records_only_complete_exact_digest_evidence() {
+        let dir = std::env::temp_dir().join(format!("mote-bench-gate-{}-{}", std::process::id(), crate::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut report = unavailable_surface_report(&surface_corpus(), "unavailable".into());
+        report.model_digest = Some("sha256:good".to_string());
+        report.metrics.first_attempt_valid = 200;
+        persist_surface_gate(&dir, &mut report).unwrap();
+        assert!(!report.activation_passed);
+        assert!(!dir.join("surface-activation.json").exists());
+        report.status = "complete";
+        report.reason = None;
+        persist_surface_gate(&dir, &mut report).unwrap();
+        assert!(report.activation_passed);
+        let attestation: Value = serde_json::from_slice(&std::fs::read(dir.join("surface-activation.json")).unwrap()).unwrap();
+        assert_eq!(attestation["model_digest"], "sha256:good");
+        report.reason = Some("model digest changed during benchmark".into());
+        persist_surface_gate(&dir, &mut report).unwrap();
+        assert!(!report.activation_passed);
+        assert!(!dir.join("surface-activation.json").exists());
+        report.reason = None;
+        report.metrics.first_attempt_valid = 189;
+        persist_surface_gate(&dir, &mut report).unwrap();
+        assert!(!report.activation_passed);
+        assert!(!dir.join("surface-activation.json").exists());
+    }
+
+    #[test]
+    fn surface_table_example_lowers_a_compact_two_column_host_table() {
+        let bindings = surface_bindings().unwrap();
+        let prompt = inferred_ui::surface_message_contents(&inferred_ui::SurfaceInputs {
+            request: "show a table", prose: "done", previous_source: "", diagnostics: "",
+        });
+        let example = prompt[0].lines().filter(|line| line.starts_with('{')).nth(8).unwrap();
+        let inferred_ui::SurfaceDecision::Matrix { source } = mote_localmodel::parse_verdict(example).unwrap() else {
+            panic!("table example must generate Matrix");
+        };
+        let parsed = parse_surface(&source).unwrap();
+        let resolved = resolve(&parsed, &bindings.manifest, &bindings.snapshot).unwrap();
+        let mote_ui::Node::Table { columns, .. } = lower_v0(&resolved).unwrap() else {
+            panic!("table example must lower to a table");
+        };
+        assert_eq!(columns, vec!["Stage", "Calls"]);
+    }
+
+    #[test]
+    fn surface_prompt_examples_compile_with_the_real_host_contract() {
+        let bindings = surface_bindings().unwrap();
+        let prompt = inferred_ui::surface_message_contents(&inferred_ui::SurfaceInputs {
+            request: "show controls",
+            prose: "done",
+            previous_source: "",
+            diagnostics: "",
+        });
+        let examples: Vec<_> = prompt[0].lines().filter(|line| line.starts_with('{')).collect();
+        assert_eq!(examples.len(), 11, "one abstention and ten supported shapes");
+        for example in examples {
+            let decision = mote_localmodel::parse_verdict::<inferred_ui::SurfaceDecision>(example)
+                .unwrap();
+            let trace = evaluate_decision(Ok(decision), &bindings);
+            assert!(trace.none || trace.v0_lowered, "{}", trace.diagnostics);
+        }
+    }
+
+    #[test]
     fn surface_corpus_is_fixed_and_represents_every_v0_category() {
         let corpus = surface_corpus();
 
@@ -1238,6 +1392,10 @@ mod tests {
         assert_eq!(metrics.retries, 1);
         assert_eq!(metrics.first_attempt_rate, 0.5);
         assert_eq!(metrics.after_retry_rate, 0.75);
+        assert_eq!(metrics.first_try_by_category["none"], 1);
+        assert_eq!(metrics.first_try_by_category["toggle"], 1);
+        assert_eq!(metrics.first_try_by_category["table"], 0);
+        assert_eq!(metrics.terminal_failures["invalid_envelope"], 1);
     }
 
     #[test]
