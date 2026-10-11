@@ -1,0 +1,256 @@
+{
+  "boundary": "complete decoded IPC frame through first egui render-list construction; excludes GPU and compositor presentation",
+  "sample_count": 41,
+  "p50_ns": 22177875,
+  "p95_ns": 32372041,
+  "p50_ms": 22.177875,
+  "p95_ms": 32.372041,
+  "samples": [
+    {
+      "sequence": 42,
+      "arrival_offset_ns": 2689000,
+      "render_offset_ns": 48609416,
+      "duration_ns": 45920416
+    },
+    {
+      "sequence": 44,
+      "arrival_offset_ns": 13074871541,
+      "render_offset_ns": 13102033458,
+      "duration_ns": 27161917
+    },
+    {
+      "sequence": 46,
+      "arrival_offset_ns": 13405502083,
+      "render_offset_ns": 13427679958,
+      "duration_ns": 22177875
+    },
+    {
+      "sequence": 48,
+      "arrival_offset_ns": 13747546375,
+      "render_offset_ns": 13764163958,
+      "duration_ns": 16617583
+    },
+    {
+      "sequence": 50,
+      "arrival_offset_ns": 14082986166,
+      "render_offset_ns": 14114320458,
+      "duration_ns": 31334292
+    },
+    {
+      "sequence": 52,
+      "arrival_offset_ns": 14426027708,
+      "render_offset_ns": 14446349208,
+      "duration_ns": 20321500
+    },
+    {
+      "sequence": 54,
+      "arrival_offset_ns": 14760222958,
+      "render_offset_ns": 14788715666,
+      "duration_ns": 28492708
+    },
+    {
+      "sequence": 56,
+      "arrival_offset_ns": 15093098041,
+      "render_offset_ns": 15123458916,
+      "duration_ns": 30360875
+    },
+    {
+      "sequence": 58,
+      "arrival_offset_ns": 15427038083,
+      "render_offset_ns": 15455375166,
+      "duration_ns": 28337083
+    },
+    {
+      "sequence": 60,
+      "arrival_offset_ns": 16780554250,
+      "render_offset_ns": 16802863666,
+      "duration_ns": 22309416
+    },
+    {
+      "sequence": 62,
+      "arrival_offset_ns": 17115810166,
+      "render_offset_ns": 17136222708,
+      "duration_ns": 20412542
+    },
+    {
+      "sequence": 64,
+      "arrival_offset_ns": 17459885583,
+      "render_offset_ns": 17488312875,
+      "duration_ns": 28427292
+    },
+    {
+      "sequence": 66,
+      "arrival_offset_ns": 17790914541,
+      "render_offset_ns": 17809215916,
+      "duration_ns": 18301375
+    },
+    {
+      "sequence": 68,
+      "arrival_offset_ns": 18124641458,
+      "render_offset_ns": 18155991583,
+      "duration_ns": 31350125
+    },
+    {
+      "sequence": 70,
+      "arrival_offset_ns": 18464163833,
+      "render_offset_ns": 18491392791,
+      "duration_ns": 27228958
+    },
+    {
+      "sequence": 72,
+      "arrival_offset_ns": 18794293458,
+      "render_offset_ns": 18810692958,
+      "duration_ns": 16399500
+    },
+    {
+      "sequence": 74,
+      "arrival_offset_ns": 19130531875,
+      "render_offset_ns": 19149949250,
+      "duration_ns": 19417375
+    },
+    {
+      "sequence": 76,
+      "arrival_offset_ns": 19466592416,
+      "render_offset_ns": 19487855500,
+      "duration_ns": 21263084
+    },
+    {
+      "sequence": 78,
+      "arrival_offset_ns": 19805570083,
+      "render_offset_ns": 19827766166,
+      "duration_ns": 22196083
+    },
+    {
+      "sequence": 80,
+      "arrival_offset_ns": 20141754208,
+      "render_offset_ns": 20172021000,
+      "duration_ns": 30266792
+    },
+    {
+      "sequence": 82,
+      "arrival_offset_ns": 20480664666,
+      "render_offset_ns": 20500981833,
+      "duration_ns": 20317167
+    },
+    {
+      "sequence": 84,
+      "arrival_offset_ns": 20822988375,
+      "render_offset_ns": 20841235916,
+      "duration_ns": 18247541
+    },
+    {
+      "sequence": 86,
+      "arrival_offset_ns": 21157352666,
+      "render_offset_ns": 21178062791,
+      "duration_ns": 20710125
+    },
+    {
+      "sequence": 88,
+      "arrival_offset_ns": 21493524541,
+      "render_offset_ns": 21521817958,
+      "duration_ns": 28293417
+    },
+    {
+      "sequence": 90,
+      "arrival_offset_ns": 21830626583,
+      "render_offset_ns": 21848854125,
+      "duration_ns": 18227542
+    },
+    {
+      "sequence": 92,
+      "arrival_offset_ns": 22166258208,
+      "render_offset_ns": 22186538083,
+      "duration_ns": 20279875
+    },
+    {
+      "sequence": 94,
+      "arrival_offset_ns": 22508938333,
+      "render_offset_ns": 22541233916,
+      "duration_ns": 32295583
+    },
+    {
+      "sequence": 96,
+      "arrival_offset_ns": 22843387416,
+      "render_offset_ns": 22860710333,
+      "duration_ns": 17322917
+    },
+    {
+      "sequence": 98,
+      "arrival_offset_ns": 23180535500,
+      "render_offset_ns": 23199083500,
+      "duration_ns": 18548000
+    },
+    {
+      "sequence": 100,
+      "arrival_offset_ns": 23522299083,
+      "render_offset_ns": 23540844541,
+      "duration_ns": 18545458
+    },
+    {
+      "sequence": 102,
+      "arrival_offset_ns": 23855564916,
+      "render_offset_ns": 23876117333,
+      "duration_ns": 20552417
+    },
+    {
+      "sequence": 104,
+      "arrival_offset_ns": 24192111208,
+      "render_offset_ns": 24221600000,
+      "duration_ns": 29488792
+    },
+    {
+      "sequence": 106,
+      "arrival_offset_ns": 24530505208,
+      "render_offset_ns": 24549063708,
+      "duration_ns": 18558500
+    },
+    {
+      "sequence": 108,
+      "arrival_offset_ns": 24861525041,
+      "render_offset_ns": 24888917291,
+      "duration_ns": 27392250
+    },
+    {
+      "sequence": 110,
+      "arrival_offset_ns": 25539181375,
+      "render_offset_ns": 25557563208,
+      "duration_ns": 18381833
+    },
+    {
+      "sequence": 112,
+      "arrival_offset_ns": 26205611500,
+      "render_offset_ns": 26226075541,
+      "duration_ns": 20464041
+    },
+    {
+      "sequence": 114,
+      "arrival_offset_ns": 26414026333,
+      "render_offset_ns": 26433442083,
+      "duration_ns": 19415750
+    },
+    {
+      "sequence": 116,
+      "arrival_offset_ns": 26580571583,
+      "render_offset_ns": 26606032666,
+      "duration_ns": 25461083
+    },
+    {
+      "sequence": 118,
+      "arrival_offset_ns": 26714001500,
+      "render_offset_ns": 26746373541,
+      "duration_ns": 32372041
+    },
+    {
+      "sequence": 120,
+      "arrival_offset_ns": 35733485833,
+      "render_offset_ns": 35756993750,
+      "duration_ns": 23507917
+    },
+    {
+      "sequence": 122,
+      "arrival_offset_ns": 46173789333,
+      "render_offset_ns": 46212499833,
+      "duration_ns": 38710500
+    }
+  ]
+}

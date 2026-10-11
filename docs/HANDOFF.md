@@ -43,4 +43,20 @@ all eleven unchanged v0 Node variants and the separate frozen v1 slice.
 The broader Matrix host/runtime umbrella remains open. Later catalog contracts, a native
 accessibility dump, Pi and iPad delivery, cross-target work, a numeric production slider binding
 and surface restoration across restart or binary upgrade remain open.
+
+The unlocked-Mac native evidence batch is complete. UI-15 now has final-row List and Table captures
+at 800 by 480 and 1280 by 800 content sizes. UI-16 has active native forward and reverse focus plus
+Space and Enter activation captures. Both remain partial only for later-target or broader-contract
+clauses. UI-20 is verified with native dark and light captures. V0-46 is checked.
+
+A real isolated daemon and client run displayed the checked-in Matrix dashboard. Twenty visible
+Refresh actions produced exactly twenty `ui.event` rows and twenty replacement surfaces. Closing and
+reopening from cursor 41 displayed no duplicate. V0-43 is checked. A 41-sample release run measured
+p50 22.177875 ms and p95 32.372041 ms through first egui render-list construction. UI-40 remains
+partial because GPU and compositor presentation are outside that boundary. The native UI-22 dump is
+still open because the invoking process lacks macOS Accessibility trust.
+
+The working tree contains documentation and evidence assets only. `cargo test --workspace` passed
+with local socket access. `cargo clippy --workspace -- -D warnings` passed. The exact next action is
+to inspect the final diff and commit the accepted evidence batch.
 No model was invoked and `MOTE_LIVE` was unset.
