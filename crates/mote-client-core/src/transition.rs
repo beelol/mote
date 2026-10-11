@@ -662,6 +662,118 @@ mod tests {
     }
 
     #[test]
+    fn replacement_slider_captures_press_move_release_without_duplicate_changes() {
+        let ctx = context();
+        let mut gallery = Gallery::default();
+        frame(&ctx, &gallery, 0.0, vec![]);
+        gallery.select(GalleryPage::Slider);
+        let press = click(egui::pos2(300.0, 40.0));
+        assert!(frame(&ctx, &gallery, 1.0, press[..2].to_vec()).1.is_empty());
+        let moved = frame(
+            &ctx,
+            &gallery,
+            1.016,
+            vec![egui::Event::PointerMoved(egui::pos2(700.0, 40.0))],
+        )
+        .1;
+        assert_eq!(
+            moved,
+            vec![surface_v1::Event::Change {
+                field: "gallery_volume".into(),
+                value: serde_json::json!(8.0),
+                path: vec![0]
+            }]
+        );
+        assert!(frame(&ctx, &gallery, 1.032, vec![]).1.is_empty());
+        let outside = egui::pos2(900.0, 40.0);
+        assert_eq!(
+            frame(
+                &ctx,
+                &gallery,
+                1.048,
+                vec![egui::Event::PointerMoved(outside)]
+            )
+            .1,
+            vec![surface_v1::Event::Change {
+                field: "gallery_volume".into(),
+                value: serde_json::json!(10.0),
+                path: vec![0]
+            }]
+        );
+        assert!(frame(
+            &ctx,
+            &gallery,
+            1.064,
+            vec![egui::Event::PointerButton {
+                pos: outside,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Default::default()
+            }]
+        )
+        .1
+        .is_empty());
+        assert!(frame(&ctx, &gallery, 1.12, vec![]).1.is_empty());
+        assert!(ctx.dragged_id().is_none());
+        let focused = ctx.memory(|memory| memory.focused()).unwrap();
+        assert_eq!(
+            frame(
+                &ctx,
+                &gallery,
+                1.2,
+                vec![egui::Event::Key {
+                    key: egui::Key::ArrowLeft,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Default::default()
+                }]
+            )
+            .1,
+            vec![surface_v1::Event::Change {
+                field: "gallery_volume".into(),
+                value: serde_json::json!(8.0),
+                path: vec![0]
+            }]
+        );
+        assert!(frame(
+            &ctx,
+            &gallery,
+            1.216,
+            vec![egui::Event::Key {
+                key: egui::Key::ArrowLeft,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers: Default::default()
+            }]
+        )
+        .1
+        .is_empty());
+        assert_eq!(
+            frame(
+                &ctx,
+                &gallery,
+                1.3,
+                vec![egui::Event::AccessKitActionRequest(
+                    accesskit::ActionRequest {
+                        action: accesskit::Action::Decrement,
+                        target: accesskit::NodeId(focused.value()),
+                        data: None
+                    }
+                )]
+            )
+            .1,
+            vec![surface_v1::Event::Change {
+                field: "gallery_volume".into(),
+                value: serde_json::json!(6.0),
+                path: vec![0]
+            }]
+        );
+        assert!(frame(&ctx, &gallery, 1.316, vec![]).1.is_empty());
+    }
+
+    #[test]
     fn reinserted_control_accepts_a_click_at_its_previous_geometry() {
         let ctx = context();
         let mut gallery = Gallery::default();

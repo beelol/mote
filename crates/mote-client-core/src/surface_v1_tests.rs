@@ -981,6 +981,69 @@ fn slider_pointer_keys_bounds_and_local_state_reset() {
 }
 
 #[test]
+fn moving_a_slider_rejects_dragging_at_its_old_bounds() {
+    let surface = |tall| {
+        screen(vec![
+            Node::Header {
+                children: vec![text(
+                    if tall {
+                        "one\ntwo\nthree\nfour\nfive\nsix"
+                    } else {
+                        "one"
+                    },
+                    false,
+                )],
+            },
+            slider(4.0),
+        ])
+    };
+    let mut h = Harness::new(SIZES[0], surface(false));
+    let (observations, _, _) = h.frame(vec![]);
+    let bounds = find(&observations, "slider").rect;
+    let press = egui::pos2(bounds.left() + bounds.width() * 0.4, bounds.center().y);
+    assert!(h
+        .frame(vec![
+            egui::Event::PointerMoved(press),
+            egui::Event::PointerButton {
+                pos: press,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Default::default()
+            }
+        ])
+        .1
+        .is_empty());
+    h.surface = surface(true);
+    let old_end = egui::pos2(bounds.right() - 8.0, press.y);
+    assert!(
+        h.frame(vec![egui::Event::PointerMoved(old_end)])
+            .1
+            .is_empty(),
+        "moved slider consumed a drag from its old bounds"
+    );
+    assert!(
+        h.ctx.dragged_id().is_none(),
+        "stale native drag ownership remains"
+    );
+    assert!(h
+        .frame(vec![egui::Event::PointerMoved(
+            old_end - egui::vec2(40.0, 0.0)
+        )])
+        .1
+        .is_empty());
+    assert!(h
+        .frame(vec![egui::Event::PointerButton {
+            pos: old_end,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: Default::default()
+        }])
+        .1
+        .is_empty());
+    assert!(h.frame(vec![]).1.is_empty());
+}
+
+#[test]
 fn disabled_buttons_are_inert_and_confirmation_emits_once() {
     for size in SIZES {
         let h = Harness::new(

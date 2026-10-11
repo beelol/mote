@@ -1000,8 +1000,9 @@ fn current_hit_response(ui: &egui::Ui, response: &mut egui::Response) {
     if previous == Some(response.rect) && !pending {
         return;
     }
+    let captured_drag = pending && previous == Some(response.rect) && response.sense.senses_drag();
     let visible = response.rect.intersect(ui.clip_rect());
-    let (inside, clicked, down, position) = ui.input(|input| {
+    let (inside, clicked, down, dragging, position) = ui.input(|input| {
         let position = input.pointer.interact_pos();
         let origin = input
             .events
@@ -1017,26 +1018,46 @@ fn current_hit_response(ui: &egui::Ui, response: &mut egui::Response) {
             })
             .or(input.pointer.press_origin());
         let inside = position.is_some_and(|pos| visible.contains(pos))
-            && (pending || origin.is_some_and(|pos| visible.contains(pos)));
+            && ((pending && previous == Some(response.rect))
+                || origin.is_some_and(|pos| visible.contains(pos)));
         (
             inside,
             input.pointer.primary_clicked(),
             input.pointer.primary_down(),
+            input.pointer.is_decidedly_dragging(),
             position,
         )
     });
     let allowed = response.enabled()
         && ui.memory(|memory| memory.allows_interaction(ui.layer_id()))
-        && position.is_some_and(|pos| ui.ctx().layer_id_at(pos) == Some(ui.layer_id()));
-    ui.data_mut(|data| data.insert_temp(pending_key, inside && allowed && down));
+        && (captured_drag
+            || position.is_some_and(|pos| ui.ctx().layer_id_at(pos) == Some(ui.layer_id())));
+    let captured = allowed && (inside || captured_drag);
+    ui.data_mut(|data| data.insert_temp(pending_key, captured && down));
+    if response.sense.senses_drag() {
+        if captured && down {
+            ui.ctx().set_dragged_id(response.id);
+            response.flags.set(egui::response::Flags::DRAGGED, dragging);
+        } else if !captured {
+            if ui.ctx().is_being_dragged(response.id) {
+                ui.ctx().stop_dragging();
+            }
+            response.flags.remove(
+                egui::response::Flags::DRAGGED
+                    | egui::response::Flags::DRAG_STARTED
+                    | egui::response::Flags::DRAG_STOPPED,
+            );
+            response.interact_pointer_pos = None;
+        }
+    }
     response
         .flags
         .set(egui::response::Flags::CLICKED, inside && allowed && clicked);
     response.flags.set(
         egui::response::Flags::IS_POINTER_BUTTON_DOWN_ON,
-        inside && allowed && down,
+        captured && down,
     );
-    if inside && allowed && (clicked || down) {
+    if captured && (clicked || down) {
         response.interact_pointer_pos = position;
         response.request_focus();
     }
