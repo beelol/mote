@@ -218,5 +218,20 @@ tests remain in that run. The two live Bonjour tests remain ignored.
 `cargo clippy --workspace -- -D warnings` exited 0.
 
 The scripted suspension stops the gateway only. It does not suspend the Mac or restart the daemon.
+
+## Live sleep preflight, 2026-10-11
+
+At 13:10 America/Los_Angeles, the driver ran these read-only commands on the Mac:
+
+```text
+pmset -g sched
+pmset -g assertions
+pmset -g custom
+```
+
+`pmset -g sched` showed only a wake event dated 2026-10-09. It showed no future wake event.
+`pmset -g assertions` showed `UserIsActive=1`, an active audio-input sleep-prevention assertion and the ChatGPT app's idle-sleep assertion.
+`pmset -g custom` showed AC power with `sleep=0` and Wake on LAN enabled. Wake on LAN is not a verified, controlled wake path for this test.
+The preflight did not establish a reliable automatic wake mechanism. No sleep command or power-setting change was issued. The literal live sleep and wake Verify clause remains open.
 The literal Mac sleep and wake run was not attempted because no safe wake mechanism was configured.
 HOST-05 remains unchecked. This does not prove live iPad connection-state presentation.

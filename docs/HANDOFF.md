@@ -40,6 +40,7 @@ The native harness and recovery regressions are locally committed as `cd2ff0f` a
 HOST-05 remains open.
 Its scripted reconnect, retention resync, version mismatch and identity-change cases exist, but its Verify clause also requires one literal Mac sleep and wake run.
 Do not sleep the owner's Mac unattended without a reliable wake mechanism.
+The 2026-10-11 read-only power preflight found no future wake event and showed active use and audio input. The exact observations are in `docs/verification/HOST-05.md`.
 Do not check HOST-05 from scripted tests alone.
 IPAD-06 through IPAD-08 remain deferred until the owner can provide a physical iPad and distribution authority.
 
