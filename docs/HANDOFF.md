@@ -65,8 +65,24 @@ Simulator check reproduced glutin's missing backend error. WGPU now passes
 `cargo check -p mote-client --target aarch64-apple-ios-sim`. The Mac client suite passed all 164
 tests. The independent review found no blocking issue. The driver reran workspace tests, strict
 clippy and Simulator target check with exit 0. IPAD-01 remains open until the native shell builds.
-The next action is UI plan Task 2, the behavior-neutral shared Rust client core. Its brief is
-`.superpowers/sdd/2026-10-11-ipad-simulator-ui/task-2-brief.md`.
+UI plan Task 2, the behavior-neutral shared Rust client core, is assigned to `ipad_core_impl` from
+pushed base `57e812b`. Its brief is
+`.superpowers/sdd/2026-10-11-ipad-simulator-ui/task-2-brief.md`. Review its diff and report
+before pushing.
+The core extraction keeps Mac-specific ObservationHarness, navigation and worker integration in
+the desktop shell. A narrow ruling permits `serde_json` as a pure-data codec if existing typed
+Matrix reducers need it. The core must still exclude eframe, mote-ipc, filesystem, sockets,
+SQLite and UIKit.
+The implementer is moving neutral renderer, state, gallery and theme modules and their tests.
+The event-log Event type will re-export the identical protocol DTO to keep Mac call sites source
+compatible. Focused parity checks and the Apple target check remain in progress.
+The core and observation-enabled core both compile for `aarch64-apple-ios-sim`. Core tests passed
+58 cases. Task 2 and its observation fix were pushed as `6f85b44` and `c515750`. The extraction
+keeps exact Matrix IDs, roles, shapes, hit regions and typed events, with an event DTO shared through
+the protocol. The review and scoped re-review found no blocking issue. The driver independently
+reran workspace tests, strict clippy and Simulator core check with exit 0. The 32-frame observation
+regression is fixed and its test passes. Mac-specific observation integration remains in the
+desktop shell. IPAD-01 and IPAD-02 remain open. Next is UI Task 3, the minimal native iPad shell.
 The host plan ledger is
 `.superpowers/sdd/2026-10-11-ipad-simulator-host/progress.md`. The UI plan ledger is
 `.superpowers/sdd/2026-10-11-ipad-simulator-ui/progress.md`. The UI subagent has not yet been
