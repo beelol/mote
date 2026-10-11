@@ -978,6 +978,8 @@ impl MoteApp {
     }
 
     fn draw_frame(&mut self, ctx: &egui::Context) {
+        #[cfg(any(test, feature = "test-observation"))]
+        mote_client_core::observation::take_matrix();
         let revisions = self.draw_shell(ctx);
         self.display_latency.drawn(&revisions, self.clock.now_ns());
     }
@@ -1005,6 +1007,7 @@ impl Drop for MoteApp {
 
 #[cfg(any(test, feature = "test-observation"))]
 #[path = "observation.rs"]
+#[allow(dead_code)]
 pub mod observation;
 
 #[cfg(test)]

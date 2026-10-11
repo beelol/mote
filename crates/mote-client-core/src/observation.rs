@@ -167,6 +167,10 @@ thread_local! {
     pub(crate) static OBSERVATIONS: std::cell::RefCell<Vec<MatrixObservation>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
+pub fn take_matrix() -> Vec<MatrixObservation> {
+    OBSERVATIONS.with(|observations| std::mem::take(&mut *observations.borrow_mut()))
+}
+
 pub struct MatrixHarness {
     pub ctx: egui::Context,
     pub size: egui::Vec2,
@@ -187,7 +191,7 @@ impl MatrixHarness {
         Vec<crate::surface_v1::Event>,
         egui::FullOutput,
     ) {
-        OBSERVATIONS.with(|obs| obs.borrow_mut().clear());
+        take_matrix();
         let mut emitted = Vec::new();
         let output = self.ctx.run(
             egui::RawInput {
@@ -203,11 +207,7 @@ impl MatrixHarness {
                     });
             },
         );
-        (
-            OBSERVATIONS.with(|obs| obs.borrow().clone()),
-            emitted,
-            output,
-        )
+        (take_matrix(), emitted, output)
     }
     pub fn click(&self, pos: egui::Pos2) -> Vec<crate::surface_v1::Event> {
         let mut result = self

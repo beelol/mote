@@ -991,6 +991,27 @@ pub fn assert_v0_payload(surface: &serde_json::Value) {
 mod matrix_renderer_tests {
     use super::*;
 
+    #[test]
+    fn matrix_observations_retain_only_the_current_mac_frame() {
+        let mut harness = ObservationHarness::default();
+        harness.app.fixture = crate::contract::decode(&payload(1));
+        harness.frame(vec![]);
+        mote_client_core::observation::take_matrix();
+
+        for _ in 0..32 {
+            harness.frame(vec![]);
+        }
+        let observations = mote_client_core::observation::take_matrix();
+        assert_eq!(observations.iter().filter(|node| node.path == [0]).count(), 1);
+        assert!(mote_client_core::observation::take_matrix().is_empty());
+
+        harness.app.fixture = crate::contract::decode(&payload(1));
+        harness.frame(vec![]);
+        harness.app.fixture = crate::contract::decode(&payload(2));
+        harness.frame(vec![]);
+        assert!(mote_client_core::observation::take_matrix().is_empty());
+    }
+
     fn payload(version: u32) -> serde_json::Value {
         serde_json::json!({"surface_id":"matrix","surface":{"type":"text","value":"Fallback only"},"matrix_surface":{"version":version,"root":{"type":"screen","children":[{"type":"button","label":"Matrix action","event":"matrix.test"}]}}})
     }
