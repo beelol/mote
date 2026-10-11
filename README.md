@@ -76,7 +76,7 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
   Existing v0 behavior remains authoritative until each versioned replacement is verified.
   Hardware-only evidence may remain open while independent implementation continues.
   [decisions](matrix/decisions.md) [evidence](docs/verification/UI-00.md)
-- [ ] **Matrix toolchain** Implement UI-01 through UI-12, UI-32, UI-35 and UI-45 using the
+- [x] **Matrix toolchain** Implement UI-01 through UI-12, UI-32, UI-35 and UI-45 using the
   activated plan. **Verify:** complete every criterion's full Verify clause in `docs/backlog.md` and
   record separate evidence files. [spec](docs/superpowers/specs/2026-10-10-matrix-toolchain.md)
   [plan](docs/superpowers/plans/2026-10-10-matrix-toolchain.md)
@@ -86,10 +86,8 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
   [UI-07](docs/verification/UI-07.md), [UI-08](docs/verification/UI-08.md),
   [UI-09](docs/verification/UI-09.md), [UI-10](docs/verification/UI-10.md),
   [UI-11](docs/verification/UI-11.md),
-  [UI-12](docs/verification/UI-12.md), [UI-32](docs/verification/UI-32.md)
-  and [UI-45](docs/verification/UI-45.md).
-  [UI-35](docs/verification/UI-35.md) has passing production and client rendering tests.
-  Its native screenshot remains blocked by the locked desktop.
+  [UI-12](docs/verification/UI-12.md), [UI-32](docs/verification/UI-32.md),
+  [UI-35](docs/verification/UI-35.md) and [UI-45](docs/verification/UI-45.md).
   The checked-in dashboard activates the first versioned consumer slice with anchored header,
   scrolling body, footer and direct-child fill. Its dual payload and contract 1 control paths are
   verified in [V0-45](docs/verification/V0-45.md).
@@ -116,6 +114,8 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
   Production egui accessibility has exact filtered AccessKit role trees for all ten fixtures and
   the gallery at both approved viewports in [UI-22](docs/verification/UI-22.md).
   UI-22 remains open for the native macOS dump and the other target.
+  The first Mac consumer visibly renders all eleven unchanged v0 variants through eframe and egui
+  in [UI-39](docs/verification/UI-39.md). This does not close the full-catalog or hardware work.
 - [x] **UI-43** Headless runtime layout respects clipping, reading order and minimum hit regions.
   **Verify:** measure every supported fixture at 800 by 480 and 1280 by 800; assert no unintended
   overlapping hit regions, no paint escaping the intended scroll clip and 48 by 48 point targets.
