@@ -500,4 +500,58 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     [self assertText:@"Recovered panel" app:app];
     [self capture:@"inferred-prose-fallback" app:app];
 }
+
+- (void)assertExactLine:(NSString *)text timeout:(NSTimeInterval)timeout app:(XCUIApplication *)app {
+    NSPredicate *predicate = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        for (VNRecognizedTextObservation *item in [self recognize:app]) {
+            if (statusTextMatches([item topCandidates:1].firstObject.string, text)) return YES;
+        }
+        return NO;
+    }];
+    XCTNSPredicateExpectation *expectation = [[XCTNSPredicateExpectation alloc] initWithPredicate:predicate object:app];
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[expectation] timeout:timeout], XCTWaiterResultCompleted,
+                   @"Missing terminal row %@ in %@", text, [self visibleText:app]);
+}
+
+- (void)testBrowserApprovalDenyApproveRepeatAndNaturalExpiry {
+    XCUIApplication *app = [[XCUIApplication alloc] init];
+    [app activate];
+    [self assertText:@"Browser: online" app:app];
+    [self assertText:@"Browser fixture ready" app:app];
+    NSLog(@"MOTE BROWSER READY");
+    [self assertText:@"Pending" app:app];
+    [self capture:@"browser-pending-deny" app:app];
+    [app terminate];
+    [app launch];
+    [self assertText:@"Browser: online" app:app];
+    [self assertText:@"Pending" app:app];
+    [self capture:@"browser-pending-reconnected" app:app];
+    [self tapText:@"Deny" app:app];
+    [self assertExactLine:@"Denied" timeout:20 app:app];
+    [self capture:@"browser-denied" app:app];
+    NSLog(@"MOTE BROWSER DENIED OBSERVED");
+    [self assertExactLine:@"Pending" timeout:20 app:app];
+    [self capture:@"browser-pending-approve" app:app];
+    CGRect box = [self findText:@"Approve" app:app].boundingBox;
+    CGVector normalized = CGVectorMake(CGRectGetMidX(box), 1.0 - CGRectGetMidY(box));
+    NSLog(@"MOTE BROWSER REPEAT TAP point=(%.2f, %.2f)", normalized.dx * app.windows.firstMatch.frame.size.width, normalized.dy * app.windows.firstMatch.frame.size.height);
+    XCUICoordinate *approval = [app.windows.firstMatch coordinateWithNormalizedOffset:normalized];
+    [approval tap];
+    [approval tap];
+    [self assertExactLine:@"Approved" timeout:20 app:app];
+    [self assertText:@"Approved request completed." app:app];
+    [self assertText:@"HTTP 200" app:app];
+    [self capture:@"browser-approved-matrix-result" app:app];
+    NSLog(@"MOTE BROWSER APPROVED OBSERVED");
+    [self assertExactLine:@"Pending" timeout:20 app:app];
+    [self capture:@"browser-pending-expiry" app:app];
+    [self assertExactLine:@"Expired" timeout:150 app:app];
+    [self capture:@"browser-expired" app:app];
+    for (VNRecognizedTextObservation *item in [self recognize:app]) {
+        NSString *text = [item topCandidates:1].firstObject.string;
+        XCTAssertFalse(statusTextMatches(text, @"Approve") || statusTextMatches(text, @"Deny"));
+    }
+    [self assertText:@"Approved request completed." app:app];
+    NSLog(@"MOTE BROWSER EXPIRED OBSERVED");
+}
 @end
