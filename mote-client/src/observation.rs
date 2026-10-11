@@ -131,7 +131,7 @@ impl ObservationHarness {
             .chat
             .messages
             .iter()
-            .find_map(|message| Some((message.surface_seq?, message.surface.clone()?)))
+            .find_map(|message| Some((message.surface_seq?, message.surface.as_ref()?.display_v0().clone())))
     }
 
     pub fn preview(&mut self, node: Node, viewport: egui::Vec2) {

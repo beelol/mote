@@ -458,6 +458,7 @@ impl MoteApp {
                         crate::theme::caption(ui, m.status.label());
                     });
                     if let Some(node) = &m.surface {
+                        let node = node.display_v0();
                         let first_event = clicked.len();
                         if m.surface_id.as_deref() == Some("matrix") {
                             ui.push_id(("matrix", self.chat.matrix_epoch), |ui| {
@@ -1574,8 +1575,8 @@ mod tests {
         app.drain_events();
         assert_eq!(app.chat.messages.len(), 1);
         assert_eq!(
-            app.chat.messages[0].surface,
-            Some(Node::Text {
+            app.chat.messages[0].surface.as_ref().map(crate::contract::Surface::display_v0),
+            Some(&Node::Text {
                 value: "ready".into()
             })
         );
@@ -1713,6 +1714,82 @@ mod tests {
     }
 
     #[test]
+    fn dual_surface_replaces_once_draws_fallback_and_advances_one_cursor() {
+        let cursor = std::env::temp_dir().join(format!(
+            "mote-client-contract-cursor-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut chat = ChatState::default();
+        chat.reduce(&Event {
+            seq: 29, ts: 0, scope_id: "main".into(), kind: "ui.surface".into(),
+            payload: serde_json::json!({
+                "surface_id":"matrix",
+                "surface":{"type":"text", "value":"Prior dashboard"}
+            }),
+        });
+        let (tx, rx) = std::sync::mpsc::channel();
+        tx.send(Event {
+            seq: 30, ts: 0, scope_id: "main".into(), kind: "ui.surface".into(),
+            payload: serde_json::json!({
+                "surface_id":"matrix",
+                "surface":{"type":"text", "value":"Fallback dashboard"},
+                "matrix_surface":{
+                    "version":1,
+                    "root":{
+                        "type":"screen",
+                        "children":[{"type":"text", "value":"Matrix dashboard"}]
+                    }
+                }
+            }),
+        }.into()).unwrap();
+
+        let (_, accepted, _, persisted) = apply_next_event(&mut chat, &rx, Some(&cursor)).unwrap();
+        persisted.unwrap();
+        assert_eq!(accepted, Some(crate::state::SurfaceReduction {
+            revision: 2,
+            superseded_revision: Some(1),
+        }));
+        assert_eq!(crate::cursor::load(&cursor).seq, 30);
+        assert_eq!(chat.messages.len(), 1);
+        assert!(chat.messages[0].surface.as_ref().unwrap().matrix_v1().is_some());
+
+        tx.send(Event {
+            seq: 31, ts: 0, scope_id: "main".into(), kind: "ui.surface".into(),
+            payload: serde_json::json!({
+                "surface_id":"matrix",
+                "surface":{"type":"unknown"},
+                "matrix_surface":{"version":2, "root":{"type":"unknown"}}
+            }),
+        }.into()).unwrap();
+        let (_, rejected, _, persisted) = apply_next_event(&mut chat, &rx, Some(&cursor)).unwrap();
+        persisted.unwrap();
+        assert_eq!(rejected, None);
+        assert_eq!(crate::cursor::load(&cursor).seq, 31);
+        assert_eq!(chat.messages.len(), 1);
+        assert_eq!(chat.messages[0].render_revision, Some(2));
+
+        let (mut app, _) = app();
+        app.chat = chat;
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let output = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| app.chat_view(ui));
+        });
+        let text = output.shapes.iter().filter_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) => Some(text.galley.text()),
+            _ => None,
+        }).collect::<Vec<_>>().join("\n");
+        assert!(text.contains("Fallback dashboard"));
+        assert!(!text.contains("Matrix dashboard"));
+
+        std::fs::remove_file(cursor).ok();
+    }
+
+    #[test]
     fn cursor_write_failure_keeps_reduced_event_visible_and_halts_later_events() {
         let root = std::env::temp_dir().join(format!(
             "mote-client-cursor-failure-{}-{}",
@@ -1757,7 +1834,7 @@ mod tests {
         assert!(app.cursor_halted);
         assert_eq!(app.chat.messages.len(), 1);
         assert_eq!(
-            app.chat.messages[0].surface.as_ref(),
+            app.chat.messages[0].surface.as_ref().map(crate::contract::Surface::display_v0),
             Some(&Node::Text {
                 value: "Kept after failure".into(),
             })

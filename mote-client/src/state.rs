@@ -1,4 +1,5 @@
 use mote_eventlog::Event;
+#[cfg(test)]
 use mote_ui::Node;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -31,7 +32,7 @@ pub struct Message {
     pub role: String,
     pub text: String,
     pub status: Status,
-    pub surface: Option<Node>,
+    pub surface: Option<crate::contract::Surface>,
     pub surface_id: Option<String>,
     pub surface_seq: Option<i64>,
     pub surface_instance: i64,
@@ -247,8 +248,7 @@ impl ChatState {
     }
 
     fn reduce_surface(&mut self, ev: &Event) -> Option<SurfaceReduction> {
-        let bytes = serde_json::to_vec(&ev.payload["surface"]).ok()?;
-        let node = mote_ui::validate(&bytes).ok()?;
+        let surface = crate::contract::decode(&ev.payload)?;
         let surface_id = ev.payload["surface_id"].as_str();
         if surface_id == Some("matrix") && ev.seq <= self.matrix_replay_through {
             return None;
@@ -262,7 +262,7 @@ impl ChatState {
             })
         }) {
             superseded_revision = existing.render_revision;
-            existing.surface = Some(node);
+            existing.surface = Some(surface);
             existing.surface_seq = (surface_id == Some("matrix")).then_some(ev.seq);
             existing.render_revision = Some(revision);
             existing.status = Status::Read;
@@ -272,7 +272,7 @@ impl ChatState {
                 role: "assistant".into(),
                 text: String::new(),
                 status: Status::Read,
-                surface: Some(node),
+                surface: Some(surface),
                 surface_id: surface_id.map(str::to_owned),
                 surface_seq: (surface_id == Some("matrix")).then_some(ev.seq),
                 surface_instance: ev.seq,
@@ -430,7 +430,8 @@ mod tests {
         replay.reduce(&surface);
         replay.reduce(&diagnostic);
         assert_eq!(replay.messages[1].text, live.messages[1].text);
-        assert_eq!(live.messages[0].surface, Some(Node::Text { value:"Prior dashboard".into() }));
+        assert_eq!(live.messages[0].surface.as_ref().map(crate::contract::Surface::display_v0),
+            Some(&Node::Text { value:"Prior dashboard".into() }));
         let without_hint = event(22, "ui.diagnostic", serde_json::json!({"diagnostics":[{
             "code":"E_PARSE_TOKEN", "span":{"start":1,"end":2}, "message":"unexpected token", "hint":null
         }]}));
@@ -462,8 +463,8 @@ mod tests {
         assert_eq!(chat.messages.len(), 1);
         assert_eq!(chat.messages[0].surface_id.as_deref(), Some("matrix"));
         assert_eq!(
-            chat.messages[0].surface,
-            Some(Node::Text {
+            chat.messages[0].surface.as_ref().map(crate::contract::Surface::display_v0),
+            Some(&Node::Text {
                 value: "second".into()
             })
         );
@@ -478,5 +479,51 @@ mod tests {
             superseded_revision: Some(1),
         }));
         assert_eq!(chat.messages[0].render_revision, Some(2));
+    }
+
+    #[test]
+    fn dual_surface_reduces_once_and_both_invalid_preserves_committed_surface() {
+        let mut chat = ChatState::default();
+        let accepted = chat.reduce(&event(
+            30,
+            "ui.surface",
+            serde_json::json!({
+                "surface_id":"matrix",
+                "surface":{"type":"text", "value":"Fallback dashboard"},
+                "matrix_surface":{
+                    "version":1,
+                    "root":{
+                        "type":"screen",
+                        "children":[{"type":"text", "value":"Matrix dashboard"}]
+                    }
+                }
+            }),
+        ));
+
+        assert_eq!(chat.messages.len(), 1);
+        assert_eq!(accepted, Some(SurfaceReduction {
+            revision: 1,
+            superseded_revision: None,
+        }));
+        let retained = chat.messages[0].surface.as_ref().unwrap();
+        assert!(retained.matrix_v1().is_some());
+        assert_eq!(retained.display_v0(), &Node::Text {
+            value: "Fallback dashboard".into()
+        });
+
+        let rejected = chat.reduce(&event(
+            31,
+            "ui.surface",
+            serde_json::json!({
+                "surface_id":"matrix",
+                "surface":{"type":"unknown"},
+                "matrix_surface":{"version":2, "root":{"type":"unknown"}}
+            }),
+        ));
+
+        assert_eq!(rejected, None);
+        assert_eq!(chat.messages.len(), 1);
+        assert_eq!(chat.messages[0].render_revision, Some(1));
+        assert!(chat.messages[0].surface.as_ref().unwrap().matrix_v1().is_some());
     }
 }
