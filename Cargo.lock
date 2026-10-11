@@ -2889,6 +2889,7 @@ dependencies = [
  "libc",
  "matrix-lang",
  "model2vec-rs",
+ "mote-browser",
  "mote-client",
  "mote-context",
  "mote-eventlog",
@@ -2908,6 +2909,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "toml",
+ "url",
 ]
 
 [[package]]

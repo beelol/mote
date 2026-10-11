@@ -238,7 +238,9 @@ impl EventLog {
                             .map_err(|_| rusqlite::Error::InvalidQuery)?,
                         expires_at,
                     };
-                    tx.execute("INSERT OR IGNORE INTO approval_devices(host_id,device_id,approval_id,action_hash,expires_at) VALUES(?1,?2,?3,?4,?5)", rusqlite::params![host_id.as_str(),device,id,approval.action_hash.as_str(),expires_at])?;
+                    if approval.kind == "file_write" {
+                        tx.execute("INSERT OR IGNORE INTO approval_devices(host_id,device_id,approval_id,action_hash,expires_at) VALUES(?1,?2,?3,?4,?5)", rusqlite::params![host_id.as_str(),device,id,approval.action_hash.as_str(),expires_at])?;
+                    }
                     pending_approvals.push(approval);
                 }
             }
@@ -582,7 +584,7 @@ mod tests {
         let snapshot = log.host_snapshot_for_device(&host, "ipad", 100).unwrap();
         assert_eq!(snapshot.pending_approvals.len(), 1);
         assert_eq!(snapshot.pending_approvals[0].approval_id.as_str(), "1");
-        let grants: i64 = log.inner.lock().unwrap().conn.query_row("SELECT count(*) FROM approval_devices WHERE approval_id IN (2,3)", [], |row| row.get(0)).unwrap();
+        let grants: i64 = log.inner.lock().unwrap().conn.query_row("SELECT count(*) FROM approval_devices", [], |row| row.get(0)).unwrap();
         assert_eq!(grants, 0);
     }
 

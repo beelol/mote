@@ -28,6 +28,8 @@ mote-ui.workspace = true
 mote-redact.workspace = true
 mote-gateway.workspace = true
 mote-protocol.workspace = true
+mote-browser.workspace = true
+url.workspace = true
 sha2.workspace = true
 matrix-lang = { path = "../crates/matrix-lang" }
 serde_json.workspace = true

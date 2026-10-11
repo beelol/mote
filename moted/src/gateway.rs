@@ -133,6 +133,9 @@ pub fn dispatch(
         "approval.decision" => {
             let decision: ApprovalDecision = serde_json::from_value(params)
                 .map_err(|_| RpcError::invalid_params("invalid typed approval"))?;
+            if let Some(result) = super::browser::decide(daemon, device_id, &decision)? {
+                return Ok(result);
+            }
             let changed = daemon
                 .watchers
                 .lock()

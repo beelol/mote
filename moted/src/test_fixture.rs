@@ -23,6 +23,7 @@ pub(super) fn build(
     )
     .map_err(|error| std::io::Error::other(error.to_string()))?;
     let daemon = Daemon {
+        browser: Mutex::new(None),
         host_id: identity.host_id().clone(),
         gateway: Mutex::new(None),
         log: log.clone(),

@@ -5,6 +5,7 @@
 
 #[allow(dead_code)]
 pub(crate) mod approvals;
+mod browser;
 mod bench;
 mod charter;
 pub(crate) mod config;
@@ -73,7 +74,9 @@ impl ThinkServers {
             thread_id.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect();
         let dir = self.data_dir.join("think").join(safe);
         std::fs::create_dir_all(&dir).map_err(|e| format!("think dir: {e}"))?;
-        std::fs::write(dir.join("opencode.json"), think_config(&self.moted_exe, think_model))
+        let mut tool_config: Value = serde_json::from_str(&think_config(&self.moted_exe, think_model)).map_err(|error|error.to_string())?;
+        tool_config["mcp"]["moted"]["environment"] = json!({"MOTE_HOME":self.data_dir,"MOTE_THREAD_ID":thread_id});
+        std::fs::write(dir.join("opencode.json"), tool_config.to_string())
             .map_err(|e| format!("write opencode.json: {e}"))?;
         let server = Arc::new(OpenCodeServer::start(&dir, Duration::from_secs(60))?);
         self.servers.insert(thread_id.to_string(), server.clone());
@@ -106,6 +109,7 @@ pub(crate) fn now_ms() -> i64 {
 }
 
 pub(crate) struct Daemon {
+    browser: Mutex<Option<Arc<Mutex<browser::BrowserTask>>>>,
     host_id: mote_protocol::HostId,
     gateway: Mutex<Option<std::sync::Weak<mote_gateway::GatewayServer>>>,
     log: EventLog,
@@ -789,10 +793,17 @@ fn commit_surface(log: &EventLog, thread: &str, surface: &Value) -> Result<Value
 }
 
 impl Dispatch for Daemon {
+    fn host_snapshot_delivered(&self, actor: &Actor, snapshot: &mote_protocol::HostSnapshot) -> Result<(), RpcError> {
+        browser::deliver_snapshot(self, actor, snapshot)
+    }
+    fn host_event_delivered(&self, actor: &Actor, event: &mote_protocol::Event) -> Result<(), RpcError> {
+        browser::deliver(self, actor, event)
+    }
     fn call_with_context(&self, actor: &Actor, method: &str, params: Value) -> Result<Value, RpcError> {
         gateway::dispatch(self, actor, method, params)
     }
     fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
+        if method.starts_with("browser.") { return browser::call(self, method, params); }
         match method {
             "hello" => Ok(json!({"host_id":self.host_id,"protocol_major":mote_protocol::PROTOCOL_MAJOR})),
             "gateway.pair" | "gateway.pending" | "gateway.confirm" | "gateway.revoke" => gateway::local_control(self, method, params),
@@ -1418,7 +1429,7 @@ mod approval_dispatch_tests {
             click_label(&mut client, label);
             if let Some(option) = option { click_label(&mut client, option); }
             let params = json!({"thread":"main","surface_seq":1,"surface_contract":1,"node_path":path,"event":event_name,"args":args});
-            assert_eq!(client.queued(), [params.clone()]);
+            assert_eq!(client.queued(), std::slice::from_ref(&params));
             let committed = daemon.matrix_surfaces.lock().unwrap()["main"].clone();
             assert!(committed.accepts(&params, event_name, &args));
             let mut legacy_params = params.clone();
@@ -1614,6 +1625,7 @@ mod approval_dispatch_tests {
         )
         .unwrap();
         Daemon {
+            browser: Mutex::new(None),
             host_id: mote_protocol::HostId::from_public_key(&[7;32]),
             gateway: Mutex::new(None),
             log,
@@ -4525,6 +4537,7 @@ mod turn_event_tests {
         )
         .unwrap();
         let daemon = Arc::new(Daemon {
+            browser: Mutex::new(None),
             host_id: mote_protocol::HostId::from_public_key(&[7;32]),
             gateway: Mutex::new(None),
             log: log.clone(),
@@ -4734,7 +4747,10 @@ fn run_mcp() -> Result<(), i32> {
         eprintln!("moted mcp: cannot open context store: {e}");
         1
     })?;
-    let server = mcp::McpServer::new(Arc::new(Mutex::new(store)), file_root());
+    let server = mcp::McpServer::new(Arc::new(Mutex::new(store)), file_root()).with_browser(
+        mote_paths::socket_path(),
+        std::env::var("MOTE_THREAD_ID").unwrap_or_else(|_| "main".into()),
+    );
     let stdin = std::io::stdin();
     server.serve(stdin.lock(), std::io::stdout()).map_err(|e| {
         eprintln!("moted mcp: {e}");
@@ -4827,6 +4843,7 @@ fn run() -> Result<(), i32> {
 
     let socket = mote_paths::socket_path();
     let daemon = Arc::new(Daemon {
+        browser: Mutex::new(None),
         host_id: identity.host_id().clone(),
         gateway: Mutex::new(None),
         log,

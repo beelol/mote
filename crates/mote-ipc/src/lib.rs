@@ -56,6 +56,12 @@ pub enum Actor {
 }
 
 pub trait Dispatch: Send + Sync + 'static {
+    fn host_snapshot_delivered(&self, _actor: &Actor, _snapshot: &mote_protocol::HostSnapshot) -> Result<(), RpcError> {
+        Ok(())
+    }
+    fn host_event_delivered(&self, _actor: &Actor, _event: &mote_protocol::Event) -> Result<(), RpcError> {
+        Ok(())
+    }
     fn event_cursor(&self) -> i64 { 0 }
     fn call(&self, method: &str, params: Value) -> Result<Value, RpcError>;
     fn call_with_context(&self, actor: &Actor, method: &str, params: Value) -> Result<Value, RpcError> {

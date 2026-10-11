@@ -33,6 +33,19 @@ pub enum BrowserCommand {
         reference: NodeRef,
         value: String,
     },
+    Select {
+        reference: NodeRef,
+        value: String,
+    },
+    Scroll {
+        delta: i64,
+    },
+    Back,
+    Fetch {
+        url: String,
+        method: String,
+        body: Option<String>,
+    },
     Click {
         reference: NodeRef,
     },
@@ -531,6 +544,92 @@ async fn execute(
         bail!("current page is not approved");
     }
     match command {
+        BrowserCommand::Select { reference, value } => {
+            let backend = references.lock().unwrap().resolve(&reference)?;
+            call_node(page,backend,&format!("function(){{if(!(this instanceof HTMLSelectElement))throw Error('not a select');const value={};if(!Array.from(this.options).some(option=>option.value===value))throw Error('unknown option');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(this,value);this.dispatchEvent(new Event('input',{{bubbles:true}}));this.dispatchEvent(new Event('change',{{bubbles:true}}));return 'selected'}}",serde_json::to_string(&value)?)).await?;
+            Ok(BrowserResult::Filled)
+        }
+        BrowserCommand::Scroll { delta } => {
+            let backend = page
+                .execute(dom::GetDocumentParams::default())
+                .await?
+                .result
+                .root
+                .backend_node_id;
+            call_node(
+                page,
+                *backend.inner(),
+                &format!(
+                    "function(){{window.scrollBy(0,{});return 'scrolled'}}",
+                    delta.clamp(-10000, 10000)
+                ),
+            )
+            .await?;
+            Ok(BrowserResult::Filled)
+        }
+        BrowserCommand::Back => {
+            let history = page
+                .execute(page::GetNavigationHistoryParams::default())
+                .await?
+                .result;
+            let entry = history
+                .current_index
+                .checked_sub(1)
+                .and_then(|index| history.entries.get(index as usize))
+                .ok_or_else(|| anyhow!("no earlier page"))?;
+            if policy.request(&entry.url, "GET") != BrowserEffect::Read {
+                bail!("history destination is not an approved read");
+            }
+            references.lock().unwrap().begin_document();
+            crate::continuation::cancel_all(page, boundary).await;
+            let mut navigation = page.event_listener::<page::EventFrameNavigated>().await?;
+            let mut history_changes = page
+                .event_listener::<page::EventNavigatedWithinDocument>()
+                .await?;
+            page.execute(page::NavigateToHistoryEntryParams::new(entry.id))
+                .await?;
+            tokio::time::timeout(Duration::from_secs(5), async {
+                tokio::select! {
+                    _ = navigation.next() => (),
+                    _ = history_changes.next() => (),
+                }
+            })
+            .await?;
+            Ok(BrowserResult::Navigated)
+        }
+        BrowserCommand::Fetch { url, method, body } => {
+            let effect = policy.request(&url, &method);
+            if !matches!(effect, BrowserEffect::Read | BrowserEffect::Commit) {
+                bail!("request is outside approved origins");
+            }
+            let backend = page
+                .execute(dom::GetDocumentParams::default())
+                .await?
+                .result
+                .root
+                .backend_node_id;
+            if effect == BrowserEffect::Commit {
+                let reference = references.lock().unwrap().reference(*backend.inner());
+                return crate::continuation::prepare_request(
+                    page,
+                    policy,
+                    references,
+                    boundary,
+                    reference,
+                    crate::continuation::NativeRequest { url, method, body },
+                    None,
+                )
+                .await;
+            }
+            if body.is_some() {
+                bail!("read requests cannot include a body");
+            }
+            let value = call_node(page,*backend.inner(),&format!("async function(){{const response=await fetch({},{{credentials:'omit',redirect:'error',mode:'same-origin'}});return (await response.text()).slice(0,32768)}}",serde_json::to_string(&url)?)).await?;
+            Ok(BrowserResult::Text(format!(
+                "<untrusted_browser_page>\n{}\n</untrusted_browser_page>",
+                mote_redact::redact(&value)
+            )))
+        }
         BrowserCommand::Snapshot {
             interactive_only,
             token_cap,
@@ -672,8 +771,12 @@ async fn execute(
             })
         }
         BrowserCommand::Screenshot => Ok(BrowserResult::Screenshot(
-            page.screenshot(chromiumoxide::page::ScreenshotParams::default())
-                .await?,
+            base64::engine::general_purpose::STANDARD.decode(
+                page.execute(page::CaptureScreenshotParams::default())
+                    .await?
+                    .result
+                    .data,
+            )?,
         )),
         BrowserCommand::Prepare { reference } => {
             crate::continuation::prepare(page, policy, references, boundary, reference).await
@@ -734,6 +837,7 @@ pub(crate) async fn call_node(page: &Page, backend: i64, function: &str) -> Resu
                 .object_id(object)
                 .function_declaration(function)
                 .return_by_value(true)
+                .await_promise(true)
                 .build()
                 .map_err(|error| anyhow!(error))?,
         )

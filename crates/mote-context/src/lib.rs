@@ -11,6 +11,18 @@ pub mod mem;
 mod tool_ledger_tests {
     use super::*;
     #[test]
+    fn pending_tool_attempt_completes_once_for_its_own_host() {
+        let store = ContextStore::open_in_memory().unwrap();
+        let id = store.record_tool(&ToolLedgerEntry { host_id:"home".into(),thread_id:"thread".into(),action:"browser.approved_request".into(),input_tokens:5,output_tokens:0,latency_ms:0,status:"pending".into() }).unwrap();
+        assert!(!store.complete_tool(id,"foreign",7,12,"ok").unwrap());
+        assert!(store.complete_tool(id,"home",7,12,"indeterminate").unwrap());
+        assert!(!store.complete_tool(id,"home",8,13,"ok").unwrap());
+        let rows = store.tool_ledger_since(0).unwrap();
+        assert_eq!(rows.len(),1);
+        assert_eq!(rows[0].entry.status,"indeterminate");
+        assert_eq!(rows[0].entry.output_tokens,7);
+    }
+    #[test]
     fn tool_accounting_does_not_create_model_calls_or_packs() {
         let store = ContextStore::open_in_memory().unwrap();
         let id = store.record_tool(&ToolLedgerEntry { host_id: "home".into(), thread_id: "thread".into(), action: "browser.snapshot".into(), input_tokens: 7, output_tokens: 13, latency_ms: 24, status: "ok".into() }).unwrap();
@@ -393,6 +405,10 @@ impl ContextStore {
         self.conn.execute("INSERT INTO tool_ledger(ts,host_id,thread_id,action,input_tokens,output_tokens,latency_ms,status)
             VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",rusqlite::params![self.now(),entry.host_id,entry.thread_id,entry.action,entry.input_tokens,entry.output_tokens,entry.latency_ms,entry.status])?;
         Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn complete_tool(&self, id: i64, host_id: &str, output_tokens: i64, latency_ms: i64, status: &str) -> rusqlite::Result<bool> {
+        Ok(self.conn.execute("UPDATE tool_ledger SET output_tokens=?1,latency_ms=?2,status=?3 WHERE id=?4 AND host_id=?5 AND status='pending'",rusqlite::params![output_tokens,latency_ms,status,id,host_id])? == 1)
     }
 
     pub fn tool_ledger_since(&self, since_ts: i64) -> rusqlite::Result<Vec<ToolLedgerRow>> {

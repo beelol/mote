@@ -276,7 +276,8 @@ fn serve<D: Dispatch>(stream: TcpStream, shared: &Shared, dispatch: &D) -> Resul
                             "wrong snapshot host"
                         );
                         last_seq = snapshot.cursor.seq;
-                        send(&mut stream, &mut session, &HostFrame::Snapshot { snapshot })?;
+                        let frame = HostFrame::Snapshot { snapshot };
+                        transmit_snapshot(&frame, &actor, dispatch, || send(&mut stream, &mut session, &frame))?;
                         replay = dispatch
                             .subscribe_host(last_seq)
                             .ok_or_else(|| anyhow::anyhow!("subscription unavailable"))?;
@@ -308,9 +309,11 @@ fn serve<D: Dispatch>(stream: TcpStream, shared: &Shared, dispatch: &D) -> Resul
                             &mut session,
                             &HostFrame::Event {
                                 host_id: shared.host.host_id().clone(),
-                                event,
+                                event: event.clone(),
                             },
                         )?;
+                        dispatch.host_event_delivered(&actor, &event)
+                            .map_err(|_| anyhow::anyhow!("event delivery authorization failed"))?;
                     }
                 }
             } else {
@@ -415,7 +418,11 @@ fn serve<D: Dispatch>(stream: TcpStream, shared: &Shared, dispatch: &D) -> Resul
                 }
             }
         };
-        send(&mut stream, &mut session, &outcome)?;
+        if method == "snapshot" {
+            transmit_snapshot(&outcome, &actor, dispatch, || send(&mut stream, &mut session, &outcome))?;
+        } else {
+            send(&mut stream, &mut session, &outcome)?;
+        }
         if !matches!(outcome, HostFrame::RequestState { .. }) {
             send(
                 &mut stream,
@@ -527,6 +534,20 @@ fn private_text(text: &str) -> String {
         })
         .collect()
 }
+fn transmit_snapshot(frame: &HostFrame, actor: &Actor, dispatch: &impl Dispatch, transmit: impl FnOnce() -> Result<()>) -> Result<()> {
+    transmit()?;
+    let snapshot = match frame {
+        HostFrame::Snapshot { snapshot } => Some(snapshot.clone()),
+        HostFrame::Result { result, .. } => serde_json::from_value::<mote_protocol::HostSnapshot>(result.clone()).ok(),
+        _ => None,
+    };
+    if let Some(snapshot) = snapshot {
+        dispatch.host_snapshot_delivered(actor, &snapshot)
+            .map_err(|_| anyhow::anyhow!("snapshot delivery authorization failed"))?;
+    }
+    Ok(())
+}
+
 fn send(stream: &mut Socket, session: &mut NoiseSession, frame: &HostFrame) -> Result<()> {
     let frame = redacted(frame)?;
     if !session.host_frame_fits(&frame)? {
@@ -579,4 +600,37 @@ fn send(stream: &mut Socket, session: &mut NoiseSession, frame: &HostFrame) -> R
         stream.write(&bytes)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod snapshot_delivery_tests {
+    use super::*;
+    use std::sync::atomic::AtomicUsize;
+
+    struct DeliveryCounter(AtomicUsize);
+    impl Dispatch for DeliveryCounter {
+        fn call(&self, _: &str, _: serde_json::Value) -> std::result::Result<serde_json::Value,mote_ipc::RpcError> { unreachable!() }
+        fn host_snapshot_delivered(&self, _: &Actor, _: &mote_protocol::HostSnapshot) -> std::result::Result<(),mote_ipc::RpcError> {
+            self.0.fetch_add(1,Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn snapshot_grants_follow_complete_transmission_only() {
+        let host = HostId::from_public_key(b"snapshot delivery");
+        let actor = Actor::PairedDevice { host_id:host.clone(),device_id:"paired".into() };
+        let snapshot = mote_protocol::HostSnapshot { host_id:host.clone(),cursor:mote_protocol::Cursor::new(host,0).unwrap(),threads:vec![],surfaces:vec![],pending_approvals:vec![],status:mote_protocol::HostStatus::Online };
+        let dispatch = DeliveryCounter(AtomicUsize::new(0));
+        for frame in [HostFrame::Snapshot { snapshot:snapshot.clone() },HostFrame::Result { request_id:RequestId::new("snapshot").unwrap(),result:serde_json::to_value(&snapshot).unwrap() }] {
+            for partial_chunks in [0,1] {
+                let mut chunks_written = 0;
+                assert!(transmit_snapshot(&frame,&actor,&dispatch,|| { chunks_written = partial_chunks; anyhow::bail!("injected write failure") }).is_err());
+                assert_eq!(chunks_written,partial_chunks);
+                assert_eq!(dispatch.0.load(Ordering::SeqCst),0);
+            }
+        }
+        transmit_snapshot(&HostFrame::Snapshot { snapshot },&actor,&dispatch,||Ok(())).unwrap();
+        assert_eq!(dispatch.0.load(Ordering::SeqCst),1);
+    }
 }

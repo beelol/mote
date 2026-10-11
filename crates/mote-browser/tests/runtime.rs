@@ -5,6 +5,67 @@ use std::path::Path;
 
 #[test]
 #[ignore = "requires MOTE_LIVE=1 and pinned MOTE_CHROME"]
+fn background_screenshot_does_not_change_approval_bound_page_state() {
+    use mote_browser::{BrowserCommand, BrowserHost, BrowserResult};
+    let fixture = mote_testkit::browser_fixture::BrowserFixture::start().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let launch = |name| {
+        BrowserHost::launch(
+            LaunchConfig::new(
+                data.path(),
+                name,
+                Path::new(&std::env::var("MOTE_CHROME").unwrap()),
+            )
+            .unwrap(),
+            BrowserPolicy::new(ApprovedOrigins::new([fixture.base_url()]).unwrap())
+                .with_read_paths(["/read", "/favicon.ico"]),
+        )
+        .unwrap()
+    };
+    let background = launch("background");
+    let session = background.session();
+    session
+        .command(BrowserCommand::Navigate {
+            url: fixture.url("/read"),
+        })
+        .unwrap();
+    let foreground = launch("foreground");
+    foreground
+        .session()
+        .command(BrowserCommand::Navigate {
+            url: fixture.url("/read"),
+        })
+        .unwrap();
+    foreground
+        .session()
+        .command(BrowserCommand::Screenshot)
+        .unwrap();
+    let BrowserResult::CommitRequired { intent } = session
+        .command(BrowserCommand::Fetch {
+            url: fixture.url("/effect/background"),
+            method: "POST".into(),
+            body: None,
+        })
+        .unwrap()
+    else {
+        panic!("retained request")
+    };
+    let BrowserResult::Screenshot(bytes) = session.command(BrowserCommand::Screenshot).unwrap()
+    else {
+        panic!("screenshot")
+    };
+    assert!(bytes.starts_with(b"\x89PNG"));
+    session
+        .command(BrowserCommand::Inspect {
+            intent: intent.clone(),
+        })
+        .unwrap();
+    session.command(BrowserCommand::Release { intent }).unwrap();
+    assert_eq!(fixture.count("background"), 1);
+}
+
+#[test]
+#[ignore = "requires MOTE_LIVE=1 and pinned MOTE_CHROME"]
 fn retained_native_request_is_inert_stale_checked_and_consumed_once() {
     use mote_browser::{BrowserCommand, BrowserHost, BrowserResult};
     assert_eq!(std::env::var("MOTE_LIVE").as_deref(), Ok("1"));
@@ -198,6 +259,98 @@ fn launch_is_headed_private_and_cannot_attach() {
     assert!(config
         .verify_version("Google Chrome for Testing 155.0.8059.39")
         .is_ok());
+}
+
+#[test]
+#[ignore = "requires MOTE_LIVE=1 and pinned MOTE_CHROME"]
+fn named_controls_and_fetch_preserve_the_request_boundary() {
+    use mote_browser::{BrowserCommand, BrowserHost, BrowserResult};
+    let fixture = mote_testkit::browser_fixture::BrowserFixture::start().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let browser =
+        BrowserHost::launch(
+            LaunchConfig::new(
+                data.path(),
+                "controls",
+                Path::new(&std::env::var("MOTE_CHROME").unwrap()),
+            )
+            .unwrap(),
+            BrowserPolicy::new(ApprovedOrigins::new([fixture.base_url()]).unwrap())
+                .with_read_paths(["/controls", "/read", "/navigation", "/favicon.ico"]),
+        )
+        .unwrap();
+    let session = browser.session();
+    session
+        .command(BrowserCommand::Navigate {
+            url: fixture.url("/controls"),
+        })
+        .unwrap();
+    let BrowserResult::Snapshot(snapshot) = session
+        .command(BrowserCommand::Snapshot {
+            interactive_only: false,
+            token_cap: 2000,
+        })
+        .unwrap()
+    else {
+        panic!("snapshot")
+    };
+    let reference = snapshot
+        .nodes
+        .iter()
+        .find(|node| node.role == "combobox")
+        .unwrap()
+        .reference
+        .clone();
+    session
+        .command(BrowserCommand::Select {
+            reference,
+            value: "two".into(),
+        })
+        .unwrap();
+    session
+        .command(BrowserCommand::Scroll { delta: 300 })
+        .unwrap();
+    let BrowserResult::Text(body) = session
+        .command(BrowserCommand::Fetch {
+            url: fixture.url("/read"),
+            method: "GET".into(),
+            body: None,
+        })
+        .unwrap()
+    else {
+        panic!("read response")
+    };
+    assert!(body.contains("untrusted_browser_page"));
+    assert!(body.contains("Fixture read"));
+    session
+        .command(BrowserCommand::Navigate {
+            url: fixture.url("/navigation"),
+        })
+        .unwrap();
+    session.command(BrowserCommand::Back).unwrap();
+    let BrowserResult::Snapshot(snapshot) = session
+        .command(BrowserCommand::Snapshot {
+            interactive_only: false,
+            token_cap: 2000,
+        })
+        .unwrap()
+    else {
+        panic!("snapshot")
+    };
+    assert_eq!(snapshot.url, fixture.url("/controls"));
+    let BrowserResult::CommitRequired { intent } = session
+        .command(BrowserCommand::Fetch {
+            url: fixture.url("/effect/fetch"),
+            method: "POST".into(),
+            body: Some("exact=body".into()),
+        })
+        .unwrap()
+    else {
+        panic!("protected fetch")
+    };
+    assert_eq!(fixture.count("fetch"), 0);
+    session.command(BrowserCommand::Release { intent }).unwrap();
+    assert_eq!(fixture.count("fetch"), 1);
 }
 
 #[test]

@@ -226,10 +226,10 @@ async fn page_hash(page: &Page, url: &str) -> Result<String> {
 const DESCRIBE: &str = "function(){if(!this.isConnected||this.ownerDocument!==document)throw Error('detached node');if(this instanceof HTMLAnchorElement)return JSON.stringify({url:this.href,method:'GET',body:null});const form=this.form;if(!form||!(this instanceof HTMLButtonElement||this instanceof HTMLInputElement)||this.type!=='submit'||form.enctype!=='application/x-www-form-urlencoded')throw Error('only native URL-encoded forms and links are supported');const fields=[];for(const field of form.elements){if(!field.name||field.disabled)continue;if(field.type==='file')throw Error('file upload unsupported');if(['submit','button','reset','image'].includes(field.type)&&field!==this)continue;if(['checkbox','radio'].includes(field.type)&&!field.checked)continue;if(field instanceof HTMLSelectElement){for(const option of field.selectedOptions)fields.push([field.name,option.value]);}else fields.push([field.name,field.value]);}let url=new URL(this.hasAttribute('formaction')?this.formAction:form.action);const method=(this.hasAttribute('formmethod')?this.formMethod:form.method).toUpperCase();const body=new URLSearchParams(fields).toString();if(method==='GET')url.search=body;else if(method!=='POST')throw Error('unsupported form method');return JSON.stringify({url:url.href,method,body:method==='GET'?null:body})}";
 
 #[derive(Deserialize)]
-struct NativeRequest {
-    url: String,
-    method: String,
-    body: Option<String>,
+pub(crate) struct NativeRequest {
+    pub url: String,
+    pub method: String,
+    pub body: Option<String>,
 }
 
 pub(crate) async fn prepare(
@@ -242,6 +242,28 @@ pub(crate) async fn prepare(
     let backend = refs.lock().unwrap().resolve(&reference)?;
     let description = call_node(page, backend, DESCRIBE).await?;
     let native: NativeRequest = serde_json::from_str(&description)?;
+    prepare_request(
+        page,
+        policy,
+        refs,
+        state,
+        reference,
+        native,
+        Some(description),
+    )
+    .await
+}
+
+pub(crate) async fn prepare_request(
+    page: &Page,
+    policy: &BrowserPolicy,
+    refs: &Arc<Mutex<SnapshotMap>>,
+    state: &Arc<Mutex<Boundary>>,
+    reference: NodeRef,
+    native: NativeRequest,
+    description: Option<String>,
+) -> Result<BrowserResult> {
+    let backend = refs.lock().unwrap().resolve(&reference)?;
     if policy.request(&native.url, &native.method) != BrowserEffect::Commit {
         bail!("native action must name an approved protected request");
     }
@@ -262,7 +284,7 @@ pub(crate) async fn prepare(
             })
             .map(|(key, _)| key.clone());
         if let Some(key) = key {
-            return bind(page, refs, state, &key, reference, Some(description))
+            return bind(page, refs, state, &key, reference, description)
                 .await
                 .map(|intent| BrowserResult::CommitRequired { intent });
         }
@@ -376,7 +398,7 @@ pub(crate) async fn inspect(
     let live = if description.is_some() {
         call_node(page, backend, DESCRIBE).await?
     } else {
-        call_node(page, backend, "function(){if(!this.isConnected||this.ownerDocument!==document)throw Error('detached node');return 'current'}").await?
+        call_node(page, backend, "function(){if(!this.isConnected||(this!==document&&this.ownerDocument!==document))throw Error('detached node');return 'current'}").await?
     };
     if description.is_some_and(|description| description != live) {
         bail!("native request changed");
