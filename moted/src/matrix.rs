@@ -137,7 +137,7 @@ fn accepts_v1(
         ControlContract::Select { options, .. } => value
             .as_str()
             .is_some_and(|value| options.iter().any(|option| option == value)),
-        ControlContract::Slider { min, max, step, .. } => value.as_f64().is_some_and(|value| {
+        ControlContract::Slider { min, max, step, .. } => slider_number(value).is_some_and(|value| {
             mote_ui::v1::Surface {
                 version: 1,
                 root: mote_ui::v1::Node::Screen {
@@ -158,6 +158,18 @@ fn accepts_v1(
         }),
         ControlContract::Button { .. } => unreachable!(),
     }
+}
+
+fn slider_number(value: &Value) -> Option<f64> {
+    let number = value.as_f64()?;
+    let integer = value
+        .as_i64()
+        .map(i128::from)
+        .or_else(|| value.as_u64().map(i128::from));
+    if integer.is_some_and(|integer| number as i128 != integer) {
+        return None;
+    }
+    Some(number)
 }
 
 pub struct CompiledSurface {
@@ -520,6 +532,37 @@ mod contract_tests {
             assert!(committed.accepts(&params, "change", &json!({"field":"volume","value":value})), "{value}");
         }
         for value in [json!("0.3"), json!(true), Value::Null, json!([]), json!({}), json!(-0.1), json!(1.1), json!(0.35)] {
+            assert!(!committed.accepts(&params, "change", &json!({"field":"volume","value":value})), "{value}");
+        }
+    }
+
+    #[test]
+    fn slider_admission_rejects_integer_rounding_across_range_and_step_boundaries() {
+        for max in ["9007199254740992", "18014398509481984"] {
+            let source = format!("screen {{ slider \"Volume\" volume min 0 max {max} step 2 }}");
+            let (_, committed) = committed(&source, json!(0));
+            let params = json!({"surface_contract":1,"surface_seq":37,"node_path":[0]});
+            assert!(committed.accepts(&params, "change", &json!({"field":"volume","value":9007199254740992_u64})));
+            assert!(!committed.accepts(&params, "change", &json!({"field":"volume","value":9007199254740993_u64})), "{source}");
+        }
+    }
+
+    #[test]
+    fn slider_admission_preserves_exact_signed_unsigned_and_float_values() {
+        let (_, committed) = committed("screen { slider \"Volume\" volume min -1e20 max 1e20 }", json!(0));
+        let params = json!({"surface_contract":1,"surface_seq":37,"node_path":[0]});
+        for value in [
+            json!(0), json!(-42), json!(42_u64), json!(9007199254740992_u64),
+            json!(9007199254740994_u64), json!(i64::MIN),
+            json!(9223372036854774784_i64), json!(18446744073709549568_u64),
+            json!(0.3), json!(0.30000000000000004),
+        ] {
+            assert!(committed.accepts(&params, "change", &json!({"field":"volume","value":value})), "{value}");
+        }
+        for value in [
+            json!(9007199254740993_u64), json!(-9007199254740993_i64),
+            json!(i64::MAX), json!(i64::MIN + 1), json!(u64::MAX),
+        ] {
             assert!(!committed.accepts(&params, "change", &json!({"field":"volume","value":value})), "{value}");
         }
     }
