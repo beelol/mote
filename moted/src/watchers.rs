@@ -20,7 +20,9 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::{collections::HashMap, sync::Mutex};
-use mote_protocol::{ActionDigest, ApprovalDecision, ApprovalVerdict, HostId, PendingApproval, RequestId};
+use mote_protocol::{ActionDigest, ApprovalDecision, ApprovalVerdict, HostId};
+#[cfg(test)]
+use mote_protocol::{PendingApproval, RequestId};
 use sha2::{Digest, Sha256};
 
 /// Approvals expire after 24 hours.
@@ -378,6 +380,7 @@ impl Watchers {
         }
     }
 
+    #[cfg(test)]
     pub fn remote_approvals(&self, host: &HostId, device: &str, now: i64) -> Result<Vec<PendingApproval>, ApprovalError> {
         self.expire_due(now)?;
         let mut stmt = self.conn.prepare("SELECT id,thread_id,kind,payload,action_hash,expires_at FROM approvals WHERE status='pending' AND action_hash IS NOT NULL ORDER BY id")?;

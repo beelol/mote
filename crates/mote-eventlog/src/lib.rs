@@ -7,7 +7,8 @@
 //! marker. A subscriber that falls more than [`LAG_LIMIT`] events behind receives a single
 //! `resync` event and recovers by replaying from the log.
 
-use rusqlite::Connection;
+use mote_protocol::{Cursor, HostId, HostSnapshot, ThreadProjection};
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -48,8 +49,16 @@ pub struct EventLog {
     inner: Arc<Mutex<Inner>>,
 }
 
+pub enum Replay {
+    Events(Subscription),
+    ResyncRequired { oldest_retained: i64 },
+}
+
 fn now_millis() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 impl EventLog {
@@ -73,9 +82,34 @@ impl EventLog {
                  scope_id TEXT NOT NULL,
                  kind TEXT NOT NULL,
                  payload TEXT NOT NULL);
-             CREATE INDEX IF NOT EXISTS events_scope_seq ON events(scope_id, seq);",
+             CREATE INDEX IF NOT EXISTS events_scope_seq ON events(scope_id, seq);
+             CREATE TABLE IF NOT EXISTS client_threads(scope_id TEXT PRIMARY KEY, projection TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS replay_floor(scope_id TEXT PRIMARY KEY, seq INTEGER NOT NULL);
+             CREATE TABLE IF NOT EXISTS projection_version(version INTEGER PRIMARY KEY);",
         )?;
-        Ok(Self { inner: Arc::new(Mutex::new(Inner { conn, subs: Vec::new() })) })
+        let initialized: bool =
+            conn.query_row("SELECT EXISTS(SELECT 1 FROM projection_version)", [], |r| {
+                r.get(0)
+            })?;
+        if !initialized {
+            let tx = conn.unchecked_transaction()?;
+            let events: Vec<Event> = tx
+                .prepare("SELECT seq, ts, scope_id, kind, payload FROM events ORDER BY seq")?
+                .query_map([], event_row)?
+                .collect::<rusqlite::Result<_>>()?;
+            for event in events {
+                Inner::project(&tx, &event)?;
+            }
+            tx.execute("INSERT INTO replay_floor SELECT scope_id, MAX(0, MIN(seq)-1) FROM events WHERE kind!='retention' AND scope_id IN (SELECT scope_id FROM events WHERE kind='retention') GROUP BY scope_id", [])?;
+            tx.execute("INSERT INTO projection_version VALUES(1)", [])?;
+            tx.commit()?;
+        }
+        Ok(Self {
+            inner: Arc::new(Mutex::new(Inner {
+                conn,
+                subs: Vec::new(),
+            })),
+        })
     }
 
     /// Append an event. The payload is redacted before storage. Returns the stored event with
@@ -91,6 +125,7 @@ impl EventLog {
         let ev = {
             let transaction = guard.conn.transaction()?;
             let ev = Inner::insert(&transaction, scope_id, kind, &redacted_text)?;
+            Inner::project(&transaction, &ev)?;
             Inner::enforce_retention(&transaction, scope_id)?;
             transaction.commit()?;
             ev
@@ -103,17 +138,105 @@ impl EventLog {
     /// event with `seq > cursor`, then live events.
     pub fn subscribe(&self, scope_id: &str, cursor: i64) -> rusqlite::Result<Subscription> {
         let mut guard = self.inner.lock().unwrap();
-        // Read the replay snapshot while holding the lock so no live event can slip in below
-        // the snapshot's max seq.
-        let replay = guard.read_after(scope_id, cursor)?;
-        let queue: Queue = Arc::new((Mutex::new(VecDeque::new()), Condvar::new()));
-        let alive = Arc::new(AtomicBool::new(true));
-        guard.subs.push(SubHandle {
-            scope: scope_id.to_string(),
-            queue: queue.clone(),
-            alive: alive.clone(),
-        });
-        Ok(Subscription { replay: replay.into(), queue, alive })
+        guard.subscribe(scope_id, cursor)
+    }
+
+    pub fn oldest_retained(&self, scope_id: &str) -> rusqlite::Result<Option<i64>> {
+        self.inner.lock().unwrap().conn.query_row(
+            "SELECT MIN(seq) FROM events WHERE scope_id=?1 AND kind!='retention'",
+            [scope_id],
+            |r| r.get(0),
+        )
+    }
+
+    pub fn subscribe_checked(&self, scope_id: &str, cursor: i64) -> rusqlite::Result<Replay> {
+        let mut guard = self.inner.lock().unwrap();
+        let floor: i64 = guard
+            .conn
+            .query_row(
+                "SELECT seq FROM replay_floor WHERE scope_id=?1",
+                [scope_id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .unwrap_or(0);
+        if cursor < floor || cursor < 0 || cursor > guard.max_seq()? {
+            let oldest_retained = guard.conn.query_row(
+                "SELECT COALESCE(MIN(seq),0) FROM events WHERE scope_id=?1 AND kind!='retention'",
+                [scope_id],
+                |r| r.get(0),
+            )?;
+            return Ok(Replay::ResyncRequired { oldest_retained });
+        }
+        guard.subscribe(scope_id, cursor).map(Replay::Events)
+    }
+
+    pub fn host_snapshot(&self, host_id: &HostId) -> rusqlite::Result<HostSnapshot> {
+        self.snapshot(host_id, None)
+    }
+
+    pub fn host_snapshot_for_device(
+        &self,
+        host_id: &HostId,
+        device: &str,
+        now: i64,
+    ) -> rusqlite::Result<HostSnapshot> {
+        self.snapshot(host_id, Some((device, now)))
+    }
+
+    fn snapshot(
+        &self,
+        host_id: &HostId,
+        device: Option<(&str, i64)>,
+    ) -> rusqlite::Result<HostSnapshot> {
+        let guard = self.inner.lock().unwrap();
+        let tx = guard.conn.unchecked_transaction()?;
+        let seq = tx.query_row("SELECT COALESCE(MAX(seq),0) FROM events", [], |r| r.get(0))?;
+        let mut threads = Vec::new();
+        let mut surfaces = Vec::new();
+        let projections: Vec<String> = tx
+            .prepare("SELECT projection FROM client_threads ORDER BY scope_id")?
+            .query_map([], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        for encoded in projections {
+            let projection: ThreadProjection =
+                serde_json::from_str(&encoded).map_err(|_| rusqlite::Error::InvalidQuery)?;
+            threads.push(projection.thread);
+            if let Some(surface) = projection.surface {
+                surfaces.push(surface);
+            }
+        }
+        let mut pending_approvals = Vec::new();
+        if let Some((device, now)) = device {
+            let has_approvals: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='approvals')", [], |r| r.get(0))?;
+            if has_approvals {
+                let approvals: Vec<(i64, String, String, String, String, i64)> = tx.prepare("SELECT id,thread_id,kind,payload,action_hash,expires_at FROM approvals WHERE status='pending' AND action_hash IS NOT NULL AND expires_at>=?1 ORDER BY id")?.query_map([now], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?)))?.collect::<rusqlite::Result<_>>()?;
+                for (id, thread, kind, payload, hash, expires_at) in approvals {
+                    let approval = mote_protocol::PendingApproval {
+                        approval_id: mote_protocol::RequestId::new(id.to_string())
+                            .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                        thread,
+                        kind,
+                        payload: serde_json::from_str(&mote_redact::redact(&payload))
+                            .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                        action_hash: mote_protocol::ActionDigest::new(hash)
+                            .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                        expires_at,
+                    };
+                    tx.execute("INSERT OR IGNORE INTO approval_devices(host_id,device_id,approval_id,action_hash,expires_at) VALUES(?1,?2,?3,?4,?5)", rusqlite::params![host_id.as_str(),device,id,approval.action_hash.as_str(),expires_at])?;
+                    pending_approvals.push(approval);
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(HostSnapshot {
+            host_id: host_id.clone(),
+            cursor: Cursor::new(host_id.clone(), seq).map_err(|_| rusqlite::Error::InvalidQuery)?,
+            threads,
+            surfaces,
+            pending_approvals,
+            status: mote_protocol::HostStatus::Online,
+        })
     }
 
     /// Current highest seq, or 0 if empty.
@@ -124,9 +247,9 @@ impl EventLog {
     /// Fetch a single event by seq, if it still exists.
     pub fn get(&self, seq: i64) -> rusqlite::Result<Option<Event>> {
         let guard = self.inner.lock().unwrap();
-        let mut stmt = guard.conn.prepare(
-            "SELECT seq, ts, scope_id, kind, payload FROM events WHERE seq=?1",
-        )?;
+        let mut stmt = guard
+            .conn
+            .prepare("SELECT seq, ts, scope_id, kind, payload FROM events WHERE seq=?1")?;
         let mut rows = stmt.query_map([seq], |r| {
             let payload_text: String = r.get(4)?;
             let payload = serde_json::from_str(&payload_text)
@@ -212,7 +335,57 @@ impl EventLog {
 }
 
 impl Inner {
-    fn insert(conn: &Connection, scope_id: &str, kind: &str, payload_text: &str) -> rusqlite::Result<Event> {
+    fn subscribe(&mut self, scope_id: &str, cursor: i64) -> rusqlite::Result<Subscription> {
+        let replay = self.read_after(scope_id, cursor)?;
+        let queue: Queue = Arc::new((Mutex::new(VecDeque::new()), Condvar::new()));
+        let alive = Arc::new(AtomicBool::new(true));
+        self.subs.push(SubHandle {
+            scope: scope_id.into(),
+            queue: queue.clone(),
+            alive: alive.clone(),
+        });
+        Ok(Subscription {
+            replay: replay.into(),
+            queue,
+            alive,
+        })
+    }
+
+    fn project(conn: &Connection, event: &Event) -> rusqlite::Result<()> {
+        if !ThreadProjection::handles(&event.kind) {
+            return Ok(());
+        }
+        let encoded: Option<String> = conn
+            .query_row(
+                "SELECT projection FROM client_threads WHERE scope_id=?1",
+                [&event.scope_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let mut projection = match encoded {
+            Some(encoded) => {
+                serde_json::from_str(&encoded).map_err(|_| rusqlite::Error::InvalidQuery)?
+            }
+            None => ThreadProjection::new(event.scope_id.clone()),
+        };
+        projection.apply(&mote_protocol::Event {
+            seq: event.seq,
+            ts: event.ts,
+            scope_id: event.scope_id.clone(),
+            kind: event.kind.clone(),
+            payload: event.payload.clone(),
+        });
+        let encoded =
+            serde_json::to_string(&projection).map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute("INSERT INTO client_threads(scope_id,projection) VALUES(?1,?2) ON CONFLICT(scope_id) DO UPDATE SET projection=excluded.projection", rusqlite::params![event.scope_id, encoded])?;
+        Ok(())
+    }
+    fn insert(
+        conn: &Connection,
+        scope_id: &str,
+        kind: &str,
+        payload_text: &str,
+    ) -> rusqlite::Result<Event> {
         let ts = now_millis();
         conn.execute(
             "INSERT INTO events(ts, scope_id, kind, payload) VALUES(?1, ?2, ?3, ?4)",
@@ -221,7 +394,13 @@ impl Inner {
         let seq = conn.last_insert_rowid();
         let payload = serde_json::from_str(payload_text)
             .unwrap_or_else(|_| serde_json::Value::String(payload_text.to_string()));
-        Ok(Event { seq, ts, scope_id: scope_id.to_string(), kind: kind.to_string(), payload })
+        Ok(Event {
+            seq,
+            ts,
+            scope_id: scope_id.to_string(),
+            kind: kind.to_string(),
+            payload,
+        })
     }
 
     fn max_seq(&self) -> rusqlite::Result<i64> {
@@ -283,6 +462,8 @@ impl Inner {
             return Ok(());
         }
         let excess = real - RETENTION_LIMIT;
+        let floor: i64 = conn.query_row("SELECT MAX(seq) FROM (SELECT seq FROM events WHERE scope_id=?1 AND kind!='retention' ORDER BY seq LIMIT ?2)", rusqlite::params![scope_id, excess], |r| r.get(0))?;
+        conn.execute("INSERT INTO replay_floor(scope_id,seq) VALUES(?1,?2) ON CONFLICT(scope_id) DO UPDATE SET seq=excluded.seq", rusqlite::params![scope_id, floor])?;
         // Delete the oldest real events for this scope.
         conn.execute(
             "DELETE FROM events WHERE seq IN (
@@ -305,6 +486,17 @@ impl Inner {
         }
         Ok(())
     }
+}
+
+fn event_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Event> {
+    let text: String = row.get(4)?;
+    Ok(Event {
+        seq: row.get(0)?,
+        ts: row.get(1)?,
+        scope_id: row.get(2)?,
+        kind: row.get(3)?,
+        payload: serde_json::from_str(&text).map_err(|_| rusqlite::Error::InvalidQuery)?,
+    })
 }
 
 /// A live subscription. Call [`Subscription::recv_timeout`] to pull the next event.
@@ -351,6 +543,45 @@ mod tests {
     }
 
     #[test]
+    fn failed_projection_rolls_back_event_and_live_delivery() {
+        let log = EventLog::open_in_memory().unwrap();
+        let host = HostId::from_public_key(&[4; 32]);
+        log.append("main", "turn.user", &serde_json::json!({"text":"prior"}))
+            .unwrap();
+        let before = log.host_snapshot(&host).unwrap();
+        let mut live = log.subscribe("main", 1).unwrap();
+        log.inner.lock().unwrap().conn.execute_batch("CREATE TRIGGER fail_projection BEFORE UPDATE ON client_threads BEGIN SELECT RAISE(FAIL, 'projection failed'); END;").unwrap();
+        assert!(log
+            .append("main", "turn.user", &serde_json::json!({"text":"lost"}))
+            .is_err());
+        assert_eq!(log.host_snapshot(&host).unwrap(), before);
+        assert!(live.recv_timeout(Duration::from_millis(1)).is_none());
+    }
+
+    #[test]
+    fn checked_replay_uses_deleted_sequence_not_sparse_scope_minimum() {
+        let log = EventLog::open_in_memory().unwrap();
+        log.append("other", "test", &val("a")).unwrap();
+        log.append("main", "test", &val("b")).unwrap();
+        assert_eq!(log.oldest_retained("main").unwrap(), Some(2));
+        assert!(matches!(
+            log.subscribe_checked("main", 0).unwrap(),
+            Replay::Events(_)
+        ));
+        for _ in 0..5000 {
+            log.append("main", "test", &val("c")).unwrap();
+        }
+        assert!(matches!(
+            log.subscribe_checked("main", 1).unwrap(),
+            Replay::ResyncRequired { .. }
+        ));
+        assert!(matches!(
+            log.subscribe_checked("main", 2).unwrap(),
+            Replay::Events(_)
+        ));
+    }
+
+    #[test]
     fn append_is_strictly_increasing_and_redacts() {
         let log = EventLog::open_in_memory().unwrap();
         let mut last = 0;
@@ -361,7 +592,11 @@ mod tests {
         }
         // A planted token is redacted before storage.
         let ev = log
-            .append("s", "test", &serde_json::json!({ "token": "sk-abcdefghijklmnopqrstuv" }))
+            .append(
+                "s",
+                "test",
+                &serde_json::json!({ "token": "sk-abcdefghijklmnopqrstuv" }),
+            )
             .unwrap();
         assert_eq!(ev.payload["token"], "[redacted]");
         let replay = log.subscribe("s", ev.seq - 1).unwrap();
@@ -487,21 +722,26 @@ mod tests {
     #[test]
     fn recent_events_are_bounded_newest_first_and_redacted() {
         let log = EventLog::open_in_memory().unwrap();
-        log.append("main", "talk.delta", &serde_json::json!({"text": "first"})).unwrap();
+        log.append("main", "talk.delta", &serde_json::json!({"text": "first"}))
+            .unwrap();
         log.append(
             "pipeline",
             "model.request",
             &serde_json::json!({"prompt": "sk-abcdefghijklmnopqrstuvwxyz"}),
         )
         .unwrap();
-        log.append("main", "talk.done", &serde_json::json!({"ledger_id": 1})).unwrap();
+        log.append("main", "talk.done", &serde_json::json!({"ledger_id": 1}))
+            .unwrap();
 
         let events = log.recent_since(0, 2).unwrap();
 
-        assert_eq!(events.iter().map(|event| event.kind.as_str()).collect::<Vec<_>>(), [
-            "talk.done",
-            "model.request",
-        ]);
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.kind.as_str())
+                .collect::<Vec<_>>(),
+            ["talk.done", "model.request",]
+        );
         assert_eq!(events[1].payload["prompt"], "[redacted]");
     }
 
@@ -519,9 +759,12 @@ mod tests {
 
         let events = log.recent_kind_since("model.request", 0, 2).unwrap();
 
-        assert_eq!(events.iter().map(|event| event.payload["id"].as_i64()).collect::<Vec<_>>(), [
-            Some(2),
-            Some(1),
-        ]);
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.payload["id"].as_i64())
+                .collect::<Vec<_>>(),
+            [Some(2), Some(1),]
+        );
     }
 }

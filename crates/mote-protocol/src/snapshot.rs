@@ -71,6 +71,14 @@ pub struct HostSnapshot {
     pub threads: Vec<ThreadSnapshot>,
     pub surfaces: Vec<CommittedSurface>,
     pub pending_approvals: Vec<PendingApproval>,
+    pub status: HostStatus,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostStatus {
+    #[default]
+    Online,
 }
 
 #[derive(Deserialize)]
@@ -81,6 +89,8 @@ struct UncheckedHostSnapshot {
     threads: Vec<ThreadSnapshot>,
     surfaces: Vec<CommittedSurface>,
     pending_approvals: Vec<PendingApproval>,
+    #[serde(default)]
+    status: HostStatus,
 }
 
 impl TryFrom<UncheckedHostSnapshot> for HostSnapshot {
@@ -99,6 +109,7 @@ impl TryFrom<UncheckedHostSnapshot> for HostSnapshot {
             threads: value.threads,
             surfaces: value.surfaces,
             pending_approvals: value.pending_approvals,
+            status: value.status,
         })
     }
 }

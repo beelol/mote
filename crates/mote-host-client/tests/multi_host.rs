@@ -50,6 +50,7 @@ fn directory() -> (HostDirectory, HostId, HostId) {
 
 fn snapshot(host: &HostId, label: &str) -> HostSnapshot {
     HostSnapshot {
+        status: mote_protocol::HostStatus::Online,
         host_id: host.clone(),
         cursor: Cursor::new(host.clone(), 7).unwrap(),
         threads: vec![ThreadSnapshot {

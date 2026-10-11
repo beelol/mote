@@ -9,6 +9,7 @@ mod config;
 mod embed;
 mod gate;
 mod gateway;
+mod host_snapshot;
 mod inferred_ui;
 mod lanes;
 mod matrix;
@@ -1029,6 +1030,12 @@ impl Dispatch for Daemon {
     fn subscribe(&self, scope_id: &str, cursor: i64) -> Option<Subscription> {
         self.log.subscribe(scope_id, cursor).ok()
     }
+
+    fn subscribe_checked(&self, scope_id: &str, cursor: i64) -> Option<mote_eventlog::Replay> {
+        self.log.subscribe_checked(scope_id, cursor).ok()
+    }
+
+    fn event_cursor(&self) -> i64 { self.log.max_seq().unwrap_or(0) }
 }
 
 #[cfg(test)]
@@ -1107,6 +1114,9 @@ mod approval_dispatch_tests {
         let (data, outside) = dirs(name);
         std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o700)).unwrap();
         let mut daemon = daemon(&data);
+        gateway::prepare_identity(&data).unwrap();
+        daemon.log = EventLog::open(&data.join("mote.db")).unwrap();
+        daemon.watchers = Mutex::new(Watchers::open(rusqlite::Connection::open(data.join("mote.db")).unwrap()).unwrap());
         if let Some(client) = client { daemon.client = client; }
         daemon.host_id = mote_gateway::HostIdentity::load_or_create(&data).unwrap().host_id().clone();
         let daemon = Arc::new(daemon);

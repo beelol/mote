@@ -2,6 +2,51 @@ use crate::require_host;
 use mote_protocol::{ClientFrame, HostError, HostErrorCode, HostId, RequestId};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
+use std::{io, io::Write, path::Path};
+
+impl crate::HostDirectory {
+    pub fn load(path: &Path) -> io::Result<Self> {
+        serde_json::from_reader(std::fs::File::open(path)?).map_err(io::Error::other)
+    }
+
+    pub fn save(&self, path: &Path) -> io::Result<()> {
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let mut file = tempfile::NamedTempFile::new_in(parent)?;
+        file.write_all(&serde_json::to_vec(self).map_err(io::Error::other)?)?;
+        file.as_file().sync_all()?;
+        file.persist(path).map_err(io::Error::other)?;
+        std::fs::File::open(parent)?.sync_all()
+    }
+
+    pub fn enqueue_durable(
+        &mut self,
+        path: &Path,
+        host: &HostId,
+        frame: ClientFrame,
+    ) -> io::Result<()> {
+        let mut next = self.clone();
+        next.enqueue(host, frame).map_err(io::Error::other)?;
+        next.save(path)?;
+        *self = next;
+        Ok(())
+    }
+
+    pub fn receive_frame_durable(
+        &mut self,
+        path: &Path,
+        host: &HostId,
+        frame: mote_protocol::HostFrame,
+    ) -> io::Result<()> {
+        let mut next = self.clone();
+        let result = next.receive_frame(host, frame);
+        next.save(path)?;
+        *self = next;
+        result.map_err(io::Error::other)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Outbox {

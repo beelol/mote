@@ -133,6 +133,12 @@ impl HostSessionState {
             }
         }
         for surface in snapshot.surfaces {
+            if surface.surface_seq > next.cursor.seq {
+                return Err(HostError::new(
+                    HostErrorCode::InvalidCursor,
+                    "surface exceeds snapshot cursor",
+                ));
+            }
             if next
                 .surfaces
                 .entry(surface.thread.clone())
@@ -158,6 +164,13 @@ impl HostSessionState {
                 ));
             }
         }
+        if next
+            .selected_thread
+            .as_ref()
+            .is_some_and(|thread| !next.threads.contains_key(thread))
+        {
+            next.selected_thread = None;
+        }
         *self = next;
         Ok(())
     }
@@ -173,6 +186,34 @@ impl HostSessionState {
         let cursor = Cursor::new(host_id.clone(), event.seq)?;
         if cursor.seq <= self.cursor.seq {
             return Ok(false);
+        }
+        if event.kind == "resync" {
+            return Err(HostError::new(
+                HostErrorCode::InvalidCursor,
+                "authoritative snapshot required",
+            ));
+        }
+        if mote_protocol::ThreadProjection::handles(&event.kind) {
+            let mut projection = match self.threads.get(&event.scope_id) {
+                Some(thread) => mote_protocol::ThreadProjection::resume(thread.clone()),
+                None => mote_protocol::ThreadProjection::new(event.scope_id.clone()),
+            };
+            projection.apply(&event);
+            self.threads
+                .insert(event.scope_id.clone(), projection.thread.clone());
+            if let Some(surface) = &projection.surface {
+                self.surfaces
+                    .entry(event.scope_id.clone())
+                    .or_default()
+                    .insert(surface.surface_seq, surface.clone());
+            }
+        }
+        if event.kind == "approval.decided" {
+            if let Some(id) = event.payload["approval_id"].as_str() {
+                if let Ok(id) = RequestId::new(id) {
+                    self.pending_approvals.remove(&id);
+                }
+            }
         }
         self.cursor = cursor;
         Ok(true)

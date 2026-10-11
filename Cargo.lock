@@ -2605,6 +2605,7 @@ dependencies = [
 name = "mote-eventlog"
 version = "0.0.0"
 dependencies = [
+ "mote-protocol",
  "mote-redact",
  "rusqlite",
  "serde",
@@ -2651,6 +2652,7 @@ dependencies = [
  "mote-protocol",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

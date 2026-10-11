@@ -1,12 +1,9 @@
 use crate::{now_ms, Daemon};
 use mote_gateway::{GatewayConfig, GatewayServer};
 use mote_ipc::{Actor, Dispatch, RpcError};
-use mote_protocol::{
-    ApprovalDecision, ChatMessage, CommittedSurface, Cursor, HostSnapshot, MessageRole,
-    MessageStatus, ThreadSnapshot, TypedInteraction,
-};
+use mote_protocol::{ApprovalDecision, TypedInteraction};
 use serde_json::{json, Value};
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 
 pub fn prepare_identity(data: &std::path::Path) -> Result<mote_gateway::HostIdentity, String> {
     use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
@@ -115,78 +112,8 @@ pub fn dispatch(
             Ok(result)
         }
         "snapshot" => {
-            let seq = daemon
-                .log
-                .max_seq()
-                .map_err(|e| RpcError::internal(e.to_string()))?;
-            let mut surfaces = BTreeMap::new();
-            let mut threads: BTreeMap<String, ThreadSnapshot> = BTreeMap::new();
-            for event in daemon
-                .log
-                .recent_since(0, 5000)
-                .map_err(|e| RpcError::internal(e.to_string()))?
-                .into_iter()
-                .rev()
-            {
-                if event.seq > seq {
-                    continue;
-                }
-                if matches!(
-                    event.kind.as_str(),
-                    "turn.user" | "talk.delta" | "think.text"
-                ) {
-                    if let Some(text) = event.payload["text"].as_str() {
-                        threads
-                            .entry(event.scope_id.clone())
-                            .or_insert_with(|| ThreadSnapshot {
-                                thread: event.scope_id.clone(),
-                                messages: Vec::new(),
-                            })
-                            .messages
-                            .push(ChatMessage {
-                                id: event.seq.to_string(),
-                                role: if event.kind == "turn.user" {
-                                    MessageRole::User
-                                } else {
-                                    MessageRole::Assistant
-                                },
-                                text: text.into(),
-                                status: MessageStatus::Delivered,
-                            });
-                    }
-                }
-                if event.kind == "ui.surface" {
-                    let tree = event
-                        .payload
-                        .get("matrix_surface")
-                        .or_else(|| event.payload.get("surface"));
-                    if let Some(tree) = tree.and_then(Value::as_object) {
-                        surfaces.insert(
-                            event.scope_id.clone(),
-                            CommittedSurface {
-                                thread: event.scope_id,
-                                surface_seq: event.seq,
-                                surface_contract: 1,
-                                tree: tree.clone(),
-                            },
-                        );
-                    }
-                }
-            }
-            let pending_approvals = daemon
-                .watchers
-                .lock()
-                .unwrap()
-                .remote_approvals(host_id, device_id, now_ms())
-                .map_err(|e| RpcError::internal(e.to_string()))?;
-            let snapshot = HostSnapshot {
-                host_id: host_id.clone(),
-                cursor: Cursor::new(host_id.clone(), seq)
-                    .map_err(|e| RpcError::internal(e.to_string()))?,
-                threads: threads.into_values().collect(),
-                surfaces: surfaces.into_values().collect(),
-                pending_approvals,
-            };
+            let snapshot =
+                crate::host_snapshot::HostSnapshotBuilder::new(daemon).build(device_id)?;
             serde_json::to_value(snapshot).map_err(|e| RpcError::internal(e.to_string()))
         }
         "interaction" => {

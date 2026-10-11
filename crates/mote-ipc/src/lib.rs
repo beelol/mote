@@ -56,6 +56,7 @@ pub enum Actor {
 }
 
 pub trait Dispatch: Send + Sync + 'static {
+    fn event_cursor(&self) -> i64 { 0 }
     fn call(&self, method: &str, params: Value) -> Result<Value, RpcError>;
     fn call_with_context(&self, actor: &Actor, method: &str, params: Value) -> Result<Value, RpcError> {
         if matches!(actor, Actor::PairedDevice { .. }) && !matches!(method, "hello" | "ping" | "status" | "turn" | "snapshot") {
@@ -65,6 +66,9 @@ pub trait Dispatch: Send + Sync + 'static {
     }
     fn subscribe(&self, _scope_id: &str, _cursor: i64) -> Option<Subscription> {
         None
+    }
+    fn subscribe_checked(&self, scope_id: &str, cursor: i64) -> Option<mote_eventlog::Replay> {
+        self.subscribe(scope_id, cursor).map(mote_eventlog::Replay::Events)
     }
 }
 

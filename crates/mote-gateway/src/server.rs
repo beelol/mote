@@ -243,7 +243,8 @@ fn serve<D: Dispatch>(stream: TcpStream, shared: &Shared, dispatch: &D) -> Resul
         } = frame
         {
             ensure!(cursor.host_id == *session.host_id(), "wrong host cursor");
-            if let Some(mut subscription) = dispatch.subscribe(&scope_id, cursor.seq) {
+            if let Some(mut replay) = dispatch.subscribe_checked(&scope_id, cursor.seq) {
+                let mut last_seq = cursor.seq;
                 while shared.running.load(Ordering::Acquire)
                     && shared
                         .store
@@ -251,7 +252,50 @@ fn serve<D: Dispatch>(stream: TcpStream, shared: &Shared, dispatch: &D) -> Resul
                         .unwrap()
                         .active_device(session.client_id())?
                 {
+                    if matches!(replay, mote_eventlog::Replay::ResyncRequired { .. }) {
+                        send(
+                            &mut stream,
+                            &mut session,
+                            &HostFrame::Event {
+                                host_id: shared.host.host_id().clone(),
+                                event: mote_protocol::Event {
+                                    seq: last_seq,
+                                    ts: 0,
+                                    scope_id: scope_id.clone(),
+                                    kind: "resync".into(),
+                                    payload: serde_json::Value::Null,
+                                },
+                            },
+                        )?;
+                        let value = dispatch
+                            .call_with_context(&actor, "snapshot", serde_json::json!({}))
+                            .map_err(|_| anyhow::anyhow!("snapshot unavailable"))?;
+                        let snapshot: mote_protocol::HostSnapshot = serde_json::from_value(value)?;
+                        ensure!(
+                            snapshot.host_id == *session.host_id(),
+                            "wrong snapshot host"
+                        );
+                        last_seq = snapshot.cursor.seq;
+                        send(&mut stream, &mut session, &HostFrame::Snapshot { snapshot })?;
+                        replay = dispatch
+                            .subscribe_checked(&scope_id, last_seq)
+                            .ok_or_else(|| anyhow::anyhow!("subscription unavailable"))?;
+                        continue;
+                    }
+                    let mote_eventlog::Replay::Events(subscription) = &mut replay else {
+                        unreachable!()
+                    };
                     if let Some(event) = subscription.recv_timeout(Duration::from_millis(100)) {
+                        if event.kind == "resync" {
+                            replay = mote_eventlog::Replay::ResyncRequired {
+                                oldest_retained: event.seq,
+                            };
+                            continue;
+                        }
+                        if event.seq <= last_seq {
+                            continue;
+                        }
+                        last_seq = event.seq;
                         let event = mote_protocol::Event {
                             seq: event.seq,
                             ts: event.ts,
@@ -372,6 +416,20 @@ fn serve<D: Dispatch>(stream: TcpStream, shared: &Shared, dispatch: &D) -> Resul
             }
         };
         send(&mut stream, &mut session, &outcome)?;
+        if !matches!(outcome, HostFrame::RequestState { .. }) {
+            send(
+                &mut stream,
+                &mut session,
+                &HostFrame::Acknowledgement {
+                    host_id: shared.host.host_id().clone(),
+                    request_id: id.clone(),
+                    cursor: mote_protocol::Cursor::new(
+                        shared.host.host_id().clone(),
+                        dispatch.event_cursor(),
+                    )?,
+                },
+            )?;
+        }
     }
     Ok(())
 }
@@ -424,8 +482,12 @@ fn private_map(map: &mut serde_json::Map<String, serde_json::Value>) {
                 | "apikey"
                 | "password"
                 | "secret"
-        ) && value.is_string()
-        {
+                | "cookie"
+                | "cookies"
+                | "set-cookie"
+                | "authorization"
+                | "credentials"
+        ) {
             value = serde_json::Value::String("[redacted]".into());
         } else {
             private_payload(&mut value);

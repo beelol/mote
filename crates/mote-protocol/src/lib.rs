@@ -4,17 +4,20 @@ mod digest;
 pub mod envelope;
 mod error;
 mod frame;
+mod projection;
+pub use projection::ThreadProjection;
 mod snapshot;
 mod version;
 
 pub use digest::ActionDigest;
 pub use error::{HostError, HostErrorCode};
 pub use frame::{
-    ApprovalDecision, ApprovalVerdict, ClientFrame, Event, HostFrame, RequestState, TypedInteraction,
+    ApprovalDecision, ApprovalVerdict, ClientFrame, Event, HostFrame, RequestState,
+    TypedInteraction,
 };
 pub use snapshot::{
-    ChatMessage, CommittedSurface, HostSnapshot, MessageRole, MessageStatus, PendingApproval,
-    ThreadSnapshot,
+    ChatMessage, CommittedSurface, HostSnapshot, HostStatus, MessageRole, MessageStatus,
+    PendingApproval, ThreadSnapshot,
 };
 pub use version::{Cursor, HostId, RequestId, VersionRange, PROTOCOL_MAJOR};
 

@@ -69,6 +69,19 @@ impl GatewayClient {
     /// RequestState replies are nonterminal. A transport error does not prove action failure.
     pub fn exchange(&mut self, frame: &ClientFrame) -> Result<HostFrame> {
         self.send(frame)?;
-        self.receive()
+        let outcome = self.receive()?;
+        if let HostFrame::Result { request_id, .. }
+        | HostFrame::Error {
+            request_id: Some(request_id),
+            ..
+        } = &outcome
+        {
+            let acknowledgement = self.receive()?;
+            anyhow::ensure!(
+                matches!(acknowledgement, HostFrame::Acknowledgement { host_id, request_id: id, .. } if host_id == *self.host_id() && id == *request_id),
+                "missing matching acknowledgement"
+            );
+        }
+        Ok(outcome)
     }
 }
