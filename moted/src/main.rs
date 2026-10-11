@@ -3,6 +3,8 @@
 //! v0 starts the control socket over the event log. Lanes and methods are added by later
 //! items. A second daemon on the same live socket exits non-zero naming the socket path.
 
+#[allow(dead_code)]
+pub(crate) mod approvals;
 mod bench;
 mod charter;
 pub(crate) mod config;
@@ -4816,6 +4818,10 @@ fn run() -> Result<(), i32> {
     })?)
     .map_err(|e| {
         eprintln!("moted: cannot create watchers tables: {e}");
+        1
+    })?;
+    watchers.bind_local_host(identity.host_id()).map_err(|e| {
+        eprintln!("moted: cannot bind approvals to local host: {e}");
         1
     })?;
 

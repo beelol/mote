@@ -119,21 +119,36 @@ impl Watchers {
                  payload TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
                  expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL);",
         )?;
-        let columns: Vec<String> = conn.prepare("PRAGMA table_info(approvals)")?.query_map([], |row| row.get(1))?.collect::<Result<_, _>>()?;
-        if !columns.iter().any(|column| column == "action_hash") {
-            conn.execute_batch("ALTER TABLE approvals ADD COLUMN action_hash TEXT;
-                CREATE TABLE IF NOT EXISTS approval_devices(host_id TEXT NOT NULL, device_id TEXT NOT NULL, approval_id INTEGER NOT NULL, action_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(host_id,device_id,approval_id));")?;
-        }
+        super::approvals::migrate(&conn)?;
+        conn.execute_batch("CREATE TABLE IF NOT EXISTS approval_owner(id INTEGER PRIMARY KEY CHECK(id=1),host_id TEXT NOT NULL)")?;
         conn.execute_batch("CREATE TABLE IF NOT EXISTS approval_devices(host_id TEXT NOT NULL, device_id TEXT NOT NULL, approval_id INTEGER NOT NULL, action_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(host_id,device_id,approval_id));")?;
-        let legacy: Vec<(i64, String)> = conn.prepare("SELECT id,payload FROM approvals WHERE action_hash IS NULL")?.query_map([], |row| Ok((row.get(0)?,row.get(1)?)))?.collect::<Result<_,_>>()?;
+        let mut intents = HashMap::new();
+        let legacy: Vec<(i64, String)> = conn.prepare("SELECT id,payload FROM approvals WHERE action_hash IS NULL AND kind='file_write'")?.query_map([], |row| Ok((row.get(0)?,row.get(1)?)))?.collect::<Result<_,_>>()?;
         for (id, payload) in legacy {
             if let Ok(intent) = serde_json::from_str::<FileWritePayload>(&payload) {
                 let digest = intent_digest(&intent).map_err(|_| rusqlite::Error::InvalidQuery)?;
                 let display = display_payload(&intent);
                 conn.execute("UPDATE approvals SET payload=?2,action_hash=?3 WHERE id=?1", rusqlite::params![id, display.to_string(), digest.as_str()])?;
+                intents.insert(id, intent);
             }
         }
-        Ok(Self { conn, intents: Mutex::new(HashMap::new()) })
+        Ok(Self { conn, intents: Mutex::new(intents) })
+    }
+
+    pub(crate) fn bind_local_host(&self, host: &HostId) -> rusqlite::Result<()> {
+        self.conn.execute_batch("CREATE TABLE IF NOT EXISTS approval_owner(id INTEGER PRIMARY KEY CHECK(id=1),host_id TEXT NOT NULL)")?;
+        self.conn.execute("INSERT OR IGNORE INTO approval_owner(id,host_id) VALUES(1,?1)",[host.as_str()])?;
+        let owner: String = self.conn.query_row("SELECT host_id FROM approval_owner WHERE id=1", [], |row| row.get(0))?;
+        if owner != host.as_str() { return Err(rusqlite::Error::InvalidQuery); }
+        self.conn.execute("UPDATE approvals SET host_id=?1 WHERE host_id IS NULL AND kind='file_write'",[host.as_str()])?;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn approval_store(&self) -> rusqlite::Result<super::approvals::ApprovalStore<'_>> {
+        let owner: String = self.conn.query_row("SELECT host_id FROM approval_owner WHERE id=1", [], |row| row.get(0))?;
+        let host = HostId::new(owner).map_err(|_| rusqlite::Error::InvalidQuery)?;
+        super::approvals::ApprovalStore::new(&self.conn,host)
     }
 
     #[cfg(test)]
@@ -240,8 +255,8 @@ impl Watchers {
         let hash = intent_digest(&intent)?;
         let payload = display_payload(&intent).to_string();
         self.conn.execute(
-            "INSERT INTO approvals(thread_id, kind, payload, status, expires_at, created_at, action_hash)
-             VALUES(?1, 'file_write', ?2, 'pending', ?3, ?4, ?5)",
+            "INSERT INTO approvals(thread_id, kind, payload, status, expires_at, created_at, action_hash,host_id)
+             VALUES(?1, 'file_write', ?2, 'pending', ?3, ?4, ?5,(SELECT host_id FROM approval_owner WHERE id=1))",
             rusqlite::params![thread_id, payload, now + APPROVAL_TTL_MS, now, hash.as_str()],
         )?;
         let id = self.conn.last_insert_rowid();
@@ -291,7 +306,7 @@ impl Watchers {
         self.expire_due(now)?;
         let payload = match self.conn.query_row(
             "SELECT payload FROM approvals
-             WHERE id=?1 AND thread_id=?2 AND status='pending' AND expires_at>=?3",
+             WHERE id=?1 AND thread_id=?2 AND kind='file_write' AND status='pending' AND expires_at>=?3",
             rusqlite::params![id, thread_id, now],
             |row| row.get::<_, String>(0),
         ) {
@@ -315,10 +330,15 @@ impl Watchers {
             )
             .into());
         }
-        write_resolved(&resolved, &write.content, before_target_open)?;
+        let claimed = self.conn.execute("UPDATE approvals SET status='claimed',claimed_at=?3 WHERE id=?1 AND thread_id=?2 AND kind='file_write' AND status='pending' AND expires_at>=?3",rusqlite::params![id,thread_id,now])?;
+        if claimed == 0 { return Ok(false); }
+        if let Err(error) = write_resolved(&resolved, &write.content, before_target_open) {
+            self.conn.execute("UPDATE approvals SET status='pending',claimed_at=NULL WHERE id=?1 AND status='claimed'",[id])?;
+            return Err(error.into());
+        }
         let changed = self.conn.execute(
-            "UPDATE approvals SET status='approved'
-             WHERE id=?1 AND thread_id=?2 AND status='pending' AND expires_at>=?3",
+            "UPDATE approvals SET status='approved',completed_at=?3
+             WHERE id=?1 AND thread_id=?2 AND status='claimed'",
             rusqlite::params![id, thread_id, now],
         )?;
         Ok(changed == 1)
@@ -383,8 +403,8 @@ impl Watchers {
     #[cfg(test)]
     pub fn remote_approvals(&self, host: &HostId, device: &str, now: i64) -> Result<Vec<PendingApproval>, ApprovalError> {
         self.expire_due(now)?;
-        let mut stmt = self.conn.prepare("SELECT id,thread_id,kind,payload,action_hash,expires_at FROM approvals WHERE status='pending' AND action_hash IS NOT NULL ORDER BY id")?;
-        let rows = stmt.query_map([], |r| Ok((r.get::<_,i64>(0)?, r.get::<_,String>(1)?, r.get::<_,String>(2)?, r.get::<_,String>(3)?, r.get::<_,String>(4)?, r.get::<_,i64>(5)?)))?;
+        let mut stmt = self.conn.prepare("SELECT id,thread_id,kind,payload,action_hash,expires_at FROM approvals WHERE status='pending' AND action_hash IS NOT NULL AND (host_id IS NULL OR host_id=?1) ORDER BY id")?;
+        let rows = stmt.query_map([host.as_str()], |r| Ok((r.get::<_,i64>(0)?, r.get::<_,String>(1)?, r.get::<_,String>(2)?, r.get::<_,String>(3)?, r.get::<_,String>(4)?, r.get::<_,i64>(5)?)))?;
         let mut result = Vec::new();
         for row in rows {
             let (id, thread, kind, payload, hash, expires_at) = row?;
@@ -399,7 +419,8 @@ impl Watchers {
     pub fn remote_decide(&self, host: &HostId, device: &str, decision: &ApprovalDecision, now: i64) -> Result<bool, ApprovalError> {
         if decision.host_id != *host { return Ok(false); }
         let Ok(id) = decision.approval_id.as_str().parse::<i64>() else { return Ok(false); };
-        let matches: bool = self.conn.query_row("SELECT EXISTS(SELECT 1 FROM approvals a JOIN approval_devices d ON d.approval_id=a.id WHERE a.id=?1 AND a.thread_id=?2 AND a.status='pending' AND a.action_hash=?3 AND a.expires_at=?4 AND a.expires_at>=?5 AND d.host_id=?6 AND d.device_id=?7 AND d.action_hash=a.action_hash AND d.expires_at=a.expires_at)", rusqlite::params![id, decision.thread, decision.action_hash.as_str(), decision.expires_at, now, host.as_str(), device], |row| row.get(0))?;
+        // NULL hosts exist only before local legacy migration. Startup binds them before serving.
+        let matches: bool = self.conn.query_row("SELECT EXISTS(SELECT 1 FROM approvals a JOIN approval_devices d ON d.approval_id=a.id WHERE a.id=?1 AND a.thread_id=?2 AND a.status='pending' AND a.action_hash=?3 AND a.expires_at=?4 AND a.expires_at>=?5 AND (a.host_id IS NULL OR a.host_id=?6) AND d.host_id=?6 AND d.device_id=?7 AND d.action_hash=a.action_hash AND d.expires_at=a.expires_at)", rusqlite::params![id, decision.thread, decision.action_hash.as_str(), decision.expires_at, now, host.as_str(), device], |row| row.get(0))?;
         if !matches { self.expire_due(now)?; return Ok(false); }
         match decision.decision {
             ApprovalVerdict::Approve => self.approve_for_thread(id, &decision.thread, now),
@@ -1118,5 +1139,43 @@ mod tests {
         assert_eq!(w.status(id).unwrap(), "pending");
         assert!(w.deny(id, 1_002).unwrap());
         std::fs::remove_dir_all(root).ok();
+    }
+    #[test]
+    fn legacy_migration_preserves_decisions_and_binds_only_local_host() {
+        let root = temp_root("legacy-migration");
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let root = root.canonicalize().unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE approvals(id INTEGER PRIMARY KEY AUTOINCREMENT,thread_id TEXT NOT NULL,kind TEXT NOT NULL,payload TEXT NOT NULL,status TEXT NOT NULL,expires_at INTEGER NOT NULL,created_at INTEGER NOT NULL)").unwrap();
+        for (name, expiry) in [("approve.txt",2000),("deny.txt",2000),("expire.txt",1000),("failure.txt",2000)] {
+            let path = root.join(name);
+            let intent = FileWritePayload { path:path.clone(),resolved_path:path,expectation:TargetExpectation::Missing,content:"sk-abcdefghijklmnopqrstuv".into() };
+            conn.execute("INSERT INTO approvals(thread_id,kind,payload,status,expires_at,created_at) VALUES('thread','file_write',?1,'pending',?2,1000)",rusqlite::params![serde_json::to_string(&intent).unwrap(),expiry]).unwrap();
+        }
+        let watchers = Watchers::open(conn).unwrap();
+        let home = HostId::from_public_key(b"home");
+        let office = HostId::from_public_key(b"office");
+        assert!(watchers.approval_store().is_err());
+        watchers.bind_local_host(&home).unwrap();
+        assert!(watchers.approval_store().is_ok());
+        assert!(watchers.bind_local_host(&office).is_err());
+        assert!(watchers.remote_approvals(&office,"foreign-device",1000).unwrap().is_empty());
+        let cards = watchers.remote_approvals(&home,"owner",1000).unwrap();
+        assert_eq!(cards.len(),4);
+        assert!(!serde_json::to_string(&cards).unwrap().contains("sk-abcdefghijklmnopqrstuv"));
+        assert!(!serde_json::to_string(&cards).unwrap().contains(root.to_str().unwrap()));
+        assert!(watchers.approve_for_thread(1,"thread",1001).unwrap());
+        assert!(!watchers.approve_for_thread(1,"thread",1002).unwrap());
+        assert_eq!(std::fs::read_to_string(root.join("approve.txt")).unwrap(),"sk-abcdefghijklmnopqrstuv");
+        assert!(watchers.deny_for_thread(2,"thread",1001).unwrap());
+        assert!(!root.join("deny.txt").exists());
+        assert!(!watchers.approve_for_thread(3,"thread",1001).unwrap());
+        assert_eq!(watchers.status(3).unwrap(),"expired");
+        std::fs::create_dir(root.join("failure.txt")).unwrap();
+        assert!(watchers.approve_for_thread(4,"thread",1001).is_err());
+        assert_eq!(watchers.status(4).unwrap(),"pending");
+        assert!(watchers.deny_for_thread(4,"thread",1002).unwrap());
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

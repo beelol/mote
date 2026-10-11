@@ -7,6 +7,24 @@
 
 pub mod mem;
 
+#[cfg(test)]
+mod tool_ledger_tests {
+    use super::*;
+    #[test]
+    fn tool_accounting_does_not_create_model_calls_or_packs() {
+        let store = ContextStore::open_in_memory().unwrap();
+        let id = store.record_tool(&ToolLedgerEntry { host_id: "home".into(), thread_id: "thread".into(), action: "browser.snapshot".into(), input_tokens: 7, output_tokens: 13, latency_ms: 24, status: "ok".into() }).unwrap();
+        assert_eq!(store.count_ledger().unwrap(), 0);
+        assert_eq!(store.count_packs().unwrap(), 0);
+        let rows = store.tool_ledger_since(0).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, id);
+        assert_eq!(rows[0].entry.action, "browser.snapshot");
+        assert_eq!(rows[0].entry.input_tokens, 7);
+        assert_eq!(rows[0].entry.output_tokens, 13);
+    }
+}
+
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -207,6 +225,20 @@ pub struct LedgerRow {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ToolLedgerEntry {
+    pub host_id: String,
+    pub thread_id: String,
+    pub action: String,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub latency_ms: i64,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ToolLedgerRow { pub id: i64, pub ts: i64, pub entry: ToolLedgerEntry }
+
 /// The context store over one SQLite connection.
 pub struct ContextStore {
     conn: Connection,
@@ -244,7 +276,13 @@ impl ContextStore {
                  model TEXT NOT NULL, pack_id INTEGER NOT NULL, prompt_tokens INTEGER NOT NULL,
                  completion_tokens INTEGER NOT NULL, latency_ms INTEGER NOT NULL,
                  latency_kind TEXT NOT NULL DEFAULT 'unknown', cost_usd REAL NOT NULL,
-                 status TEXT NOT NULL);",
+                 status TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS tool_ledger(
+                 id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL,
+                 host_id TEXT NOT NULL, thread_id TEXT NOT NULL, action TEXT NOT NULL,
+                 input_tokens INTEGER NOT NULL CHECK(input_tokens>=0),
+                 output_tokens INTEGER NOT NULL CHECK(output_tokens>=0),
+                 latency_ms INTEGER NOT NULL CHECK(latency_ms>=0), status TEXT NOT NULL);",
         )?;
         let has_latency_kind = {
             let mut stmt = conn.prepare("PRAGMA table_info(ledger)")?;
@@ -349,6 +387,19 @@ impl ContextStore {
 
     pub fn count_ledger(&self) -> rusqlite::Result<i64> {
         self.conn.query_row("SELECT COUNT(*) FROM ledger", [], |r| r.get(0))
+    }
+
+    pub fn record_tool(&self, entry: &ToolLedgerEntry) -> rusqlite::Result<i64> {
+        self.conn.execute("INSERT INTO tool_ledger(ts,host_id,thread_id,action,input_tokens,output_tokens,latency_ms,status)
+            VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",rusqlite::params![self.now(),entry.host_id,entry.thread_id,entry.action,entry.input_tokens,entry.output_tokens,entry.latency_ms,entry.status])?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn tool_ledger_since(&self, since_ts: i64) -> rusqlite::Result<Vec<ToolLedgerRow>> {
+        self.conn.prepare("SELECT id,ts,host_id,thread_id,action,input_tokens,output_tokens,latency_ms,status
+            FROM tool_ledger WHERE ts>=?1 ORDER BY ts DESC,id DESC")?.query_map([since_ts],|row| {
+                Ok(ToolLedgerRow { id:row.get(0)?,ts:row.get(1)?,entry:ToolLedgerEntry { host_id:row.get(2)?,thread_id:row.get(3)?,action:row.get(4)?,input_tokens:row.get(5)?,output_tokens:row.get(6)?,latency_ms:row.get(7)?,status:row.get(8)? } })
+            })?.collect()
     }
 
     /// Read every ledger row at or after `since_ts`, newest first. Reporting callers aggregate
