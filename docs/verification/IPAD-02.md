@@ -211,6 +211,95 @@ Detailed local command logs are in `.superpowers/sdd/2026-10-11-ipad-simulator-u
 The final logs are `task-6-11-journey.log`, `task-6-13-journey.log`,
 `task-6-ios-check.log`, `task-6-workspace-final.log` and `task-6-clippy-final.log`.
 
+## Review follow-up
+
+The interactive commit is `42d50448387ad413f66c3c958022ba8fa7fdd281`.
+Review found no Critical or Important issue.
+Three Minor robustness findings received focused regressions on 2026-10-11.
+
+```text
+cargo test -p mote-ios simulator
+Before: 3 passed; 2 failed; exit 101
+missing_values_do_not_swallow_later_recognized_flags: reduced_motion was false
+invalid_later_values_do_not_erase_a_valid_page_selection: None instead of Some(Form)
+After: 5 passed; 0 failed; exit 0
+```
+
+The parser now leaves recognized flags available when a preceding option has no value.
+An unknown later page value cannot erase an earlier valid selection.
+The native text-target retry regression injects two recognition misses at the Vision boundary.
+It still uses a real app screenshot and a real Toggle selection.
+Its first run failed with one failure in 4.574 seconds.
+The bounded eight-second observation retry passed in 10.452 seconds.
+The tap uses the coordinates retained from the successful observation.
+
+The exact fixture slider regression failed when the old target produced `Changed volume: 5.0`.
+The corrected point target lies four points after the observed label's left edge.
+It produces exactly `Changed volume: 0.0`.
+The visible minimum thumb is probed in a small pixel region below the label.
+The unedited 50 value has zero red pixels in that region.
+The edited minimum has 44 red pixels at scale 2.
+The probe excludes the ordinary track and focused control border.
+Every gallery and fixture slider assertion checks the exact zero event and visible minimum thumb.
+Every Form, Dashboard and Fixture select assertion checks both the exact event value
+and the visible selected control text.
+
+The Xcode debugger diagnostics `debugger version lookup failed for path '<nil>': noURL`
+and `no debugger version` occur in successful tests.
+They are non-failing tooling noise, not an app failure.
+
+The first strengthened 13-inch run passed five tests with zero failures in 401.932 seconds.
+Later full runs added a focused landscape model-value check.
+The 13-inch run then passed five tests and failed one journey at a redundant post-edit Volume lookup.
+The exact zero event had passed before that lookup.
+The pixel assertion now retains the successful pre-edit label coordinates.
+The 11-inch run passed five tests and failed one journey when Vision split the exact Think event
+into separate observations and placed the navigation label `Slider` between them.
+The assertion now groups only fragments within four points of the status row and orders them by x.
+The out-of-order fragment regression failed in 0.087 seconds before this fix.
+It passed in 0.042 seconds after the fix.
+No recognized characters or expected values are substituted.
+
+Vision read the tiny landscape `qwen3:0.6b` control glyph as `awen3:0.6b` at native resolution.
+Vocabulary hints and language correction did not resolve that observation and were removed.
+A bounded control-row crop enlarged three times passed the exact model-value regression
+in 21.585 seconds with language correction disabled.
+Two isolated failing landscape runs and the later failing 11-inch run stalled after their tests ended.
+Only those exact Xcode processes were stopped after several minutes without finalization progress.
+Their logs and partial result bundles remain local under `.superpowers` and `target`.
+
+Final strengthened runs completed on 2026-10-11 at 07:33 and 07:34 PDT.
+They used the environment and device identifiers recorded above.
+
+```text
+xcodebuild -project ios/Mote/Mote.xcodeproj -scheme Mote -configuration Debug -destination 'platform=iOS Simulator,id=43F2F6ED-5C86-4121-B03F-40FE38891C4E' -derivedDataPath target/ipad-derived -resultBundlePath target/ipad-task6-review-verified-11.xcresult test
+Executed 7 tests, with 0 failures in 409.434 seconds
+** TEST SUCCEEDED **
+exit 0
+
+xcodebuild -project ios/Mote/Mote.xcodeproj -scheme Mote -configuration Debug -destination 'platform=iOS Simulator,id=E1982F50-C8EF-47E9-9854-715268304F2B' -derivedDataPath target/ipad-derived -resultBundlePath target/ipad-task6-review-verified-13.xcresult test-without-building
+Executed 7 tests, with 0 failures in 419.476 seconds
+** TEST EXECUTE SUCCEEDED **
+exit 0
+
+cargo test --workspace
+615 passed; 0 failed; 2 ignored across 53 result summaries
+exit 0
+cargo clippy --workspace -- -D warnings
+Finished dev profile in 0.58s
+exit 0
+cargo check -p mote-ios --target aarch64-apple-ios-sim
+Finished dev profile in 0.24s
+exit 0
+```
+
+Both complete journeys passed exact Form, Dashboard and Fixture selection values,
+exact slider minimum events, visible selected control rows and the edited thumb pixel checks.
+Both journeys passed text entry with the native keyboard in portrait and landscape.
+The native logs record each actual point target from the successful observation.
+The result bundles retain screenshots for each selected page and both scrolling states.
+IPAD-02 remains open for the temporal evidence described below.
+
 ## Transition evidence gap
 
 The core transition regression suite runs as part of the workspace tests.

@@ -9,18 +9,23 @@ pub struct LaunchOptions {
 impl LaunchOptions {
     pub fn parse(args: impl IntoIterator<Item = String>) -> Self {
         let mut options = Self::default();
-        let mut args = args.into_iter();
+        let mut args = args.into_iter().peekable();
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--mote-page" => {
-                    if let Some(name) = args.next() {
-                        options.page = GalleryPage::ALL
+                    if let Some(name) = args.next_if(|value| !value.starts_with("--")) {
+                        if let Some(page) = GalleryPage::ALL
                             .into_iter()
-                            .find(|page| page.name().eq_ignore_ascii_case(&name));
+                            .find(|page| page.name().eq_ignore_ascii_case(&name))
+                        {
+                            options.page = Some(page);
+                        }
                     }
                 }
                 "--mote-fixture" => {
-                    if args.next().as_deref() == Some("slider-layout") {
+                    if args.next_if(|value| !value.starts_with("--")).as_deref()
+                        == Some("slider-layout")
+                    {
                         options.page = Some(GalleryPage::Fixture);
                     }
                 }
@@ -63,6 +68,32 @@ mod tests {
             let options = LaunchOptions::parse(args.into_iter().map(str::to_owned));
             assert_eq!(options.page, None);
             assert!(!options.reduced_motion);
+        }
+    }
+
+    #[test]
+    fn missing_values_do_not_swallow_later_recognized_flags() {
+        for flag in ["--mote-page", "--mote-fixture"] {
+            let options = LaunchOptions::parse(
+                ["Mote", flag, "--mote-reduced-motion", "--mote-page", "form"].map(str::to_owned),
+            );
+            assert!(options.reduced_motion);
+            assert_eq!(options.page, Some(GalleryPage::Form));
+        }
+    }
+
+    #[test]
+    fn invalid_later_values_do_not_erase_a_valid_page_selection() {
+        for tail in [
+            vec!["--mote-page", "unknown"],
+            vec!["--mote-page"],
+            vec!["--mote-fixture", "unknown"],
+        ] {
+            let args = ["Mote", "--mote-page", "form"]
+                .into_iter()
+                .chain(tail)
+                .map(str::to_owned);
+            assert_eq!(LaunchOptions::parse(args).page, Some(GalleryPage::Form));
         }
     }
 }
