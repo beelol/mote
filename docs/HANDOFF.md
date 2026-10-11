@@ -6,56 +6,64 @@ Updated 2026-10-11 in America/Los_Angeles. Replace this snapshot rather than app
 
 Branch: `main`.
 
-The owner approved the native iPad host design, including multiple hosts in different locations,
-the Mac as the first authoritative host, Bonjour local discovery, a separately encrypted paired
-connection, Rust immediate-mode Matrix rendering, host-side inferred UI, host-side browser use and
-approval cards answerable from the iPad.
+The active goal is a Rust immediate-mode Mote client running in the iPad Simulator over an
+authenticated localhost gateway to the Mac. Active criteria are HOST-01 through HOST-05 and IPAD-01
+through IPAD-05 in the root README. V0-53 remains independent and owner-only for its literal logout
+and login check.
 
-The durable design is `docs/superpowers/specs/2026-10-11-ipad-host.md`.
-The active board is root `README.md` under `Ready for Go`.
-The iPad feature states its approved Matrix and browser behavior in self-contained HOST and IPAD ACs.
-It does not activate additional backlog IDs.
-The cloud relay remains deferred, but the protocol must support hosts in different places.
+Physical iPad behavior, Apple signing, App Store Connect and TestFlight are deferred as IPAD-06
+through IPAD-08. Do not begin them without new owner authority. The cloud relay also remains
+deferred. Preserve untracked `.DS_Store` and `.superpowers/`.
 
-Preserve untracked `.DS_Store` and `.superpowers/`.
+## Written contracts
+
+The approved design is `docs/superpowers/specs/2026-10-11-ipad-host.md`.
+
+Implementation is split into three plans:
+
+- `docs/superpowers/plans/2026-10-11-ipad-simulator-host.md` covers HOST-01 through HOST-05.
+- `docs/superpowers/plans/2026-10-11-ipad-simulator-ui.md` covers IPAD-01 through IPAD-03.
+- `docs/superpowers/plans/2026-10-11-ipad-agent-browser.md` covers IPAD-04 and IPAD-05.
+
+The plans preserve the desktop Unix client, keep `models.local_only = true`, use only the approved
+Ollama models, route model calls through the ledger and redact before storage. Browser work uses a
+dedicated Chrome for Testing profile and local fixtures. Outward browser effects require durable,
+host-bound approval from the Simulator.
 
 ## Delivery state
 
-The design spec, README driver goal and HOST-01 through HOST-05 plus IPAD-01 through IPAD-08 are
-fully reviewed and verified as one planning batch. No iPad implementation or App Store Connect state
-has been created.
-
-The last integrated commits before this design batch are:
-
-- `3de54ef` documents the Vector materialization direction.
-- `b085b70` implements and verifies the live pipeline overhead benchmark.
-- `e134316` records the v0 close-out state.
+Commit `424ea3f` contains the approved design and original HOST/IPAD board. The Simulator planning
+batch narrows execution to the active criteria, links the three implementation plans and updates this
+handoff. No implementation code, Rust Apple target, Xcode project, signing state, App Store Connect
+record or TestFlight build has been created.
 
 The configured remote is `https://github.com/beelol/mote.git` on `main`.
 
-## Evidence and limits
+## Verified environment and limits
 
-`cargo test --workspace` passed 478 tests on 2026-10-11 with local Unix socket access.
-`cargo clippy --workspace -- -D warnings` passed on 2026-10-11.
-The first restricted test attempt reproduced the known local-socket failures and was stopped after it
-stalled. The complete run with local socket access passed.
-Independent acceptance review approved the corrected spec and board after checking scope, links,
-unique IDs, the 3,527-character driver goal, parent state and distribution gates.
+The last full verification passed 478 workspace tests and clippy on 2026-10-11. Local Unix socket
+tests require execution with local socket access. Xcode 27.0 and iOS Simulator SDK 27 are installed.
+The Rust iOS targets are not installed. Available Simulator devices have not yet been enumerated.
 
-The current desktop client uses eframe, egui and winit. Winit has an iOS backend in the cached
-dependency source. Xcode 27.0 is installed. The Rust iOS targets are not installed. Simulator device
-availability has not been verified because the restricted environment could not reach CoreSimulator.
-No physical iPad behavior, local-network prompt, signing, bundle ID, App Store Connect record or
-TestFlight build has been verified.
+AccessKit's current iOS adapter cannot provide physical VoiceOver evidence. IPAD-06 remains open for
+that and all other physical-device checks. No local-network privacy prompt, signing identity, bundle
+ID reservation, App Store record or TestFlight install has been verified.
 
-V0-53 remains open only for the literal logout and login survival check. Do not mark it complete
-without observing that check.
+An independent plan review checked all three plans against the design and README. Its corrections are
+incorporated. They include real Simulator Bonjour discovery, Keychain credential storage, both Apple
+Rust targets, repeatable XCUITest interaction driving, network-level browser interception, exact
+action hashing and a durable inferred-UI activation attestation.
 
-## Blockers and next action
+The literal Mac sleep and wake run in HOST-05 is not safe to start unattended without a configured
+wake mechanism. Leave that clause and HOST-05 open while completing independent work.
 
-There is no design decision blocker. The written spec now awaits the owner's document review.
+## Exact next action
 
-After the owner approves the written spec, use the plan-writing workflow to create the implementation
-plan. Start implementation only after the written plan is approved and the owner chooses execution in
-the current session or a later session. Work HOST-01 before iPad packaging. Do not create the App Store
-Connect record until HOST-01 through HOST-05 and IPAD-01 through IPAD-06 pass.
+Review the three implementation plans as one dependency chain. After approval, use
+`superpowers:subagent-driven-development`. Start host plan Task 1. Keep UI work behind the published
+host interfaces and inspect every delegated result before integration. Run workspace test and clippy,
+write the relevant `docs/verification/<ID>.md`, commit, and push after every completed criterion.
+
+Do not mark a criterion complete from a partial test. If IPAD-04's live 200-prompt gate scores below
+190 first-try valid surfaces, leave automatic inference disabled and IPAD-04 open while continuing
+independent browser fixture work.

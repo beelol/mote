@@ -68,20 +68,20 @@ turn.
 
 ### Continue development
 
-Copy this goal into a driver. Scope is the remaining v0 item and the native iPad host feature below.
+Copy this goal into a driver. Current scope is the remaining v0 item and the iPad Simulator phase.
 
 ```text
 Continue mote from repository state at ~/projects/mote without relying on chat history.
 
-Read AGENTS.md, docs/rfcs/v0.md, docs/superpowers/specs/2026-10-11-ipad-host.md, root README.md -> Ready for Go, and docs/HANDOFF.md if present. Active ACs are V0-53 under Ready for Go -> v0 build list and the unchecked children under Ready for Go -> Native iPad host feature. The iPad ACs are self-contained. They do not activate additional docs/backlog.md criteria. The older open Matrix parent remains a historical completion record; work its behavior only where a HOST or IPAD AC requires it. Raspberry Pi work is deferred.
+Read AGENTS.md, docs/rfcs/v0.md, docs/superpowers/specs/2026-10-11-ipad-host.md, root README.md -> Ready for Go, and docs/HANDOFF.md if present. Active ACs are V0-53 under Ready for Go -> v0 build list and HOST-01 through HOST-05 plus IPAD-01 through IPAD-05 under Ready for Go -> Native iPad host feature. IPAD-06 through IPAD-08 are deferred. The active iPad ACs are self-contained and do not activate additional docs/backlog.md criteria. The older open Matrix parent remains a historical completion record; work its behavior only where an active HOST or IPAD AC requires it. Raspberry Pi work is deferred.
 
-Finish independent work even when device, signing or owner-only checks remain open. Respect the delivery order in the iPad spec. Preserve the existing Unix client while adding the protocol, multi-host identity, secure gateway, Rust iPad consumer, simulator journey, inferred Matrix UI, browser approval journey, physical-device checks and finally the separate TestFlight app. models.local_only stays true. Use only the three approved Ollama models. Every model verdict is structured JSON parsed fail-closed. Every model call uses the ledger. Redact before storage. Never read the default Chrome profile or its keychain item.
+Finish independent work even when V0-53 remains owner-only. Respect the simulator delivery order in the iPad spec. Preserve the existing Unix client while adding the protocol, multi-host identity, secure loopback gateway, Rust iPad consumer, simulator journey, inferred Matrix UI and browser approval journey. Connect the simulator to `moted` over localhost. Do not start physical-device, signing, App Store Connect or TestFlight work. models.local_only stays true. Use only the three approved Ollama models. Every model verdict is structured JSON parsed fail-closed. Every model call uses the ledger. Redact before storage. Never read the default Chrome profile or its keychain item.
 
 Choose the smallest actionable AC or coherent dependency set. Inspect existing code first. If delegation is available, send bounded work to the least costly capable subagent with AC IDs, objective, owned files, dependencies and evidence requirements. Parallelize only independent work. Inspect every result before accepting it. Otherwise work directly. Add an AC for any discovered in-scope gap and reopen its parent. Never remove or weaken an unmet requirement.
 
 Verify the full AC clause, including failures, reconnect, replay, identity isolation and real UI or device behavior where required. Run cargo test --workspace and cargo clippy --workspace -- -D warnings before every commit. Record commands or manual steps, output, environment, date and commit in docs/verification/<ID>.md. A simulator cannot close a physical-device AC. Upload cannot close TestFlight installation. A checked AC without matching evidence is a bug.
 
-Deliver small verified Conventional Commits to main and push confirmed commits to the configured origin. Include evidence, AC checkmarks and parent status in the same verified delivery. Do not create the App Store Connect record until HOST-01 through HOST-05 and IPAD-01 through IPAD-06 pass. Do not publish externally, spend on cloud infrastructure, send messages, make purchases or deploy a cloud relay without separate authority.
+Deliver small verified Conventional Commits to main and push confirmed commits to the configured origin. Include evidence and AC checkmarks in the same verified delivery. Check the Simulator parent only when HOST-01 through HOST-05 and IPAD-01 through IPAD-05 are verified. Leave the deferred physical parent open. Do not use a physical device, configure signing, create an App Store Connect record, upload a build, publish externally, spend on cloud infrastructure, send messages, make purchases or deploy a cloud relay without separate authority.
 
 After every integration, reread both active README sections and recheck affected completed ACs. Check a parent only when every child is verified. Continue until all authorized ACs close. If one is blocked, leave it open and continue independent work. Stop only for completion, an owner stop, a budget limit or when every remaining AC needs unavailable input, access or authorization. State the exact blockers.
 
@@ -207,11 +207,14 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
 
 ### Native iPad host feature
 
-Work in dependency order. Keep device-only and distribution criteria open until their literal
-environments pass. The [approved design](docs/superpowers/specs/2026-10-11-ipad-host.md) defines
-the journeys, security boundary, incorporated Matrix and browser behavior, and deferred scope.
+Current execution stops after the Simulator, inferred UI and local browser approval journeys.
+The [approved design](docs/superpowers/specs/2026-10-11-ipad-host.md) defines the journeys,
+security boundary, incorporated Matrix and browser behavior, and deferred physical delivery.
+Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-ipad-simulator-host.md),
+[Simulator UI](docs/superpowers/plans/2026-10-11-ipad-simulator-ui.md), and
+[inferred UI and browser](docs/superpowers/plans/2026-10-11-ipad-agent-browser.md) plans.
 
-- [ ] **[Native iPad host and TestFlight](docs/superpowers/specs/2026-10-11-ipad-host.md)**
+- [ ] **[Native iPad Simulator host](docs/superpowers/specs/2026-10-11-ipad-host.md)**
   - [ ] **HOST-01** A versioned transport-independent host protocol carries requests, events,
     committed Matrix surfaces, typed interactions, approvals, cursors and structured errors while
     the existing Unix transport keeps passing its contract. **Verify:** protocol golden tests and
@@ -226,8 +229,9 @@ the journeys, security boundary, incorporated Matrix and browser behavior, and d
     revoked device before any application action runs.
   - [ ] **HOST-04** Bonjour discovers a local Mote gateway without treating its address as identity,
     and a known host can change addresses only after identity proof. **Verify:** discover `_mote._tcp`
-    with only version and fingerprint in TXT, pair on a local network, change the host address,
-    reconnect to the same identity, reject an impersonator and verify the local-network purpose text.
+    with only version and fingerprint in TXT on the Mac and Simulator network stack, move the
+    loopback endpoint, reconnect to the same identity, reject an impersonator and verify the checked-in
+    local-network purpose text. The physical privacy prompt remains IPAD-06 evidence.
   - [ ] **HOST-05** Reconnect resumes the selected host's cursor without duplicates, retention loss
     causes an authoritative resync, and the client visibly distinguishes connecting, online, offline,
     incompatible and identity-changed states without silent failover. **Verify:** scripted disconnect,
@@ -264,6 +268,10 @@ the journeys, security boundary, incorporated Matrix and browser behavior, and d
     and that one approved action executes exactly once after page-state recheck. Also record prompt-
     injection refusal, redacted events, ledger and HAR, before and after commit screenshots and a
     final validated Matrix result card.
+
+### Deferred physical iPad delivery
+
+- [ ] **[Physical iPad and TestFlight](docs/superpowers/specs/2026-10-11-ipad-host.md#distribution)**
   - [ ] **IPAD-06** A physical iPad passes touch, keyboard, rotation, split view, background recovery,
     local-network permission, light and dark appearance, reduced motion and VoiceOver checks.
     **Verify:** repeat the named journeys on the device, including center and edge taps for every
