@@ -1,0 +1,1 @@
+{"type":"event","host_id":"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad","event":{"seq":8,"ts":1791676800000,"scope_id":"main","kind":"talk.done","payload":{"text":"hello","ledger_id":1}}}

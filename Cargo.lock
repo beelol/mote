@@ -2396,6 +2396,7 @@ version = "0.0.0"
 dependencies = [
  "libc",
  "mote-eventlog",
+ "mote-protocol",
  "serde",
  "serde_json",
 ]
@@ -2414,6 +2415,15 @@ dependencies = [
 [[package]]
 name = "mote-paths"
 version = "0.0.0"
+
+[[package]]
+name = "mote-protocol"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
 
 [[package]]
 name = "mote-redact"

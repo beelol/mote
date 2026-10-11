@@ -215,7 +215,7 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
 [inferred UI and browser](docs/superpowers/plans/2026-10-11-ipad-agent-browser.md) plans.
 
 - [ ] **[Native iPad Simulator host](docs/superpowers/specs/2026-10-11-ipad-host.md)**
-  - [ ] **HOST-01** A versioned transport-independent host protocol carries requests, events,
+  - [x] **HOST-01** A versioned transport-independent host protocol carries requests, events,
     committed Matrix surfaces, typed interactions, approvals, cursors and structured errors while
     the existing Unix transport keeps passing its contract. **Verify:** protocol golden tests and
     the existing Unix reconnect suite pass with no wire-type dependency on a socket implementation.

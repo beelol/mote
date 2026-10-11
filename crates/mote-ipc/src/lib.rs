@@ -7,6 +7,7 @@
 //! the same live socket fails naming the path.
 
 use mote_eventlog::{Event, Subscription};
+use mote_protocol::{envelope, Event as ProtocolEvent};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::fd::{AsRawFd, RawFd};
@@ -249,19 +250,30 @@ fn stream_events<D: Dispatch>(
 }
 
 fn error_reply(id: Value, e: &RpcError) -> Value {
-    json!({ "id": id, "error": { "code": e.code, "message": e.message } })
+    json!(envelope::ErrorEnvelope {
+        id,
+        error: envelope::Error { code: e.code.clone(), message: e.message.clone() },
+    })
 }
 
 pub fn request_envelope(id: Value, method: &str, params: Value) -> Value {
-    json!({ "id": id, "method": method, "params": params })
+    json!(envelope::RequestEnvelope { id, method: method.to_string(), params })
 }
 
 pub fn success_envelope(id: Value, result: Value) -> Value {
-    json!({ "id": id, "result": result })
+    json!(envelope::SuccessEnvelope { id, result })
 }
 
 pub fn event_envelope(event: &Event) -> Value {
-    json!({ "event": event })
+    json!(envelope::EventEnvelope {
+        event: ProtocolEvent {
+            seq: event.seq,
+            ts: event.ts,
+            scope_id: event.scope_id.clone(),
+            kind: event.kind.clone(),
+            payload: event.payload.clone(),
+        },
+    })
 }
 
 pub fn encode_frame(value: &Value) -> io::Result<Vec<u8>> {
@@ -367,7 +379,14 @@ impl EventDecoder {
                 let value = frame.get("event").ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidData, "subscription frame has no event")
                 })?;
-                serde_json::from_value(value.clone()).map(Some)
+                serde_json::from_value::<ProtocolEvent>(value.clone())
+                    .map(|event| Some(Event {
+                        seq: event.seq,
+                        ts: event.ts,
+                        scope_id: event.scope_id,
+                        kind: event.kind,
+                        payload: event.payload,
+                    }))
                     .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
             }
             Err(error) if matches!(error.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) => Ok(None),
@@ -459,6 +478,43 @@ impl EventStream {
 mod tests {
     use super::*;
     use mote_eventlog::EventLog;
+
+    #[test]
+    fn local_envelopes_keep_arbitrary_ids_and_the_unversioned_wire_shape() {
+        for id in [json!(7), json!("opaque"), Value::Null, json!({"legacy":true})] {
+            assert_eq!(request_envelope(id.clone(), "", Value::Null), json!({"id":id,"method":"","params":null}));
+            assert_eq!(success_envelope(id.clone(), json!({"ok":true})), json!({"id":id,"result":{"ok":true}}));
+            assert_eq!(error_reply(id.clone(), &RpcError::invalid_params("bad input")),
+                json!({"id":id,"error":{"code":"invalid_params","message":"bad input"}}));
+        }
+        let event = Event { seq: 7, ts: 11, scope_id: "main".into(), kind: "test".into(), payload: json!({"ok":true}) };
+        assert_eq!(encode_frame(&event_envelope(&event)).unwrap(),
+            b"{\"event\":{\"kind\":\"test\",\"payload\":{\"ok\":true},\"scope_id\":\"main\",\"seq\":7,\"ts\":11}}\n");
+    }
+
+    #[test]
+    fn local_parser_keeps_missing_fields_extra_keys_and_arbitrary_ids() {
+        let (_srv, path, _log) = server("legacy-parser");
+        let mut raw = UnixStream::connect(path).unwrap();
+        let mut reader = BufReader::new(raw.try_clone().unwrap());
+        for (request, expected) in [
+            (json!({"method":"echo","extra":true}), json!({"id":null,"result":null})),
+            (json!({"id":false,"method":"echo","params":{"extra":true},"extra":42}), json!({"id":false,"result":{"extra":true}})),
+            (json!({"id":{"opaque":true},"method":"echo","params":null}), json!({"id":{"opaque":true},"result":null})),
+        ] {
+            write_line(&mut raw, &request).unwrap();
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            assert_eq!(serde_json::from_str::<Value>(&line).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn local_event_decoder_keeps_the_legacy_event_dto_behavior() {
+        let mut decoder = EventDecoder::default();
+        let event = decoder.read(&mut &b"{\"event\":{\"seq\":-1,\"ts\":11,\"scope_id\":\"main\",\"kind\":\"test\",\"payload\":null,\"extra\":true}}\n"[..]).unwrap().unwrap();
+        assert_eq!(event, Event { seq: -1, ts: 11, scope_id: "main".into(), kind: "test".into(), payload: Value::Null });
+    }
 
     #[test]
     fn fragmented_event_survives_timeouts_at_every_byte_and_requires_newline() {

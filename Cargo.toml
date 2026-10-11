@@ -5,6 +5,7 @@ members = [
     "crates/mote-redact",
     "crates/mote-paths",
     "crates/mote-eventlog",
+    "crates/mote-protocol",
     "crates/mote-ipc",
     "crates/mote-localmodel",
     "crates/mote-harness",
@@ -25,6 +26,7 @@ rust-version = "1.89"
 mote-redact = { path = "crates/mote-redact" }
 mote-paths = { path = "crates/mote-paths" }
 mote-eventlog = { path = "crates/mote-eventlog" }
+mote-protocol = { path = "crates/mote-protocol" }
 mote-ipc = { path = "crates/mote-ipc" }
 mote-localmodel = { path = "crates/mote-localmodel" }
 mote-harness = { path = "crates/mote-harness" }
