@@ -159,7 +159,8 @@ One render request, reply and subscribed event total 1753 bytes for these sample
 Their separately counted tokens sum to 509.
 This sum is not a model prompt count or the tokenization of concatenated frames.
 Subscriptions, later refreshes, config events, socket overhead and database storage are excluded.
-Populated pipeline rows and real timestamps change the event cost.
+Populated pipeline rows change the internal binding snapshot, not the emitted dashboard surface.
+Real timestamps change the event cost.
 The source savings above do not establish total transport savings.
 
 Two checked runs produced byte-identical complete TSV output on 2026-10-10.
