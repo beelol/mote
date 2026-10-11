@@ -44,9 +44,8 @@ Files:
 - Modify `crates/mote-ui/src/lib.rs` only to export the new module.
 
 Verify strict version, type, key, bound, depth, node, byte, slider and layout validation. Verify the
-v0 schema and fixtures remain unchanged. Verify schema generation is deterministic. Verify a legacy
-decoder consumes `surface`, a v1-aware decoder can inspect `matrix_surface`, and the single event
-advances one durable cursor without losing the fallback across an upgrade.
+v0 schema and fixtures remain unchanged. Verify schema generation is deterministic. Verify strict
+validation of the dual envelope, including its valid v0 `surface` and version 1 `matrix_surface`.
 
 Commit: `feat(ui): add Matrix v1 consumer contract`
 
@@ -76,6 +75,13 @@ Files:
 
 - Create `mote-client/src/contract.rs`.
 - Modify client state, app, fixture, gallery and existing test harnesses to use the enum.
+
+Verify the same dual event is independently consumable by the legacy decoder from `surface` and the
+version-aware decoder from `matrix_surface` at receipt time. Verify the event reduces once, advances
+one durable cursor once and does not duplicate either representation. Surface persistence across a
+restart or binary upgrade is explicitly out of scope and remains open. The current connection flow
+invalidates surfaces and subscribes after the durable cursor, so reopening does not restore that
+surface.
 
 Commit: `refactor(client): decode versioned surface contracts`
 

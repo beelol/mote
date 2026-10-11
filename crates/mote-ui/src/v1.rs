@@ -479,8 +479,22 @@ fn check_slider(value: f64, min: f64, max: f64, step: Option<f64>) -> Result<(),
             return Err(Diagnostic("slider step must be positive".into()));
         }
         let quotient = (value - min) / step;
-        let tolerance = 1e-9 * quotient.abs().max(1.0);
-        if (quotient - quotient.round()).abs() > tolerance {
+        if !quotient.is_finite() {
+            return Err(Diagnostic("slider step quotient must be finite".into()));
+        }
+        let nearest = quotient.round();
+        let reconstruction = min + nearest * step;
+        if !reconstruction.is_finite() {
+            return Err(Diagnostic(
+                "slider step reconstruction must be finite".into(),
+            ));
+        }
+        let quotient_tolerance = (8.0 * f64::EPSILON * quotient.abs().max(1.0)).min(0.25);
+        let value_scale = value.abs().max(reconstruction.abs()).max(1.0);
+        let value_tolerance = (8.0 * f64::EPSILON * value_scale).min(step.abs() * 0.25);
+        if (quotient - nearest).abs() > quotient_tolerance
+            || (value - reconstruction).abs() > value_tolerance
+        {
             return Err(Diagnostic(
                 "slider value must be aligned to step from min".into(),
             ));
@@ -913,6 +927,33 @@ mod tests {
         *value = f64::NAN;
         let error = surface.validate().unwrap_err();
         assert!(error.0.contains("finite"), "{error}");
+    }
+
+    #[test]
+    fn slider_step_alignment_rejects_half_steps_and_nonfinite_math() {
+        for (min, max, value, step, expected) in [
+            (0.0, 1_000_000_001.0, 1_000_000_001.0, 2.0, "aligned"),
+            (0.0, 1e308, 1e308, 1e-308, "quotient must be finite"),
+            (
+                1e308,
+                1.7e308,
+                1.7e308,
+                1e308,
+                "reconstruction must be finite",
+            ),
+        ] {
+            let mut candidate = fixture_value();
+            let slider = slider_mut(&mut candidate);
+            slider.insert("min".into(), json!(min));
+            slider.insert("max".into(), json!(max));
+            slider.insert("value".into(), json!(value));
+            slider.insert("step".into(), json!(step));
+            let error = validate(&serde_json::to_vec(&candidate).unwrap()).unwrap_err();
+            assert!(
+                error.0.contains(expected),
+                "{min} {max} {value} {step}: {error}"
+            );
+        }
     }
 
     #[test]
