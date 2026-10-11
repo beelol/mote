@@ -9,6 +9,9 @@ The accepted plan is `docs/superpowers/plans/2026-10-10-matrix-v1-consumer-contr
 Tasks 1 through 6 are implemented.
 Task 6 uses the commit subject `feat(matrix): activate anchored v1 dashboard surfaces`.
 Its detailed report is `.superpowers/sdd/2026-10-10-matrix-v1-consumer-contract/task-6-report.md`.
+Commit `0e3a3a4` clarifies the local Matrix confirmation copy and preserves the explicit second
+activation requirement.
+Commit `177d4ee` records the accepted native Mac evidence for UI-35 and UI-39.
 
 The checked-in live dashboard activates only the frozen first slice.
 It has Header, scrolling body, Footer and a direct-child filled body column.
@@ -34,7 +37,10 @@ The ledger and packs were empty.
 All owned smoke processes were stopped and reaped.
 Evidence is in V0-45, UI-04 and UI-46.
 
-The full-catalog Matrix toolchain and host/runtime umbrellas remain unchecked.
-Later catalog contracts, native screenshots and accessibility dump, Pi, iPad, numeric slider host
-binding and surface restoration across restart or binary upgrade remain open.
+The Matrix toolchain umbrella is checked. UI-35 has a native Mac screenshot of the retained
+dashboard and visible rejection diagnostic. UI-39 has native Mac Gallery screenshots that cover
+all eleven unchanged v0 Node variants and the separate frozen v1 slice.
+The broader Matrix host/runtime umbrella remains open. Later catalog contracts, a native
+accessibility dump, Pi and iPad delivery, cross-target work, a numeric production slider binding
+and surface restoration across restart or binary upgrade remain open.
 No model was invoked and `MOTE_LIVE` was unset.
