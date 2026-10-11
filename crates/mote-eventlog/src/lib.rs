@@ -220,7 +220,12 @@ impl EventLog {
         if let Some((device, now)) = device {
             let has_approvals: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='approvals')", [], |r| r.get(0))?;
             if has_approvals {
-                let approvals: Vec<(i64, String, String, String, String, i64)> = tx.prepare("SELECT id,thread_id,kind,payload,action_hash,expires_at FROM approvals WHERE status='pending' AND action_hash IS NOT NULL AND expires_at>=?1 ORDER BY id")?.query_map([now], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?)))?.collect::<rusqlite::Result<_>>()?;
+                let columns: Vec<String> = tx.prepare("PRAGMA table_info(approvals)")?.query_map([], |row| row.get(1))?.collect::<rusqlite::Result<_>>()?;
+                if !columns.iter().any(|column| column == "host_id") {
+                    tx.execute_batch("ALTER TABLE approvals ADD COLUMN host_id TEXT")?;
+                }
+                tx.execute("UPDATE approvals SET host_id=?1 WHERE host_id IS NULL AND kind='file_write'", [host_id.as_str()])?;
+                let approvals: Vec<(i64, String, String, String, String, i64)> = tx.prepare("SELECT id,thread_id,kind,payload,action_hash,expires_at FROM approvals WHERE host_id=?2 AND status='pending' AND action_hash IS NOT NULL AND expires_at>=?1 ORDER BY id")?.query_map(rusqlite::params![now, host_id.as_str()], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?)))?.collect::<rusqlite::Result<_>>()?;
                 for (id, thread, kind, payload, hash, expires_at) in approvals {
                     let approval = mote_protocol::PendingApproval {
                         approval_id: mote_protocol::RequestId::new(id.to_string())
@@ -558,6 +563,27 @@ mod tests {
 
     fn val(s: &str) -> serde_json::Value {
         serde_json::json!({ "msg": s })
+    }
+
+    #[test]
+    fn approval_snapshot_grants_only_records_owned_by_this_host() {
+        let log = EventLog::open_in_memory().unwrap();
+        let host = HostId::from_public_key(&[4; 32]);
+        let other = HostId::from_public_key(&[5; 32]);
+        {
+            let guard = log.inner.lock().unwrap();
+            guard.conn.execute_batch("CREATE TABLE approvals(id INTEGER PRIMARY KEY,host_id TEXT,thread_id TEXT,kind TEXT,payload TEXT,action_hash TEXT,status TEXT,expires_at INTEGER);
+                CREATE TABLE approval_devices(host_id TEXT,device_id TEXT,approval_id INTEGER,action_hash TEXT,expires_at INTEGER);").unwrap();
+            for (id, owner) in [(1, host.as_str()), (2, other.as_str())] {
+                guard.conn.execute("INSERT INTO approvals VALUES(?1,?2,'main','browser','{}',?3,'pending',1000)", rusqlite::params![id, owner, "a".repeat(64)]).unwrap();
+            }
+            guard.conn.execute("INSERT INTO approvals VALUES(3,NULL,'main','browser','{}',?1,'pending',1000)", ["b".repeat(64)]).unwrap();
+        }
+        let snapshot = log.host_snapshot_for_device(&host, "ipad", 100).unwrap();
+        assert_eq!(snapshot.pending_approvals.len(), 1);
+        assert_eq!(snapshot.pending_approvals[0].approval_id.as_str(), "1");
+        let grants: i64 = log.inner.lock().unwrap().conn.query_row("SELECT count(*) FROM approval_devices WHERE approval_id IN (2,3)", [], |row| row.get(0)).unwrap();
+        assert_eq!(grants, 0);
     }
 
     #[test]

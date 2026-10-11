@@ -1,3 +1,4 @@
+use crate::continuation::{Boundary, Retained};
 use crate::{
     BrowserEffect, BrowserEvidence, BrowserNode, BrowserPolicy, BrowserSnapshot, LaunchConfig,
     NodeRef, SnapshotMap,
@@ -35,6 +36,19 @@ pub enum BrowserCommand {
     Click {
         reference: NodeRef,
     },
+    Prepare {
+        reference: NodeRef,
+    },
+    Release {
+        intent: BrowserCommitIntent,
+    },
+    Pending,
+    Inspect {
+        intent: BrowserCommitIntent,
+    },
+    Cancel {
+        fingerprint: String,
+    },
     Screenshot,
     Evidence,
 }
@@ -48,9 +62,11 @@ pub enum BrowserResult {
     CommitRequired { intent: BrowserCommitIntent },
     Screenshot(Vec<u8>),
     Evidence(BrowserEvidence),
+    Pending(Vec<BrowserCommitIntent>),
+    Released,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BrowserCommitIntent {
     pub origin: String,
@@ -58,6 +74,12 @@ pub struct BrowserCommitIntent {
     pub node_ref: NodeRef,
     pub request_fingerprint: String,
     pub page_state_hash: String,
+    #[serde(default)]
+    pub request_url: String,
+    #[serde(default)]
+    pub method: String,
+    #[serde(default)]
+    pub expires_at: i64,
 }
 
 type Reply = mpsc::Sender<Result<BrowserResult>>;
@@ -195,6 +217,7 @@ async fn run(
     };
     let evidence = Arc::new(Mutex::new(BrowserEvidence::default()));
     let references = Arc::new(Mutex::new(SnapshotMap::default()));
+    let boundary = Arc::new(Mutex::new(Boundary::default()));
     let initialized = async {
         browser
             .execute(browser::SetDownloadBehaviorParams::new(
@@ -223,7 +246,14 @@ async fn run(
             browser::SetDownloadBehaviorParams::new(browser::SetDownloadBehaviorBehavior::Deny);
         downloads.browser_context_id = Some(context);
         browser.execute(downloads).await?;
-        install_boundary(&page, policy.clone(), evidence.clone(), references.clone()).await?;
+        install_boundary(
+            &page,
+            policy.clone(),
+            evidence.clone(),
+            references.clone(),
+            boundary.clone(),
+        )
+        .await?;
         Ok::<_, anyhow::Error>((page, arguments))
     }
     .await;
@@ -239,11 +269,14 @@ async fn run(
                 };
                 let result = tokio::time::timeout(
                     Duration::from_secs(15),
-                    execute(&page, &policy, &references, &evidence, command),
+                    execute(&page, &policy, &references, &evidence, &boundary, command),
                 )
                 .await
                 .map_err(|_| anyhow!("browser command timed out"))
                 .and_then(|result| result);
+                if result.is_err() {
+                    crate::continuation::cancel_all(&page, &boundary).await;
+                }
                 let _ = reply.send(result);
             }
         }
@@ -257,6 +290,7 @@ async fn install_boundary(
     policy: BrowserPolicy,
     evidence: Arc<Mutex<BrowserEvidence>>,
     references: Arc<Mutex<SnapshotMap>>,
+    boundary: Arc<Mutex<Boundary>>,
 ) -> Result<()> {
     page.execute(
         page::AddScriptToEvaluateOnNewDocumentParams::builder()
@@ -271,6 +305,7 @@ async fn install_boundary(
     }
     let mut requests = page.event_listener::<fetch::EventRequestPaused>().await?;
     let target = page.clone();
+    let request_boundary = boundary.clone();
     tokio::spawn(async move {
         while let Some(event) = requests.next().await {
             let disposition = event
@@ -332,6 +367,53 @@ async fn install_boundary(
                 .last_mut()
                 .expect("request recorded")
                 .response_code = event.response_status_code;
+            if effect == BrowserEffect::Commit && event.response_status_code.is_none() {
+                if let Ok(retained) = Retained::capture(&target, &event).await {
+                    let retained_key = retained.fingerprint.clone();
+                    let kept = {
+                        let mut state = request_boundary.lock().unwrap();
+                        if state.pending.len() < 16 {
+                            state.pending.insert(retained_key.clone(), retained);
+                            true
+                        } else {
+                            false
+                        }
+                    };
+                    if kept {
+                        let state = request_boundary.clone();
+                        let page = target.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(Duration::from_secs(120)).await;
+                            crate::continuation::cancel(&page, &state, &retained_key).await;
+                        });
+                        continue;
+                    }
+                }
+            }
+            let approved_response = event.response_status_code.is_some()
+                && request_boundary
+                    .lock()
+                    .unwrap()
+                    .released
+                    .remove(&event.request_id);
+            if approved_response {
+                let success = !redirect
+                    && event
+                        .response_status_code
+                        .is_some_and(|code| (200..300).contains(&code));
+                let result = target
+                    .execute(fetch::FailRequestParams::new(
+                        event.request_id.clone(),
+                        network::ErrorReason::Aborted,
+                    ))
+                    .await;
+                request_boundary
+                    .lock()
+                    .unwrap()
+                    .finished
+                    .insert(event.request_id.clone(), success && result.is_ok());
+                continue;
+            }
             let result = if effect == BrowserEffect::Read
                 && event.response_status_code.is_some()
                 && !redirect
@@ -383,19 +465,24 @@ async fn install_boundary(
     });
     let mut navigation = page.event_listener::<page::EventFrameNavigated>().await?;
     let frame_references = references.clone();
+    let frame_boundary = boundary.clone();
+    let frame_page = page.clone();
     tokio::spawn(async move {
         while let Some(event) = navigation.next().await {
             if event.frame.parent_id.is_none() {
                 frame_references.lock().unwrap().begin_document();
+                crate::continuation::cancel_all(&frame_page, &frame_boundary).await;
             }
         }
     });
     let mut history = page
         .event_listener::<page::EventNavigatedWithinDocument>()
         .await?;
+    let history_page = page.clone();
     tokio::spawn(async move {
         while history.next().await.is_some() {
             references.lock().unwrap().begin_document();
+            crate::continuation::cancel_all(&history_page, &boundary).await;
         }
     });
     page.execute(
@@ -425,6 +512,7 @@ async fn execute(
     policy: &BrowserPolicy,
     references: &Arc<Mutex<SnapshotMap>>,
     evidence: &Arc<Mutex<BrowserEvidence>>,
+    boundary: &Arc<Mutex<Boundary>>,
     command: BrowserCommand,
 ) -> Result<BrowserResult> {
     if matches!(command, BrowserCommand::Evidence) {
@@ -435,6 +523,7 @@ async fn execute(
             bail!("navigation is not an approved read");
         }
         references.lock().unwrap().begin_document();
+        crate::continuation::cancel_all(page, boundary).await;
         page.goto(url).await?;
         return Ok(BrowserResult::Navigated);
     }
@@ -580,6 +669,9 @@ async fn execute(
                     ),
                     url,
                     node_ref: reference,
+                    request_url: String::new(),
+                    method: String::new(),
+                    expires_at: 0,
                 },
             })
         }
@@ -587,17 +679,51 @@ async fn execute(
             page.screenshot(chromiumoxide::page::ScreenshotParams::default())
                 .await?,
         )),
+        BrowserCommand::Prepare { reference } => {
+            crate::continuation::prepare(page, policy, references, boundary, reference).await
+        }
+        BrowserCommand::Pending => crate::continuation::pending(page, references, boundary).await,
+        BrowserCommand::Inspect { intent } => {
+            crate::continuation::inspect(page, references, boundary, &intent).await?;
+            Ok(BrowserResult::CommitRequired { intent })
+        }
+        BrowserCommand::Release { intent } => {
+            crate::continuation::release(page, references, boundary, intent).await
+        }
+        BrowserCommand::Cancel { fingerprint } => {
+            crate::continuation::cancel(page, boundary, &fingerprint).await;
+            Ok(BrowserResult::Released)
+        }
         BrowserCommand::Evidence => Ok(BrowserResult::Evidence(evidence.lock().unwrap().clone())),
         BrowserCommand::Navigate { .. } => unreachable!(),
     }
 }
 
-async fn call_node(page: &Page, backend: i64, function: &str) -> Result<String> {
+pub(crate) async fn call_node(page: &Page, backend: i64, function: &str) -> Result<String> {
+    let frame = page
+        .execute(page::GetFrameTreeParams::default())
+        .await?
+        .result
+        .frame_tree
+        .frame
+        .id;
+    let context = page
+        .execute(
+            page::CreateIsolatedWorldParams::builder()
+                .frame_id(frame)
+                .world_name("mote-browser-actions")
+                .build()
+                .map_err(|error| anyhow!(error))?,
+        )
+        .await?
+        .result
+        .execution_context_id;
     let backend = dom::BackendNodeId::new(backend);
     let node = page
         .execute(
             dom::ResolveNodeParams::builder()
                 .backend_node_id(backend)
+                .execution_context_id(context)
                 .build(),
         )
         .await?

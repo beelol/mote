@@ -4,6 +4,89 @@ use mote_browser::{
 use std::path::Path;
 
 #[test]
+#[ignore = "requires MOTE_LIVE=1 and pinned MOTE_CHROME"]
+fn retained_native_request_is_inert_stale_checked_and_consumed_once() {
+    use mote_browser::{BrowserCommand, BrowserHost, BrowserResult};
+    assert_eq!(std::env::var("MOTE_LIVE").as_deref(), Ok("1"));
+    let fixture = mote_testkit::browser_fixture::BrowserFixture::start().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let browser =
+        BrowserHost::launch(
+            LaunchConfig::new(
+                data.path(),
+                "continuation",
+                Path::new(&std::env::var("MOTE_CHROME").unwrap()),
+            )
+            .unwrap(),
+            BrowserPolicy::new(ApprovedOrigins::new([fixture.base_url()]).unwrap())
+                .with_read_paths(["/read", "/navigation", "/favicon.ico"]),
+        )
+        .unwrap();
+    let session = browser.session();
+    session
+        .command(BrowserCommand::Navigate {
+            url: fixture.url("/read"),
+        })
+        .unwrap();
+    let BrowserResult::Snapshot(snapshot) = session
+        .command(BrowserCommand::Snapshot {
+            interactive_only: false,
+            token_cap: 2000,
+        })
+        .unwrap()
+    else {
+        panic!("snapshot")
+    };
+    let button = snapshot
+        .nodes
+        .iter()
+        .find(|node| node.role == "button")
+        .unwrap()
+        .reference
+        .clone();
+    let field = snapshot
+        .nodes
+        .iter()
+        .find(|node| node.role == "textbox")
+        .unwrap()
+        .reference
+        .clone();
+    let BrowserResult::CommitRequired { intent } = session
+        .command(BrowserCommand::Prepare {
+            reference: button.clone(),
+        })
+        .unwrap()
+    else {
+        panic!("retained request")
+    };
+    assert_eq!(fixture.count("submit"), 0);
+    assert_eq!(intent.page_state_hash, snapshot.page_state_hash);
+    session
+        .command(BrowserCommand::Fill {
+            reference: field,
+            value: "altered".into(),
+        })
+        .unwrap();
+    assert!(session.command(BrowserCommand::Release { intent }).is_err());
+    assert_eq!(fixture.count("submit"), 0);
+    let BrowserResult::CommitRequired { intent } = session
+        .command(BrowserCommand::Prepare { reference: button })
+        .unwrap()
+    else {
+        panic!("retained request")
+    };
+    assert_eq!(fixture.count("submit"), 0);
+    session
+        .command(BrowserCommand::Release {
+            intent: intent.clone(),
+        })
+        .unwrap();
+    assert_eq!(fixture.count("submit"), 1);
+    assert!(session.command(BrowserCommand::Release { intent }).is_err());
+    assert_eq!(fixture.count("submit"), 1);
+}
+
+#[test]
 fn launch_is_headed_private_and_cannot_attach() {
     let config = LaunchConfig::new(
         Path::new("/tmp/mote-data"),
