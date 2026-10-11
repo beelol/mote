@@ -433,6 +433,7 @@ impl MoteApp {
             if let Some(event) = matrix_events.last() { self.status_line = matrix_preview_status(event); }
             return;
         }
+        crate::surface_v1::discard(ui);
         #[cfg(any(test, feature = "test-observation"))]
         let mut scroll_clip = egui::Rect::NOTHING;
         let scroll = egui::ScrollArea::both()
@@ -493,7 +494,11 @@ impl MoteApp {
                                     let mut local_events = Vec::new();
                                     crate::surface_v1::draw(&mut screen_ui, surface, &mut local_events);
                                 }
-                                _ => crate::surface::draw(ui, node.display_v0(), clicked),
+                                _ => {
+                                    let screen_ui = ui.new_child(egui::UiBuilder::new().id_salt("matrix-screen"));
+                                    crate::surface_v1::discard(&screen_ui);
+                                    crate::surface::draw(ui, node.display_v0(), clicked)
+                                }
                             }
                         };
                         if m.surface_id.as_deref() == Some("matrix") {

@@ -21,13 +21,19 @@ The version 0 renderer and gallery catalog remain unchanged.
 
 Screen reserves Header and Footer outside the scrolling body.
 The body owns the remaining height and supports horizontal nowrap overflow.
-Fill children share remaining main-axis space equally after intrinsic siblings and standard gaps.
+Fill children share remaining main-axis space after intrinsic siblings and standard gaps.
+They split equally unless a control minimum needs a larger allocation.
+Controls keep their minimum hit extents and narrow nowrap layouts overflow without overlap.
 Wrap, nowrap, alignment and between or around distribution are implemented.
 The Vector slider has a 36 point visual region and a 48 point hit region.
 Pointer, arrow, Home, End and AccessKit range input produce bounded local changes.
+Step alignment uses the frozen validator tolerance at decimal endpoints.
+Finite small step changes do not require the total step count to fit in a finite float.
 Contract, type and structural path define runtime identity.
 Host value and constraint replacements reset edits.
 Removed controls clear state, focus and select popups.
+Switching from version 1 to a version 0 fallback clears version 1 state before rendering.
+Returning to version 1 cannot restore old edits or pending confirmation.
 Disabled buttons are inert.
 Confirmed buttons require explicit local confirmation.
 Changed events, labels or confirmation flags clear an armed confirmation.

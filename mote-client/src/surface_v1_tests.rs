@@ -659,6 +659,116 @@ fn finite_extreme_slider_ranges_stay_finite_during_input_and_paint() {
         assert!(h.key(egui::Key::End).is_empty());
     }
 }
+
+#[test]
+fn narrow_nowrap_fills_preserve_48_point_hit_extents_without_overlap() {
+    let mut a = button("A", false, false);
+    let mut b = button("B", false, false);
+    for node in [&mut a, &mut b] {
+        if let Node::Button { fill, .. } = node {
+            *fill = true;
+        }
+    }
+    let row = Node::Row {
+        fill: false,
+        wrapping: Some(Wrapping::Nowrap),
+        alignment: None,
+        distribution: None,
+        children: vec![
+            a,
+            b,
+            button("A very long trailing action label", false, false),
+        ],
+    };
+    let h = Harness::new(SIZES[0], screen(vec![row]));
+    let (obs, _, out) = h.frame(vec![]);
+    let bounds: Vec<_> = out
+        .platform_output
+        .accesskit_update
+        .unwrap()
+        .nodes
+        .into_iter()
+        .filter(|(_, n)| n.role() == accesskit::Role::Button)
+        .map(|(_, n)| n.bounds().unwrap())
+        .collect();
+    assert_eq!(bounds.len(), 3);
+    for pair in bounds.windows(2) {
+        assert!(
+            pair[0].x1 + 8.0 <= pair[1].x0,
+            "hit regions overlap: {bounds:?}"
+        );
+    }
+    assert!(obs
+        .iter()
+        .filter(|o| o.kind == "button")
+        .all(|o| o.rect.width() >= 48.0));
+}
+
+#[test]
+fn decimal_step_reaches_validator_aligned_upper_endpoint() {
+    let surface = screen(vec![Node::Slider {
+        label: "Decimal".into(),
+        field: "decimal".into(),
+        value: 0.0,
+        min: 0.0,
+        max: 0.3,
+        step: Some(0.1),
+        fill: false,
+    }]);
+    surface.validate().unwrap();
+    let h = Harness::new(SIZES[0], surface);
+    let (obs, _, _) = h.frame(vec![]);
+    h.ctx
+        .memory_mut(|memory| memory.request_focus(find(&obs, "slider").id));
+    assert_eq!(
+        h.key(egui::Key::End),
+        vec![Event::Change {
+            field: "decimal".into(),
+            value: serde_json::json!(0.3),
+            path: vec![0]
+        }]
+    );
+}
+
+#[test]
+fn slider_accepts_small_step_when_total_step_count_overflows() {
+    let surface = screen(vec![Node::Slider {
+        label: "Small step".into(),
+        field: "small".into(),
+        value: 0.0,
+        min: 0.0,
+        max: 1e308,
+        step: Some(1e-308),
+        fill: false,
+    }]);
+    surface.validate().unwrap();
+    let h = Harness::new(SIZES[0], surface);
+    let (_, _, out) = h.frame(vec![]);
+    let target = out
+        .platform_output
+        .accesskit_update
+        .unwrap()
+        .nodes
+        .into_iter()
+        .find(|(_, n)| n.role() == accesskit::Role::Slider)
+        .unwrap()
+        .0;
+    let (_, events, _) = h.frame(vec![egui::Event::AccessKitActionRequest(
+        accesskit::ActionRequest {
+            action: accesskit::Action::SetValue,
+            target,
+            data: Some(accesskit::ActionData::NumericValue(1e-308)),
+        },
+    )]);
+    assert_eq!(
+        events,
+        vec![Event::Change {
+            field: "small".into(),
+            value: serde_json::json!(1e-308),
+            path: vec![0]
+        }]
+    );
+}
 fn find<'a>(obs: &'a [Observation], kind: &str) -> &'a Observation {
     obs.iter().find(|o| o.kind == kind).unwrap()
 }

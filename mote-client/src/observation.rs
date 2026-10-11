@@ -1031,4 +1031,30 @@ mod matrix_renderer_tests {
             assert_eq!(bounds(&out,"Head"),head);assert_eq!(bounds(&out,"Foot"),foot);
         }
     }
+
+    #[test]
+    fn live_contract_transition_discards_v1_edits_confirmation_focus_and_popup() {
+        for viewport in [egui::vec2(400.0,800.0),egui::vec2(1200.0,800.0)] {
+            let mut h=ObservationHarness{viewport,..Default::default()};
+            let matrix=serde_json::json!({"surface_id":"matrix","surface":{"type":"text","value":"Fallback"},"matrix_surface":{"version":1,"root":{"type":"screen","children":[{"type":"slider","label":"Volume","field":"volume","value":4.0,"min":0.0,"max":10.0,"step":2.0},{"type":"button","label":"Delete","event":"delete","confirm":true},{"type":"select","label":"Priority","field":"priority","value":"Low","options":["Low","High"]}]}}});
+            let event=|seq,payload|Event{seq,ts:0,scope_id:"main".into(),kind:"ui.surface".into(),payload};
+            h.event(&event(20,matrix.clone()));h.frame(vec![]);
+            let bounds=|out:&egui::FullOutput,label:&str|out.platform_output.accesskit_update.as_ref().unwrap().nodes.iter().find(|(_,node)|node.label()==Some(label)).unwrap().1.bounds().unwrap();
+            let (_,out)=h.frame_output(vec![]);let slider=bounds(&out,"Volume");
+            h.click(egui::pos2((slider.x1-8.0) as f32,((slider.y0+slider.y1)/2.0) as f32));
+            let (_,out)=h.frame_output(vec![]);assert!(out.platform_output.accesskit_update.as_ref().unwrap().nodes.iter().any(|(_,node)|node.numeric_value()==Some(10.0)));
+            let action=bounds(&out,"Delete");h.click(egui::pos2(((action.x0+action.x1)/2.0) as f32,((action.y0+action.y1)/2.0) as f32));h.frame(vec![]);
+            h.event(&event(21,serde_json::json!({"surface_id":"matrix","surface":{"type":"text","value":"Only legacy"}})));h.frame(vec![]);
+            h.event(&event(22,matrix.clone()));let (_,out)=h.frame_output(vec![]);
+            let nodes=&out.platform_output.accesskit_update.as_ref().unwrap().nodes;
+            assert!(nodes.iter().any(|(_,node)|node.numeric_value()==Some(4.0)),"removed v1 edit resurfaced");
+            assert!(!nodes.iter().any(|(_,node)|node.label()==Some("Confirm")),"removed confirmation resurfaced");
+            assert!(h.ctx.memory(|memory|memory.focused()).is_none());
+            let select=bounds(&out,"Priority");h.click(egui::pos2(((select.x0+select.x1)/2.0) as f32,((select.y0+select.y1)/2.0) as f32));assert!(h.ctx.memory(|memory|memory.any_popup_open()));
+            h.event(&event(23,serde_json::json!({"surface_id":"matrix","surface":{"type":"text","value":"Only legacy"}})));h.frame(vec![]);
+            assert!(!h.ctx.memory(|memory|memory.any_popup_open()));
+            assert!(h.ctx.memory(|memory|memory.focused()).is_none());
+            assert!(h.queued().is_empty());
+        }
+    }
 }

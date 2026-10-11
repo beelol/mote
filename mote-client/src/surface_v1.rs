@@ -21,6 +21,7 @@ struct State {
     edited: Option<serde_json::Value>,
     confirming: bool,
     widget: Option<egui::Id>,
+    confirmation_widgets: Vec<egui::Id>,
 }
 
 pub fn draw(ui: &mut egui::Ui, surface: &Surface, events: &mut Vec<Event>) {
@@ -37,20 +38,35 @@ pub fn draw(ui: &mut egui::Ui, surface: &Surface, events: &mut Vec<Event>) {
     let previous = ui
         .data_mut(|data| data.get_temp::<HashSet<egui::Id>>(cache))
         .unwrap_or_default();
-    for id in previous.difference(&renderer.live) {
-        let widget = ui
-            .data_mut(|data| data.get_temp::<State>(*id))
-            .and_then(|state| state.widget)
-            .unwrap_or(*id);
-        ui.data_mut(|data| data.remove::<State>(*id));
+    discard_controls(ui, previous.difference(&renderer.live).copied());
+    ui.data_mut(|data| data.insert_temp(cache, renderer.live));
+}
+
+pub fn discard(ui: &egui::Ui) {
+    let cache = ui.id().with("matrix-contract-1").with("live-controls");
+    let controls = ui
+        .data_mut(|data| data.remove_temp::<HashSet<egui::Id>>(cache))
+        .unwrap_or_default();
+    discard_controls(ui, controls);
+}
+
+fn discard_controls(ui: &egui::Ui, controls: impl IntoIterator<Item = egui::Id>) {
+    for id in controls {
+        let state = ui
+            .data_mut(|data| data.get_temp::<State>(id))
+            .unwrap_or_default();
+        let widget = state.widget.unwrap_or(id);
+        ui.data_mut(|data| data.remove::<State>(id));
         ui.memory_mut(|memory| {
             memory.surrender_focus(widget);
+            for widget in &state.confirmation_widgets {
+                memory.surrender_focus(*widget);
+            }
         });
         if egui::ComboBox::is_open(ui.ctx(), widget) {
             ui.memory_mut(|memory| memory.close_popup());
         }
     }
-    ui.data_mut(|data| data.insert_temp(cache, renderer.live));
 }
 
 struct Renderer<'a> {
@@ -373,9 +389,27 @@ impl Renderer<'_> {
                             value / quantum - min / quantum
                         }
                     };
-                    let highest = index(*max).floor();
+                    let upper = index(*max);
+                    let nearest = upper.round();
+                    let reconstruction = min + nearest * quantum;
+                    let quotient_tolerance = (8.0 * f64::EPSILON * upper.abs().max(1.0)).min(0.25);
+                    let value_tolerance =
+                        (8.0 * f64::EPSILON * max.abs().max(reconstruction.abs()).max(1.0))
+                            .min(quantum.abs() * 0.25);
+                    let highest = if upper.is_finite() {
+                        if (upper - nearest).abs() <= quotient_tolerance
+                            && reconstruction.is_finite()
+                            && (max - reconstruction).abs() <= value_tolerance
+                        {
+                            nearest
+                        } else {
+                            upper.floor()
+                        }
+                    } else {
+                        f64::INFINITY
+                    };
                     let index = index(bounded).round();
-                    if !highest.is_finite() || !index.is_finite() {
+                    if !index.is_finite() {
                         return previous;
                     }
                     let index = index.clamp(0.0, highest);
@@ -667,7 +701,9 @@ impl Renderer<'_> {
                                 });
                                 state.confirming = false;
                             }
-                            if crate::surface::button(ui, "Cancel").clicked()
+                            let cancel = crate::surface::button(ui, "Cancel");
+                            state.confirmation_widgets = vec![yes.id, cancel.id];
+                            if cancel.clicked()
                                 || ui.input(|input| input.key_pressed(egui::Key::Escape))
                             {
                                 state.confirming = false;
@@ -688,6 +724,7 @@ impl Renderer<'_> {
                 edited: Some(host),
                 confirming: false,
                 widget: None,
+                confirmation_widgets: Vec::new(),
             })
     }
     fn control(
@@ -790,16 +827,44 @@ impl Renderer<'_> {
                 .sum::<f32>();
             let gaps = 8.0 * line.len().saturating_sub(1) as f32;
             let remaining = (inner.size()[axis] - intrinsic - gaps).max(0.0);
-            let mut extents: Vec<_> = line
+            let mut extents: Vec<_> = line.iter().map(|&i| sizes[i][axis]).collect();
+            let mut unassigned: Vec<_> = line
                 .iter()
-                .map(|&i| {
-                    if filled(&children[i]) {
-                        remaining / fill_count as f32
-                    } else {
-                        sizes[i][axis]
-                    }
-                })
+                .enumerate()
+                .filter_map(|(slot, &i)| filled(&children[i]).then_some(slot))
                 .collect();
+            let mut budget = remaining;
+            while !unassigned.is_empty() {
+                let share = budget.max(0.0) / unassigned.len() as f32;
+                let pinned: Vec<_> = unassigned
+                    .iter()
+                    .copied()
+                    .filter(|&slot| {
+                        let i = line[slot];
+                        let minimum = match children[i] {
+                            Node::Text { .. } => 0.0,
+                            Node::Slider { .. } if horizontal => 48.0,
+                            _ => sizes[i][axis],
+                        };
+                        if minimum > share {
+                            extents[slot] = minimum;
+                            true
+                        } else {
+                            false
+                        }
+                    })
+                    .collect();
+                if pinned.is_empty() {
+                    for slot in unassigned {
+                        extents[slot] = share;
+                    }
+                    break;
+                }
+                for slot in &pinned {
+                    budget -= extents[*slot];
+                }
+                unassigned.retain(|slot| !pinned.contains(slot));
+            }
             if !horizontal && fill_count == 0 {
                 extents = line.iter().map(|&i| sizes[i].y).collect();
             }
