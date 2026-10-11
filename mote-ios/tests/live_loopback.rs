@@ -250,3 +250,61 @@ fn discovered_port_moves_only_after_identity_proof() {
         .unwrap();
     assert!(matches!(outcome[0], HostFrame::Result { .. }));
 }
+
+#[test]
+fn same_address_reconnect_invalidates_the_old_command_session() {
+    use mote_gateway::{discovery::DiscoveryRecord, GatewayServer};
+    struct Forward<D: Dispatch>(mote_testkit::gateway::LoopbackHost<D>);
+    impl<D: Dispatch> Dispatch for Forward<D> {
+        fn call(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> Result<serde_json::Value, mote_ipc::RpcError> {
+            self.0.daemon().call(method, params)
+        }
+    }
+    let models = ScriptedServer::start().unwrap();
+    let mut host = moted::test_fixture::start(&models).unwrap();
+    let store = Arc::new(Mutex::new(MemoryStore::default()));
+    let offer = host.open_pairing().unwrap();
+    let mut commands = std::thread::scope(|scope| {
+        let pair = scope.spawn(|| {
+            NetworkHost::pair(
+                host.endpoint().unwrap(),
+                GatewayConfig::new(host.root()),
+                &offer,
+                "iPad",
+                store,
+            )
+        });
+        while !pair.is_finished() {
+            host.confirm_pending(true).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        pair.join().unwrap().unwrap()
+    });
+    let mut events = commands.reopen().unwrap();
+    let endpoint = host.endpoint().unwrap();
+    let id = host.host_id().clone();
+    let public = *host.public_key();
+    let mut config = GatewayConfig::new(host.root().join("data"));
+    config.bind = endpoint;
+    host.suspend();
+    let restarted = GatewayServer::bind_loopback(config, Arc::new(Forward(host))).unwrap();
+    assert_eq!(restarted.local_addr(), endpoint);
+    events
+        .rediscover(&DiscoveryRecord::new(endpoint, 1, &public).unwrap())
+        .unwrap();
+    let response = commands
+        .request(HostCommand {
+            host_id: id,
+            frame: ClientFrame::Call {
+                request_id: RequestId::new("new-command-after-restart").unwrap(),
+                method: "ping".into(),
+                params: json!({}),
+            },
+        })
+        .unwrap();
+    assert!(matches!(response[0], HostFrame::Result { .. }));
+}

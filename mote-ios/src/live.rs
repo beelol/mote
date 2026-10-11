@@ -16,6 +16,9 @@ pub struct NetworkHost<S> {
     host_id: HostId,
     endpoint: Arc<Mutex<SocketAddr>>,
     connected_endpoint: SocketAddr,
+    generation: Arc<std::sync::atomic::AtomicU64>,
+    connected_generation: u64,
+    needs_reconnect: bool,
     config: GatewayConfig,
     store: Arc<Mutex<S>>,
     connection: GatewayClient,
@@ -48,6 +51,9 @@ impl<S: CredentialStore<Credential = StoredCredential>> NetworkHost<S> {
             host_id,
             endpoint: Arc::new(Mutex::new(endpoint)),
             connected_endpoint: endpoint,
+            generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            connected_generation: 0,
+            needs_reconnect: false,
             config,
             store,
             connection,
@@ -81,6 +87,9 @@ impl<S: CredentialStore<Credential = StoredCredential>> NetworkHost<S> {
             host_id,
             endpoint: Arc::new(Mutex::new(endpoint)),
             connected_endpoint: endpoint,
+            generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            connected_generation: 0,
+            needs_reconnect: false,
             config,
             store,
             connection,
@@ -116,6 +125,11 @@ impl<S: CredentialStore<Credential = StoredCredential>> NetworkHost<S> {
             .lock()
             .map_err(|_| anyhow::anyhow!("endpoint unavailable"))? = endpoint;
         self.connected_endpoint = endpoint;
+        self.connected_generation = self
+            .generation
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
+            + 1;
+        self.needs_reconnect = false;
         self.connection = connection;
         Ok(())
     }
@@ -127,6 +141,8 @@ impl<S: CredentialStore<Credential = StoredCredential>> NetworkHost<S> {
             self.store.clone(),
         )?;
         host.endpoint = self.endpoint.clone();
+        host.generation = self.generation.clone();
+        host.connected_generation = self.generation.load(std::sync::atomic::Ordering::Acquire);
         Ok(host)
     }
 
@@ -150,19 +166,31 @@ impl<S: CredentialStore<Credential = StoredCredential>> NetworkHost<S> {
                 ))
             }
         };
-        if self.connected_endpoint != self.endpoint() {
+        if self.needs_reconnect
+            || self.connected_endpoint != self.endpoint()
+            || self.connected_generation
+                != self.generation.load(std::sync::atomic::Ordering::Acquire)
+        {
             let reopened = self.reopen().map_err(failure)?;
             self.connection = reopened.connection;
             self.connected_endpoint = reopened.connected_endpoint;
+            self.connected_generation = reopened.connected_generation;
+            self.needs_reconnect = false;
         }
-        self.connection.send(&command.frame).map_err(failure)?;
-        let reply = self.connection.receive().map_err(failure)?;
-        if matches!(reply, HostFrame::RequestState { .. }) {
-            return Ok(vec![reply]);
+        let outcome = (|| {
+            self.connection.send(&command.frame).map_err(failure)?;
+            let reply = self.connection.receive().map_err(failure)?;
+            if matches!(reply, HostFrame::RequestState { .. }) {
+                return Ok(vec![reply]);
+            }
+            let acknowledgement = self.connection.receive().map_err(failure)?;
+            ensure_ack(&self.host_id, id, &reply, &acknowledgement)?;
+            Ok(vec![reply, acknowledgement])
+        })();
+        if outcome.is_err() {
+            self.needs_reconnect = true;
         }
-        let acknowledgement = self.connection.receive().map_err(failure)?;
-        ensure_ack(&self.host_id, id, &reply, &acknowledgement)?;
-        Ok(vec![reply, acknowledgement])
+        outcome
     }
 
     pub fn snapshot(&mut self) -> Result<HostSnapshot> {
