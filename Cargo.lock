@@ -2559,6 +2559,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mote-ios"
+version = "0.0.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "mote-client-core",
+ "raw-window-handle",
+]
+
+[[package]]
 name = "mote-ipc"
 version = "0.0.0"
 dependencies = [

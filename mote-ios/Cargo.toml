@@ -1,0 +1,17 @@
+[package]
+name = "mote-ios"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+eframe.workspace = true
+egui.workspace = true
+mote-client-core.workspace = true
+
+[target.'cfg(target_os = "ios")'.dependencies]
+raw-window-handle = "0.6.2"

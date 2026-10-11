@@ -236,7 +236,7 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     causes an authoritative resync, and the client visibly distinguishes connecting, online, offline,
     incompatible and identity-changed states without silent failover. **Verify:** scripted disconnect,
     lag, restart, version mismatch and identity-change tests plus one live sleep and wake run.
-  - [ ] **IPAD-01** The shared Rust Matrix consumer and protocol build for Apple Silicon simulator and
+  - [x] **IPAD-01** The shared Rust Matrix consumer and protocol build for Apple Silicon simulator and
     physical iPad targets behind a small native application shell. **Verify:** build both Rust targets
     and the Xcode app with the existing Mac client and workspace tests still green; record the exact
     Rust, Xcode, SDK and dependency versions.

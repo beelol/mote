@@ -1,6 +1,6 @@
 # IPAD-01: Apple Rust build compatibility
 
-Status: partial. The README criterion remains unchecked.
+Status: verified. The final native shell verification is recorded below.
 Date: 2026-10-11, America/Los_Angeles.
 Base commit: `4b1f795` on `main`.
 
@@ -144,7 +144,7 @@ The workspace test run retains the pre-existing unused test helper warning for
 The implementation commit is the commit containing this evidence and the WGPU manifest change.
 The controller's task report records its exact SHA after creation.
 
-## Remaining acceptance
+## Remaining acceptance after Task 1
 
 Tasks 1 and 2 address renderer compatibility and shared-core extraction.
 The native iOS shell, both Rust target builds, Xcode application build,
@@ -221,3 +221,158 @@ across 51 result summaries. Protocol goldens and eventlog, daemon and gateway re
 
 The implementation commit is the commit containing this extraction and evidence.
 The controller's task report records its exact SHA after creation.
+
+## Native shell and full acceptance
+
+Date: 2026-10-11, America/Los_Angeles. Base: `f040fa4` on `main`.
+The implementation commit is the commit containing this section, the iOS shell and the IPAD-01
+README checkmark. Its exact SHA is recorded in the Task 3 report after commit creation.
+
+The environment is macOS 26.6.2 (25G83), Apple Silicon, Rust 1.89.0
+(`29483883e 2025-08-04`), Cargo 1.89.0 (`c24e10642 2025-06-23`),
+Xcode 27.0 (`27A266a`), iOS Simulator SDK 27.0 (`24A430`) and
+iPhoneOS SDK 27.0 (`24A430`). The final runtime is iOS 27.0 (`24A434`).
+The destination is iPad Pro 11-inch (M5), UDID `43F2F6ED-5C86-4121-B03F-40FE38891C4E`.
+
+Dependency versions are eframe 0.31.0, egui 0.31.0, winit 0.30.13,
+egui-wgpu 0.31.0, wgpu 24.0.5, wgpu-core 24.0.5, wgpu-hal 24.0.4,
+metal 0.31.0 and AccessKit 0.17.1. The shell uses raw-window-handle 0.6.2
+to pass the existing UIKit view to its scene adapter. No dependency version changed.
+`cargo tree -p mote-ios --target aarch64-apple-ios-sim --depth 1` confirms the
+eframe, egui, shared core and raw-window-handle direct dependencies.
+
+### Red and green build
+
+Before creating the crate:
+
+```text
+cargo build -p mote-ios --target aarch64-apple-ios-sim
+error: package ID specification `mote-ios` did not match any packages
+exit 101
+```
+
+After implementation, all six commands exited 0:
+
+```text
+cargo check -p mote-protocol --target aarch64-apple-ios-sim
+cargo check -p mote-protocol --target aarch64-apple-ios
+cargo check -p mote-client-core --target aarch64-apple-ios-sim
+cargo check -p mote-client-core --target aarch64-apple-ios
+cargo build -p mote-ios --target aarch64-apple-ios-sim
+cargo build -p mote-ios --target aarch64-apple-ios
+```
+
+Both full static-library builds were repeated after the final scene and safe-area changes.
+The final runs finished in 6.35 seconds for Simulator and 1.57 seconds for the physical target.
+`lipo -info` reported `arm64` for both `libmote_ios.a` artifacts.
+Physical-target evidence is compilation only.
+
+### Native lifecycle failure and fix
+
+The initial Xcode build succeeded, but iOS 27 stopped the app with SIGTRAP.
+The Simulator log named `_UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`:
+
+```text
+Application failed to launch: UIScene life cycle is required for apps built with this SDK.
+```
+
+The checked-in `testOfflineGalleryLaunchRemainsInForeground` reproduced this with a missing
+window, a terminated process and no screenshot. It failed with three assertions.
+The identical unadapted binary stayed alive for 41 seconds on the iOS 26.5 (`23F77`)
+iPad Pro 11-inch destination `E425A8EA-DEE3-4538-97FD-F31E25EC38D4`.
+That comparison was diagnostic and did not close the criterion.
+
+[Apple's scene lifecycle migration document](https://developer.apple.com/documentation/uikit/transitioning-to-the-uikit-scene-based-life-cycle)
+states the iOS 27 requirement. The pinned winit source creates a UIWindow and calls UIApplicationMain.
+It does not attach that window to a UIWindowScene.
+The native adapter now declares one scene and attaches the window supplied by eframe's live UIKit
+view handle. Winit remains the only owner of UIApplicationMain. There is no SwiftUI or second loop.
+The delegate does not render product UI. All gallery rendering and state remain in Rust.
+
+The first successful screenshot exposed a heading underneath the system status bar.
+`cargo test -p mote-ios gallery_heading_clears_native_top_safe_area` reproduced the bug:
+
+```text
+heading starts under the system status bar at 2
+test result: FAILED. 0 passed; 1 failed
+```
+
+The native shell now reports its safe-area insets to Rust. The iOS app applies them around its
+own panels. The shared Matrix core and desktop geometry are unchanged.
+The same focused test then passed. The final screenshot confirms the heading is below the status bar.
+
+### Xcode, installation and live launch
+
+The project uses `local.mote.simulator`, arm64 and deployment target iOS 16.0.
+Code signing is disabled. No development team is configured.
+The Rust build phase uses Cargo's locked dependency graph and rejects non-Simulator platforms.
+The plist includes the local-network purpose text and `_mote._tcp`. It adds no ATS exception.
+
+```text
+xcodebuild -project ios/Mote/Mote.xcodeproj -scheme Mote -configuration Debug -destination 'platform=iOS Simulator,id=43F2F6ED-5C86-4121-B03F-40FE38891C4E' -derivedDataPath target/ipad-derived build
+** BUILD SUCCEEDED **
+
+xcodebuild -project ios/Mote/Mote.xcodeproj -scheme Mote -configuration Debug -destination 'platform=iOS Simulator,id=43F2F6ED-5C86-4121-B03F-40FE38891C4E' -derivedDataPath target/ipad-derived -resultBundlePath target/ipad-final-startup.xcresult test
+Test Case '-[MoteUITests testOfflineGalleryLaunchRemainsInForeground]' passed (11.877 seconds).
+Executed 1 test, with 0 failures
+** TEST SUCCEEDED **
+
+xcrun simctl install 43F2F6ED-5C86-4121-B03F-40FE38891C4E target/ipad-derived/Build/Products/Debug-iphonesimulator/Mote.app
+exit 0
+
+xcrun simctl launch 43F2F6ED-5C86-4121-B03F-40FE38891C4E local.mote.simulator
+local.mote.simulator: 60511
+
+ps -p 60511 -o pid,etime,stat,command
+PID    ELAPSED STAT COMMAND
+60511  00:52   Ss   .../Mote.app/Mote
+
+xcrun simctl spawn 43F2F6ED-5C86-4121-B03F-40FE38891C4E launchctl list
+60511  0  UIKitApplication:local.mote.simulator[47e2][rb-legacy]
+
+xcrun simctl io 43F2F6ED-5C86-4121-B03F-40FE38891C4E screenshot /Users/bilal/projects/mote/docs/verification/assets/IPAD-01-simulator-gallery.png
+Wrote screenshot to: .../docs/verification/assets/IPAD-01-simulator-gallery.png
+```
+
+The final `test` command rebuilt the app and its Rust library before launch.
+The startup test asserts foreground state, a visible window, and survival after five seconds.
+It retains an app screenshot in `target/ipad-final-startup.xcresult`.
+Manual inspection of the committed screenshot verifies the actual gallery pixels: Mote,
+Offline gallery, Surface gallery, the text, stack, row, list, table, field, toggle, select,
+action and progress sections. The app contains no host transport or model runner.
+`otool -L` confirms that the native app links Metal.
+
+![Offline gallery on the iOS 27 iPad Simulator](assets/IPAD-01-simulator-gallery.png)
+
+Simulator services and Xcode caches needed approved local access. The restricted simctl attempt
+failed to connect to CoreSimulatorService. The approved retry succeeded.
+The XCUITest runner emits Apple's duplicate WebKit accessibility class warning and a debugger
+version diagnostic. Neither affects the passing test. These are not physical accessibility evidence.
+
+### Final regression gate
+
+```text
+cargo test --workspace
+584 passed; 0 failed; 2 ignored; 53 result summaries; exit 0
+
+cargo clippy --workspace -- -D warnings
+Finished dev profile in 1.04s; exit 0
+
+plutil -lint ios/Mote/Info.plist ios/Mote/Mote.xcodeproj/project.pbxproj
+Both OK
+
+/bin/sh -n ios/Mote/build-rust.sh
+exit 0
+
+git diff --check
+exit 0
+```
+
+The workspace run includes the existing 107-test Mac client suite, the shared-core renderer suite,
+protocol goldens and the new safe-area test. No Rust test failure or clippy warning remains.
+The two ignored tests are the existing live Bonjour checks.
+Full local logs are retained under `.superpowers/sdd/2026-10-11-ipad-simulator-ui/` as
+`task-3-workspace-verified.log`, `task-3-clippy-verified.log`, and `task-3-final-xcuitest.log`.
+
+IPAD-01 is verified. IPAD-02 and later criteria remain open.
+No physical touch, privacy prompt, VoiceOver, signing, App Store Connect or TestFlight result is claimed.
