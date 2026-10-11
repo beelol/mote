@@ -53,8 +53,15 @@ found and fixed interleaved-thread loss under a shared cursor and oversized snap
 failure. Host events now replay in global order. Large snapshots use bounded chunks installed
 atomically after identity and cursor checks. Scoped re-review found no remaining blocking issue.
 The driver independently reran workspace tests and strict clippy with exit 0. HOST-05 remains open
-for literal Mac sleep and wake. Next is host plan Task 7, the reusable paired loopback acceptance
-harness. The host plan ledger is
+for literal Mac sleep and wake. Host plan Task 7 was pushed in `4d62156` and review fix `15a36b4`.
+It provides a reusable real-daemon paired loopback harness, with encrypted chat, Matrix, typed
+interaction, host-bound approval, endpoint rotation, 5,001-event retention and resync tests. The
+fix exposes an opt-in external test fixture without changing the production CLI or authentication.
+The independent review and scoped re-review passed. The driver reran workspace tests, the external
+fixture test, default strict workspace clippy and feature-enabled strict workspace clippy with
+exit 0. HOST-04 and HOST-05 remain open for Simulator discovery and literal Mac sleep/wake.
+The next action is UI plan Task 1, WGPU compatibility and Apple targets, assigned to a UI subagent
+after a pushed handoff checkpoint. The host plan ledger is
 `.superpowers/sdd/2026-10-11-ipad-simulator-host/progress.md`. The UI plan ledger is
 `.superpowers/sdd/2026-10-11-ipad-simulator-ui/progress.md`. The UI subagent has not yet been
 dispatched because the reviewed host foundation interfaces are still being completed.
