@@ -88,12 +88,12 @@ pub fn muted(dark: bool) -> egui::Color32 {
     }
 }
 
-pub fn caption(ui: &mut egui::Ui, text: &str) {
+pub fn caption(ui: &mut egui::Ui, text: &str) -> egui::Response {
     ui.label(
         egui::RichText::new(text)
             .small()
             .color(muted(ui.visuals().dark_mode)),
-    );
+    )
 }
 
 pub fn selectable_label(ui: &mut egui::Ui, selected: bool, text: &str) -> egui::Response {

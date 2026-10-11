@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 mod app;
+mod accessibility;
 mod pipeline;
 mod state;
 mod stream;

@@ -53,6 +53,7 @@ impl Default for ObservationHarness {
         let (config_results, config_rx) = mpsc::channel();
         spawn_config_worker(PathBuf::new(), config_requests, config_results);
         let ctx = egui::Context::default();
+        ctx.enable_accesskit();
         crate::theme::install(&ctx);
         Self {
             app: MoteApp {
@@ -126,6 +127,16 @@ impl ObservationHarness {
             .messages
             .iter()
             .find_map(|message| Some((message.surface_seq?, message.surface.clone()?)))
+    }
+
+    pub fn preview(&mut self, node: Node, viewport: egui::Vec2) {
+        self.app.fixture = Some(node);
+        self.viewport = viewport;
+    }
+
+    pub fn accesskit_update(&mut self) -> accesskit::TreeUpdate {
+        self.frame_output(vec![]).1.platform_output.accesskit_update
+            .expect("accessibility must be enabled for observation")
     }
 
     pub fn frame(&mut self, events: Vec<egui::Event>) -> Vec<DisplayedNode> {
@@ -264,6 +275,10 @@ impl ObservationHarness {
 #[cfg(test)]
 #[path = "layout_tests.rs"]
 mod layout_tests;
+
+#[cfg(test)]
+#[path = "accessibility_tests.rs"]
+mod accessibility_tests;
 
 #[cfg(test)]
 mod tests {

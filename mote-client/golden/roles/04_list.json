@@ -1,0 +1,1 @@
+{"role":"Window","children":[{"role":"List","children":[{"role":"ListItem","children":[{"role":"Label","name":"first"}]},{"role":"ListItem","children":[{"role":"Label","name":"second"}]},{"role":"ListItem","children":[{"role":"Label","name":"third"}]}]}]}

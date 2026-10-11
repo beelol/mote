@@ -2346,6 +2346,8 @@ dependencies = [
 name = "mote-client"
 version = "0.0.0"
 dependencies = [
+ "accesskit",
+ "accesskit_consumer",
  "eframe",
  "egui",
  "mote-eventlog",

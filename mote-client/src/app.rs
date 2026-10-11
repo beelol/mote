@@ -422,6 +422,9 @@ impl MoteApp {
                     crate::surface::draw(ui, node, &mut clicked);
                 }
             });
+        crate::accessibility::hide_id(ui.ctx(), scroll.id.with(0));
+        crate::accessibility::hide_id(ui.ctx(), scroll.id.with(1));
+        crate::accessibility::hide_id(ui.ctx(), scroll.id.with("area"));
         #[cfg(any(test, feature = "test-observation"))]
         crate::surface::observation::scroll("preview", scroll_clip, &scroll);
         #[cfg(not(any(test, feature = "test-observation")))]
@@ -467,6 +470,9 @@ impl MoteApp {
                     crate::theme::caption(ui, "mote is typing...");
                 }
             });
+        crate::accessibility::hide_id(ui.ctx(), scroll.id.with(0));
+        crate::accessibility::hide_id(ui.ctx(), scroll.id.with(1));
+        crate::accessibility::hide_id(ui.ctx(), scroll.id.with("area"));
         for e in clicked {
             self.send_ui_event(e);
         }

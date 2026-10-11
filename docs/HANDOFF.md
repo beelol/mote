@@ -1,40 +1,23 @@
-# Handoff: Pipeline configuration client closure
+# Handoff: Surface accessibility roles
 
 Updated 2026-10-10. Replace this file, never append.
 
-Branch: `main`. Base: `287312f`.
-Commit: `fix(client): apply pipeline config asynchronously`.
+Branch: `main`. Base: `895cbb1`.
+Commit: `fix(client): expose surface accessibility roles`.
 Preserve untracked `.DS_Store` and `.superpowers/`. Do not push.
 
-The production Pipeline shell has a populated headless regression for all five stages and all four
-tabs. The test enters Pipeline through the real shell and clicks each stage and tab at 1280 by 800.
-All 20 states retain complete navigation. Now, Numbers and Requests contain stage-distinct data.
-Config contains all nine v0 keys.
+The production egui surface renderer now emits current-v0 AccessKit roles, names and values from
+the existing surface namespace and structural path. The semantic hierarchy covers text, lists,
+tables, fields, toggles, selects, actions, progress and chat. Visual labels and controls are hidden
+from AccessKit after their semantics are assigned, so the filtered tree has no duplicate nodes.
 
-Config Apply no longer performs socket work on the egui render thread. A persistent background
-worker submits only dirty typed keys in `CONFIG_KEYS` order. Invalid local boolean and integer text
-does not enter IPC. Edit then revert and repeated Apply while pending send nothing.
+The observation harness captures the real AccessKit update through `MoteApp::draw_shell` and
+traverses an `accesskit_consumer::Tree` with the macOS adapter's `common_filter`. Eleven checked-in
+goldens cover all ten fixtures and the gallery. Both 800 by 480 and 1280 by 800 compare exactly, for
+22 production-shell comparisons.
 
-Batch outcomes are reconciled by edit revision. Failed keys stay dirty and show their error.
-Successful keys clear only when the submitted revision is still current. One snapshot refresh starts
-after the complete batch when at least one key succeeded. Snapshot installation updates clean keys
-and preserves failed or concurrently edited keys. Configuration errors survive successful snapshot
-installation.
+UI-22 remains open. It still needs an unlocked native NSAccessibility dump and the other target.
+Typed alt text, live status and overlay focus remain outside the current consumer contract.
 
-Fix Round 1 tracks every in-flight submitted revision and value separately from dirty edits. If a
-key starts at O, submits A and is edited back to O while A is pending, the successful A response
-advances the confirmed baseline to A without replacing O. The refreshed A snapshot preserves O as
-dirty, and the next Apply submits O.
-
-Fix Round 2 recomputes dirtiness after the successful baseline advance. If the pending sequence is
-O to submitted A to B to A, the accepted A becomes the confirmed baseline. The visible A becomes
-clean and the next Apply sends nothing. The O to A to O behavior remains dirty.
-
-V0-47 and V0-48 remain open. V0-47 still requires live-turn screenshots of the native Pipeline
-view. V0-48 still requires a native Config click correlated with the already verified before-and-after
-ledger rows.
-
-The focused client suite passes 100 tests. The full workspace passes 382 tests. Workspace clippy and
-`git diff --check` pass.
-
-No remote write or push occurred.
+Focused accessibility passed 22 comparisons. The client passed 101 tests. The workspace passed 383
+tests. Workspace clippy and `git diff --check` passed. No remote write or push occurred.

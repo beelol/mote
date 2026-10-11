@@ -1,0 +1,1 @@
+{"role":"Window","children":[{"role":"Table","children":[{"role":"Row","children":[{"role":"ColumnHeader","name":"name"},{"role":"ColumnHeader","name":"value"}]},{"role":"Row","children":[{"role":"Cell","name":"talk"},{"role":"Cell","name":"qwen3:4b"}]},{"role":"Row","children":[{"role":"Cell","name":"router"},{"role":"Cell","name":"qwen3:0.6b"}]}]}]}

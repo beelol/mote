@@ -108,6 +108,9 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
   Runtime overflow and hit targets have partial headless evidence in
   [UI-15](docs/verification/UI-15.md) and [UI-17](docs/verification/UI-17.md).
   Native Mac overflow captures and later approved touch targets remain open.
+  Production egui accessibility has exact filtered AccessKit role trees for all ten fixtures and
+  the gallery at both approved viewports in [UI-22](docs/verification/UI-22.md).
+  UI-22 remains open for the native macOS dump and the other target.
 - [x] **UI-43** Headless runtime layout respects clipping, reading order and minimum hit regions.
   **Verify:** measure every supported fixture at 800 by 480 and 1280 by 800; assert no unintended
   overlapping hit regions, no paint escaping the intended scroll clip and 48 by 48 point targets.

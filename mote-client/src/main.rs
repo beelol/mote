@@ -6,6 +6,7 @@
 //! Running this needs a desktop session; the V0-43..50 screenshots are captured there.
 
 mod app;
+mod accessibility;
 mod fixture;
 mod gallery;
 mod pipeline;

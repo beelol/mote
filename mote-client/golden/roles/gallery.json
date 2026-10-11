@@ -1,0 +1,42 @@
+{
+  "role": "Window",
+  "children": [
+    {"role":"Label","name":"Surface gallery"},
+    {"role":"Label","name":"A local preview of every surface component. Controls can be edited here."},
+    {"role":"Label","name":"Text"},
+    {"role":"Label","name":"A plain text reply can sit beside any other component."},
+    {"role":"Label","name":"Stack"},
+    {"role":"Label","name":"First stacked item"},
+    {"role":"Label","name":"Second stacked item"},
+    {"role":"Label","name":"Row"},
+    {"role":"Label","name":"Left item"},
+    {"role":"Label","name":"Right item"},
+    {"role":"Label","name":"List"},
+    {"role":"List","children":[
+      {"role":"ListItem","children":[{"role":"Label","name":"Draft"}]},
+      {"role":"ListItem","children":[{"role":"Label","name":"Review"}]},
+      {"role":"ListItem","children":[{"role":"Label","name":"Ready"}]}
+    ]},
+    {"role":"Label","name":"Table"},
+    {"role":"Table","children":[
+      {"role":"Row","children":[{"role":"ColumnHeader","name":"Stage"},{"role":"ColumnHeader","name":"State"}]},
+      {"role":"Row","children":[{"role":"Cell","name":"Talk"},{"role":"Cell","name":"Ready"}]},
+      {"role":"Row","children":[{"role":"Cell","name":"Think"},{"role":"Cell","name":"Waiting"}]}
+    ]},
+    {"role":"Label","name":"Field"},
+    {"role":"TextInput","name":"Display name","value":"Mote"},
+    {"role":"Label","name":"Toggle"},
+    {"role":"Switch","name":"Enable preview","toggled":"True"},
+    {"role":"Label","name":"Select"},
+    {"role":"ComboBox","name":"Priority","value":"Normal"},
+    {"role":"Label","name":"Action"},
+    {"role":"Button","name":"Preview action"},
+    {"role":"Label","name":"Progress"},
+    {"role":"ProgressIndicator","name":"64%","numeric_value":0.6399999856948853},
+    {"role":"Label","name":"Chat"},
+    {"role":"Log","children":[
+      {"role":"ListItem","children":[{"role":"Label","name":"User: Show the latest status."}]},
+      {"role":"ListItem","children":[{"role":"Label","name":"Mote: Ready to help."}]}
+    ]}
+  ]
+}

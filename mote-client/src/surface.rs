@@ -2,6 +2,8 @@ use eframe::egui;
 use mote_ui::Node;
 use std::collections::HashMap;
 
+use crate::accessibility::{self, Value as AccessibilityValue};
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SurfaceContext {
     pub surface_seq: Option<i64>,
@@ -106,23 +108,17 @@ fn draw_at(
     let first_shape = observation::shape_count(ui);
     match node {
         Node::Text { value } => {
-            ui.label(value);
-        }
-        Node::Stack { children } | Node::List { children } | Node::Chat { children } => {
-            egui::Frame::new().inner_margin(16).show(ui, |ui| {
-                for (index, child) in children.iter().enumerate() {
-                    if index > 0 && !matches!(node, Node::Stack { .. }) {
-                        ui.separator();
-                    }
-                    path.push(index);
-                    ui.push_id(index, |ui| draw_at(ui, child, events, path, namespace, live));
-                    path.pop();
-                }
+            let id = accessibility::id(namespace, path, "text");
+            accessibility::parent(ui, id, accesskit::Role::Label, |ui| {
+                let response = ui.label(value);
+                accessibility::hide(&response);
+                accessibility::leaf(ui, id, accesskit::Role::Label, Some(value), AccessibilityValue::None, Some(&response));
             });
         }
-        Node::Row { children } => {
-            egui::Frame::new().inner_margin(16).show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
+        Node::Stack { children } => {
+            let id = accessibility::id(namespace, path, "stack");
+            accessibility::parent(ui, id, accesskit::Role::GenericContainer, |ui| {
+                egui::Frame::new().inner_margin(16).show(ui, |ui| {
                     for (index, child) in children.iter().enumerate() {
                         path.push(index);
                         ui.push_id(index, |ui| draw_at(ui, child, events, path, namespace, live));
@@ -131,39 +127,87 @@ fn draw_at(
                 });
             });
         }
-        Node::Table { columns, rows } => {
-            egui::Grid::new(ui.next_auto_id())
-                .striped(false)
-                .show(ui, |ui| {
-                    for column in columns {
-                        table_cell(ui, column, true);
+        Node::List { children } | Node::Chat { children } => {
+            let (salt, role) = match node {
+                Node::List { .. } => ("list", accesskit::Role::List),
+                Node::Chat { .. } => ("chat", accesskit::Role::Log),
+                _ => unreachable!(),
+            };
+            let id = accessibility::id(namespace, path, salt);
+            accessibility::parent(ui, id, role, |ui| {
+                egui::Frame::new().inner_margin(16).show(ui, |ui| {
+                    for (index, child) in children.iter().enumerate() {
+                        if index > 0 { ui.separator(); }
+                        path.push(index);
+                        let item = accessibility::id(namespace, path, "item");
+                        accessibility::parent(ui, item, accesskit::Role::ListItem, |ui| {
+                            ui.push_id(index, |ui| draw_at(ui, child, events, path, namespace, live));
+                        });
+                        path.pop();
                     }
-                    ui.end_row();
-                    for row in rows {
-                        for cell in row {
-                            table_cell(ui, cell, false);
+                });
+            });
+        }
+        Node::Row { children } => {
+            let id = accessibility::id(namespace, path, "row-layout");
+            accessibility::parent(ui, id, accesskit::Role::GenericContainer, |ui| {
+                egui::Frame::new().inner_margin(16).show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        for (index, child) in children.iter().enumerate() {
+                            path.push(index);
+                            ui.push_id(index, |ui| draw_at(ui, child, events, path, namespace, live));
+                            path.pop();
                         }
+                    });
+                });
+            });
+        }
+        Node::Table { columns, rows } => {
+            let table = accessibility::id(namespace, path, "table");
+            accessibility::parent(ui, table, accesskit::Role::Table, |ui| {
+                egui::Grid::new(ui.next_auto_id()).striped(false).show(ui, |ui| {
+                    let header = accessibility::id(namespace, path, "table-header");
+                    accessibility::parent(ui, header, accesskit::Role::Row, |ui| {
+                        for (column_index, column) in columns.iter().enumerate() {
+                            let cell = table_semantic_id(namespace, path, "column-header", 0, column_index);
+                            table_cell(ui, column, accesskit::Role::ColumnHeader, cell);
+                        }
+                    });
+                    ui.end_row();
+                    for (row_index, row) in rows.iter().enumerate() {
+                        let row_id = table_semantic_id(namespace, path, "row", row_index, 0);
+                        accessibility::parent(ui, row_id, accesskit::Role::Row, |ui| {
+                            for (column_index, cell_text) in row.iter().enumerate() {
+                                let cell = table_semantic_id(namespace, path, "cell", row_index, column_index);
+                                table_cell(ui, cell_text, accesskit::Role::Cell, cell);
+                            }
+                        });
                         ui.end_row();
                     }
                 });
+            });
         }
         Node::Field { label, value, .. } => {
             let id = namespace.with((ControlKind::Field, &*path));
+            let semantic_id = accessibility::id(namespace, path, "field");
             live.insert(id, id);
             let mut edited = ui
                 .data_mut(|data| data.get_temp::<(String, String)>(id))
                 .filter(|(host, _)| host == value)
                 .map(|(_, edited)| edited)
                 .unwrap_or_else(|| value.clone());
-            control(ui, |ui| {
-                ui.label(label);
-                let response = ui.add_sized(
-                    [ui.available_width().min(320.0), 36.0],
-                    egui::TextEdit::singleline(&mut edited).id(id),
-                );
-                let _response = padded_response(ui, response);
-                #[cfg(any(test, feature = "test-observation"))]
-                observation::control(ui, "Field", path, &_response);
+            accessibility::parent(ui, semantic_id, accesskit::Role::TextInput, |ui| {
+                control(ui, |ui| {
+                    let label_response = ui.label(label);
+                    accessibility::hide(&label_response);
+                    let response = ui.add_sized([ui.available_width().min(320.0), 36.0],
+                        egui::TextEdit::singleline(&mut edited).id(id));
+                    let response = padded_response(ui, response);
+                    accessibility::hide(&response);
+                    accessibility::leaf(ui, semantic_id, accesskit::Role::TextInput, Some(label), AccessibilityValue::Text(&edited), Some(&response));
+                    #[cfg(any(test, feature = "test-observation"))]
+                    observation::control(ui, "Field", path, &response);
+                });
             });
             ui.data_mut(|data| data.insert_temp(id, (value.clone(), edited)));
         }
@@ -174,7 +218,10 @@ fn draw_at(
                 .filter(|(host, _)| host == value)
                 .map(|(_, edited)| edited)
                 .unwrap_or(*value);
-            let response = identified_control(ui, id, label, Some(&mut edited));
+            let semantic_id = accessibility::id(namespace, path, "toggle");
+            let response = accessibility::parent(ui, semantic_id, accesskit::Role::Switch, |ui| identified_control(ui, id, label, Some(&mut edited)));
+            accessibility::hide(&response);
+            accessibility::leaf(ui, semantic_id, accesskit::Role::Switch, Some(label), AccessibilityValue::Toggle(edited), Some(&response));
             #[cfg(any(test, feature = "test-observation"))]
             observation::control(ui, "Toggle", path, &response);
             live.insert(id, response.id);
@@ -195,13 +242,15 @@ fn draw_at(
             value,
         } => {
             let id = namespace.with((ControlKind::Select, &*path));
+            let semantic_id = accessibility::id(namespace, path, "select");
             let mut selected = ui
                 .data_mut(|data| data.get_temp::<(String, String)>(id))
                 .filter(|(host, _)| host == value)
                 .map(|(_, selected)| selected)
                 .unwrap_or_else(|| value.clone());
-            let response = control(ui, |ui| {
-                ui.label(label);
+            let response = accessibility::parent(ui, semantic_id, accesskit::Role::ComboBox, |ui| control(ui, |ui| {
+                let label_response = ui.label(label);
+                accessibility::hide(&label_response);
                 let mut combo = egui::ComboBox::from_id_salt(id)
                     .selected_text(&selected)
                     .show_ui(ui, |ui| {
@@ -234,7 +283,9 @@ fn draw_at(
                     });
                 combo.response = padded_response(ui, combo.response);
                 combo
-            });
+            }));
+            accessibility::hide(&response.response);
+            accessibility::leaf(ui, semantic_id, accesskit::Role::ComboBox, Some(label), AccessibilityValue::Text(&selected), Some(&response.response));
             live.insert(id, response.response.id);
             #[cfg(any(test, feature = "test-observation"))]
             observation::control(ui, "Select", path, &response.response);
@@ -242,7 +293,10 @@ fn draw_at(
         }
         Node::Action { label, event } => {
             let id = namespace.with((ControlKind::Action, &*path));
-            let response = identified_control(ui, id, label, None);
+            let semantic_id = accessibility::id(namespace, path, "action");
+            let response = accessibility::parent(ui, semantic_id, accesskit::Role::Button, |ui| identified_control(ui, id, label, None));
+            accessibility::hide(&response);
+            accessibility::leaf(ui, semantic_id, accesskit::Role::Button, Some(label), AccessibilityValue::None, Some(&response));
             #[cfg(any(test, feature = "test-observation"))]
             observation::control(ui, "Action", path, &response);
             live.insert(id, response.id);
@@ -255,7 +309,8 @@ fn draw_at(
         }
         Node::Progress { value } => {
             let value = value.clamp(0.0, 1.0);
-            let (rect, _) = ui.allocate_exact_size(
+            let semantic_id = accessibility::id(namespace, path, "progress");
+            let (rect, response) = ui.allocate_exact_size(
                 egui::vec2(ui.available_width().min(320.0), 8.0),
                 egui::Sense::hover(),
             );
@@ -273,7 +328,10 @@ fn draw_at(
                 ],
                 ui.visuals().selection.stroke,
             );
-            crate::theme::caption(ui, &format!("{:.0}%", value * 100.0));
+            let percentage = format!("{:.0}%", value * 100.0);
+            let caption = crate::theme::caption(ui, &percentage);
+            accessibility::hide(&caption);
+            accessibility::leaf(ui, semantic_id, accesskit::Role::ProgressIndicator, Some(&percentage), AccessibilityValue::Progress(f64::from(value)), Some(&response));
         }
     }
     #[cfg(any(test, feature = "test-observation"))]
@@ -390,16 +448,22 @@ pub(crate) mod observation {
     }
 }
 
-fn table_cell(ui: &mut egui::Ui, text: &str, heading: bool) {
+fn table_semantic_id(namespace: egui::Id, path: &[usize], salt: &'static str, row: usize, column: usize) -> egui::Id {
+    namespace.with(("surface-accessibility", path, salt, row, column))
+}
+
+fn table_cell(ui: &mut egui::Ui, text: &str, role: accesskit::Role, id: egui::Id) {
     egui::Frame::new()
         .inner_margin(8)
         .stroke(ui.visuals().widgets.inactive.bg_stroke)
         .show(ui, |ui| {
-            if heading {
-                ui.strong(text);
+            let response = if role == accesskit::Role::ColumnHeader {
+                ui.strong(text)
             } else {
-                ui.label(text);
-            }
+                ui.label(text)
+            };
+            accessibility::hide(&response);
+            accessibility::leaf(ui, id, role, Some(text), AccessibilityValue::None, Some(&response));
         });
 }
 

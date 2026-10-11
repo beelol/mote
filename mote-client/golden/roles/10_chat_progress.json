@@ -1,0 +1,1 @@
+{"role":"Window","children":[{"role":"Log","children":[{"role":"ListItem","children":[{"role":"Label","name":"working"}]},{"role":"ListItem","children":[{"role":"ProgressIndicator","name":"42%","numeric_value":0.41999998688697815}]}]}]}
