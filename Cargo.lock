@@ -2562,13 +2562,24 @@ dependencies = [
 name = "mote-ios"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "eframe",
  "egui",
  "egui-wgpu",
  "image",
+ "libc",
  "mote-client-core",
+ "mote-gateway",
+ "mote-host-client",
+ "mote-ipc",
+ "mote-protocol",
+ "mote-testkit",
+ "mote-ui",
+ "moted",
  "raw-window-handle",
+ "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

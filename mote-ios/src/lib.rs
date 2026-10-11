@@ -1,4 +1,7 @@
 mod app;
+pub mod keychain;
+pub mod live;
+pub mod discovery;
 #[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]
 mod probe;
 mod simulator;
@@ -17,9 +20,11 @@ pub extern "C" fn mote_ios_main() -> ! {
             #[cfg(target_os = "ios")]
             attach_scene(cc)?;
             mote_client_core::install_theme(&cc.egui_ctx);
-            Ok(Box::new(app::MoteApp::with_launch_options(
+            let mut app = app::MoteApp::with_launch_options(
                 simulator::LaunchOptions::parse(std::env::args()),
-            )))
+            );
+            app.attach_live(&cc.egui_ctx);
+            Ok(Box::new(app))
         }),
     ) {
         eprintln!("Mote could not start: {error}");

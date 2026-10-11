@@ -1,0 +1,918 @@
+use crate::keychain::StoredCredential;
+use anyhow::{ensure, Result};
+use mote_gateway::{ClientCredential, GatewayClient, GatewayConfig};
+use mote_host_client::{
+    CredentialStore, HostCommand, HostEventStream, HostRequestTransport, HostTransport,
+};
+use mote_protocol::{
+    ClientFrame, Cursor, HostError, HostErrorCode, HostFrame, HostId, HostSnapshot, RequestId,
+};
+use std::{
+    net::SocketAddr,
+    sync::{Arc, Mutex},
+};
+
+pub struct NetworkHost<S> {
+    host_id: HostId,
+    endpoint: Arc<Mutex<SocketAddr>>,
+    connected_endpoint: SocketAddr,
+    config: GatewayConfig,
+    store: Arc<Mutex<S>>,
+    connection: GatewayClient,
+}
+
+fn failure(error: impl std::fmt::Display) -> HostError {
+    HostError::new(HostErrorCode::Internal, error.to_string())
+}
+
+impl<S: CredentialStore<Credential = StoredCredential>> NetworkHost<S> {
+    pub fn pair(
+        endpoint: SocketAddr,
+        config: GatewayConfig,
+        offer: &str,
+        name: &str,
+        store: Arc<Mutex<S>>,
+    ) -> Result<Self> {
+        ensure!(
+            endpoint.ip().is_loopback(),
+            "Simulator endpoint must be loopback"
+        );
+        let credential = ClientCredential::from_pairing_code(&config, offer)?;
+        let connection = GatewayClient::pair(endpoint, &config, &credential, name, 1)?;
+        let host_id = credential.host_id().clone();
+        store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("credential store unavailable"))?
+            .save(&host_id, &StoredCredential::paired(&credential))?;
+        Ok(Self {
+            host_id,
+            endpoint: Arc::new(Mutex::new(endpoint)),
+            connected_endpoint: endpoint,
+            config,
+            store,
+            connection,
+        })
+    }
+
+    pub fn connect(
+        host_id: HostId,
+        endpoint: SocketAddr,
+        config: GatewayConfig,
+        store: Arc<Mutex<S>>,
+    ) -> Result<Self> {
+        ensure!(
+            endpoint.ip().is_loopback(),
+            "Simulator endpoint must be loopback"
+        );
+        let (credential, counter) = {
+            let mut store = store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("credential store unavailable"))?;
+            let mut stored = store
+                .load(&host_id)?
+                .ok_or_else(|| anyhow::anyhow!("host credential is missing"))?;
+            let credential = stored.restore(&host_id)?;
+            let counter = stored.reserve_counter()?;
+            store.save(&host_id, &stored)?;
+            (credential, counter)
+        };
+        let connection = GatewayClient::connect(endpoint, &config, &credential, counter)?;
+        Ok(Self {
+            host_id,
+            endpoint: Arc::new(Mutex::new(endpoint)),
+            connected_endpoint: endpoint,
+            config,
+            store,
+            connection,
+        })
+    }
+
+    pub fn host_id(&self) -> &HostId {
+        &self.host_id
+    }
+    pub fn endpoint(&self) -> SocketAddr {
+        *self.endpoint.lock().expect("endpoint lock")
+    }
+    pub fn rediscover(&mut self, record: &mote_gateway::discovery::DiscoveryRecord) -> Result<()> {
+        let (candidate, credential, counter) = {
+            let mut store = self
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("credential store unavailable"))?;
+            let mut stored = store
+                .load(&self.host_id)?
+                .ok_or_else(|| anyhow::anyhow!("host credential is missing"))?;
+            let credential = stored.restore(&self.host_id)?;
+            let candidate =
+                mote_gateway::discovery::EndpointCandidate::new(record.clone(), &credential)?;
+            let counter = stored.reserve_counter()?;
+            store.save(&self.host_id, &stored)?;
+            (candidate, credential, counter)
+        };
+        let mut endpoint = self.endpoint();
+        let connection = candidate.connect(&self.config, &credential, counter, &mut endpoint)?;
+        *self
+            .endpoint
+            .lock()
+            .map_err(|_| anyhow::anyhow!("endpoint unavailable"))? = endpoint;
+        self.connected_endpoint = endpoint;
+        self.connection = connection;
+        Ok(())
+    }
+    pub fn reopen(&self) -> Result<Self> {
+        let mut host = Self::connect(
+            self.host_id.clone(),
+            self.endpoint(),
+            self.config.clone(),
+            self.store.clone(),
+        )?;
+        host.endpoint = self.endpoint.clone();
+        Ok(host)
+    }
+
+    pub fn request(&mut self, command: HostCommand) -> Result<Vec<HostFrame>, HostError> {
+        if command.host_id != self.host_id {
+            return Err(HostError::new(
+                HostErrorCode::IdentityChanged,
+                "command belongs to another host",
+            ));
+        }
+        let mut outbox = mote_host_client::Outbox::new(&self.host_id);
+        outbox.enqueue(&self.host_id, command.frame.clone())?;
+        let id = match &command.frame {
+            ClientFrame::Call { request_id, .. }
+            | ClientFrame::Interaction { request_id, .. }
+            | ClientFrame::ApprovalDecision { request_id, .. } => request_id,
+            _ => {
+                return Err(HostError::new(
+                    HostErrorCode::InvalidRequest,
+                    "command is not a unary request",
+                ))
+            }
+        };
+        if self.connected_endpoint != self.endpoint() {
+            let reopened = self.reopen().map_err(failure)?;
+            self.connection = reopened.connection;
+            self.connected_endpoint = reopened.connected_endpoint;
+        }
+        self.connection.send(&command.frame).map_err(failure)?;
+        let reply = self.connection.receive().map_err(failure)?;
+        if matches!(reply, HostFrame::RequestState { .. }) {
+            return Ok(vec![reply]);
+        }
+        let acknowledgement = self.connection.receive().map_err(failure)?;
+        ensure_ack(&self.host_id, id, &reply, &acknowledgement)?;
+        Ok(vec![reply, acknowledgement])
+    }
+
+    pub fn snapshot(&mut self) -> Result<HostSnapshot> {
+        let request_id = RequestId::new(format!("snapshot-{}", unique_id()))?;
+        let frames = self.request(HostCommand {
+            host_id: self.host_id.clone(),
+            frame: ClientFrame::Call {
+                request_id,
+                method: "snapshot".into(),
+                params: serde_json::json!({}),
+            },
+        })?;
+        match &frames[0] {
+            HostFrame::Result { result, .. } => Ok(serde_json::from_value(result.clone())?),
+            _ => anyhow::bail!("snapshot unavailable"),
+        }
+    }
+
+    pub fn subscribe(&self, cursor: &Cursor) -> Result<NetworkStream> {
+        ensure!(
+            cursor.host_id == self.host_id,
+            "cursor belongs to another host"
+        );
+        let mut network = self.reopen()?;
+        network.connection.send(&ClientFrame::Subscribe {
+            request_id: RequestId::new(format!("events-{}", unique_id()))?,
+            scope_id: "main".into(),
+            cursor: cursor.clone(),
+        })?;
+        Ok(NetworkStream {
+            host_id: self.host_id.clone(),
+            connection: network.connection,
+        })
+    }
+}
+
+fn ensure_ack(
+    host: &HostId,
+    id: &RequestId,
+    reply: &HostFrame,
+    ack: &HostFrame,
+) -> Result<(), HostError> {
+    if !matches!(reply, HostFrame::Result { request_id, .. } | HostFrame::Error { request_id: Some(request_id), .. } if request_id == id)
+        || !matches!(ack, HostFrame::Acknowledgement { host_id, request_id, cursor } if host_id == host && request_id == id && &cursor.host_id == host)
+    {
+        return Err(HostError::new(
+            HostErrorCode::IdentityChanged,
+            "unmatched host acknowledgement",
+        ));
+    }
+    Ok(())
+}
+
+pub fn unique_id() -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    format!(
+        "{}-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    )
+}
+
+pub struct NetworkStream {
+    host_id: HostId,
+    connection: GatewayClient,
+}
+impl NetworkStream {
+    pub fn receive(&mut self) -> Result<HostFrame> {
+        self.connection.receive()
+    }
+}
+impl HostEventStream for NetworkStream {
+    fn next(&mut self, host: &HostId) -> Result<Option<HostFrame>, HostError> {
+        if host != &self.host_id {
+            return Err(HostError::new(
+                HostErrorCode::IdentityChanged,
+                "stream belongs to another host",
+            ));
+        }
+        self.receive().map(Some).map_err(failure)
+    }
+}
+impl<S: CredentialStore<Credential = StoredCredential> + Send + 'static> HostRequestTransport
+    for NetworkHost<S>
+{
+    fn request(&mut self, command: HostCommand) -> Result<Vec<HostFrame>, HostError> {
+        NetworkHost::request(self, command)
+    }
+}
+impl<S: CredentialStore<Credential = StoredCredential>> HostTransport for NetworkHost<S> {
+    type EventStream = NetworkStream;
+    fn send(&mut self, host: &HostId, frame: &ClientFrame) -> Result<(), HostError> {
+        if host != &self.host_id {
+            return Err(HostError::new(
+                HostErrorCode::IdentityChanged,
+                "command belongs to another host",
+            ));
+        }
+        self.connection.send(frame).map_err(failure)
+    }
+    fn subscribe(&mut self, host: &HostId, cursor: &Cursor) -> Result<NetworkStream, HostError> {
+        if host != &self.host_id {
+            return Err(HostError::new(
+                HostErrorCode::IdentityChanged,
+                "stream belongs to another host",
+            ));
+        }
+        NetworkHost::subscribe(self, cursor).map_err(failure)
+    }
+}
+
+use mote_host_client::{ConnectionState, HostDirectory, HostUpdate, PairedHost};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::mpsc::{self, Receiver, Sender},
+    time::Duration,
+};
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostConfig {
+    pub name: String,
+    pub public_key: [u8; 32],
+    pub endpoint: SocketAddr,
+    #[serde(default, skip_serializing)]
+    pub offer: Option<String>,
+}
+
+pub struct LiveRuntime {
+    pub(crate) directory: HostDirectory,
+    pub(crate) rx: Receiver<HostUpdate>,
+    pub(crate) persist: Sender<HostUpdate>,
+    pub(crate) commands: BTreeMap<HostId, Sender<HostCommand>>,
+    pub(crate) status: BTreeMap<HostId, String>,
+}
+
+impl LiveRuntime {
+    pub fn from_environment(ctx: egui::Context) -> Result<Option<Self>> {
+        if std::env::args().any(|arg| arg == "--mote-offline") {
+            return Ok(None);
+        }
+        let root = documents()?;
+        let config_path = root.join("live-hosts.json");
+        let configs: Vec<HostConfig> = if let Ok(value) = std::env::var("MOTE_SIMULATOR_HOSTS") {
+            serde_json::from_str(&value)?
+        } else if config_path.exists() {
+            serde_json::from_reader(std::fs::File::open(&config_path)?)?
+        } else {
+            return Ok(None);
+        };
+        ensure!(
+            !configs.is_empty() && configs.len() <= 8,
+            "invalid paired-host count"
+        );
+        let directory_path = root.join("live-state.json");
+        let directory = if directory_path.exists() {
+            HostDirectory::load(&directory_path)?
+        } else {
+            HostDirectory::default()
+        };
+        let mut ids = std::collections::BTreeSet::new();
+        for config in &configs {
+            ensure!(
+                config.endpoint.ip().is_loopback() && !config.name.trim().is_empty(),
+                "invalid Simulator host"
+            );
+            ensure!(
+                ids.insert(HostId::from_public_key(&config.public_key)),
+                "duplicate configured host"
+            );
+        }
+        let (persist, incoming) = mpsc::channel::<HostUpdate>();
+        let (render, rx) = mpsc::channel();
+        let mut durable = directory.clone();
+        let repaint = ctx.clone();
+        std::thread::spawn(move || {
+            for update in incoming {
+                let host_id = update.host_id().clone();
+                let mut next = durable.clone();
+                let reduced = next.reduce_update(update.clone());
+                if let Err(error) = next.save(&directory_path) {
+                    let _ = render.send(HostUpdate::Failed {
+                        host_id,
+                        error: failure(error),
+                    });
+                    repaint.request_repaint();
+                    continue;
+                }
+                durable = next;
+                if render.send(update).is_err() {
+                    return;
+                }
+                if let Err(error) = reduced {
+                    let _ = render.send(HostUpdate::Failed { host_id, error });
+                }
+                repaint.request_repaint();
+            }
+        });
+        let saved_configs = Arc::new(Mutex::new(configs.clone()));
+        let store = Arc::new(Mutex::new(crate::keychain::KeychainStore));
+        let mut commands = BTreeMap::new();
+        for config in configs {
+            let id = HostId::from_public_key(&config.public_key);
+            let cursor = directory
+                .state(&id)
+                .map(|state| state.cursor().clone())
+                .unwrap_or(Cursor::new(id.clone(), 0)?);
+            let (command_tx, command_rx) = mpsc::channel();
+            commands.insert(id.clone(), command_tx);
+            let updates = persist.clone();
+            let store = store.clone();
+            let repaint = ctx.clone();
+            let config_path = config_path.clone();
+            let saved_configs = saved_configs.clone();
+            let select = directory.selected_host().is_none() && commands.len() == 1;
+            std::thread::spawn(move || {
+                let result = attach_host(
+                    config,
+                    cursor,
+                    select,
+                    command_rx,
+                    &updates,
+                    store,
+                    saved_configs,
+                    &config_path,
+                    repaint,
+                );
+                if let Err(error) = result {
+                    let _ = updates.send(HostUpdate::Failed {
+                        host_id: id.clone(),
+                        error: failure(error),
+                    });
+                    let _ = updates.send(HostUpdate::Connection {
+                        host_id: id,
+                        state: ConnectionState::Offline,
+                    });
+                }
+            });
+        }
+        Ok(Some(Self {
+            directory,
+            rx,
+            persist,
+            commands,
+            status: BTreeMap::new(),
+        }))
+    }
+
+    pub fn drain(&mut self) {
+        while let Ok(update) = self.rx.try_recv() {
+            let host = update.host_id().clone();
+            match &update {
+                HostUpdate::Frame {
+                    frame: HostFrame::Result { .. },
+                    ..
+                } => {
+                    self.status
+                        .insert(host.clone(), "Host accepted interaction".into());
+                }
+                HostUpdate::Frame {
+                    frame: HostFrame::Error { error, .. },
+                    ..
+                }
+                | HostUpdate::Failed { error, .. } => {
+                    self.status.insert(host.clone(), error.message.clone());
+                }
+                _ => {}
+            }
+            if let Err(error) = self.directory.reduce_update(update) {
+                self.status.insert(host, error.message);
+            }
+        }
+    }
+
+    fn send(&mut self, host: &HostId, frame: ClientFrame) {
+        if !self
+            .directory
+            .state(host)
+            .is_ok_and(|state| state.connection() == &ConnectionState::Online)
+        {
+            self.status.insert(host.clone(), "Host is offline".into());
+            return;
+        }
+        if let Some(sender) = self.commands.get(host) {
+            if sender
+                .send(HostCommand {
+                    host_id: host.clone(),
+                    frame,
+                })
+                .is_ok()
+            {
+                self.status.insert(host.clone(), "Waiting for host".into());
+            } else {
+                self.status
+                    .insert(host.clone(), "Host connection is unavailable".into());
+            }
+        }
+    }
+
+    pub fn draw(&mut self, ctx: &egui::Context, safe: egui::Margin, composer: &mut String) {
+        let mut header = egui::Frame::side_top_panel(&ctx.style());
+        header.inner_margin.top = header.inner_margin.top.saturating_add(safe.top);
+        let selected = self.directory.selected_host().cloned();
+        egui::TopBottomPanel::top("live-hosts")
+            .frame(header)
+            .show(ctx, |ui| {
+                ui.heading("Mote");
+                let hosts: Vec<_> = self.directory.hosts().cloned().collect();
+                ui.horizontal_wrapped(|ui| {
+                    for host in hosts {
+                        if ui
+                            .add_sized(
+                                [128.0, 48.0],
+                                egui::Button::new(host.name())
+                                    .selected(selected.as_ref() == Some(host.host_id())),
+                            )
+                            .clicked()
+                        {
+                            let _ = self.persist.send(HostUpdate::Selected {
+                                host_id: host.host_id().clone(),
+                            });
+                        }
+                    }
+                });
+                if let Some(host) = &selected {
+                    if let Ok(state) = self.directory.state(host) {
+                        let name = self
+                            .directory
+                            .host(host)
+                            .map_or("Host", |paired| paired.name());
+                        let status = match state.connection() {
+                            ConnectionState::Connecting => "connecting",
+                            ConnectionState::Online => "online",
+                            ConnectionState::Offline => "offline",
+                            ConnectionState::Incompatible { .. } => "incompatible",
+                            ConnectionState::IdentityChanged => "identity changed",
+                        };
+                        ui.label(format!("{name}: {status}"));
+                        ui.label(format!("Cursor: {}", state.cursor().seq));
+                    }
+                } else {
+                    ui.label("Connecting to paired hosts");
+                }
+                if let Some(status) = selected.as_ref().and_then(|host| self.status.get(host)) {
+                    ui.label(status);
+                }
+                ui.horizontal(|ui| {
+                    let field = ui.add_sized(
+                        [ui.available_width() - 112.0, 48.0],
+                        egui::TextEdit::singleline(composer)
+                            .id(egui::Id::new("live-chat"))
+                            .hint_text("Message your Mote host"),
+                    );
+                    let send = ui
+                        .add_sized([96.0, 48.0], egui::Button::new("Send"))
+                        .clicked()
+                        || (field.lost_focus()
+                            && ui.input(|input| input.key_pressed(egui::Key::Enter)));
+                    if send && !composer.trim().is_empty() {
+                        if let Some(host) = &selected {
+                            self.send(
+                                host,
+                                ClientFrame::Call {
+                                    request_id: RequestId::new(format!("chat-{}", unique_id()))
+                                        .expect("generated ID"),
+                                    method: "turn".into(),
+                                    params: serde_json::json!({"thread":"main","message":composer}),
+                                },
+                            );
+                            composer.clear();
+                        }
+                    }
+                });
+            });
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let Some(host) = selected else {
+                return;
+            };
+            let Ok(state) = self.directory.state(&host) else {
+                return;
+            };
+            let online = state.connection() == &ConnectionState::Online;
+            let thread = state.selected_thread().unwrap_or("main");
+            let messages = state
+                .threads()
+                .get(thread)
+                .map(|thread| thread.messages.clone())
+                .unwrap_or_default();
+            let surface = state
+                .surfaces()
+                .get(thread)
+                .and_then(|surfaces| surfaces.last_key_value())
+                .map(|(_, surface)| surface.clone());
+            let snapshot_cursor = state.cursor().seq;
+            egui::ScrollArea::vertical()
+                .id_salt(("live-chat", &host))
+                .max_height(ui.available_height() * 0.32)
+                .show(ui, |ui| {
+                    for message in messages {
+                        ui.label(format!("{:?}: {}", message.role, message.text));
+                    }
+                });
+            if let Some(surface) = surface {
+                let bytes = serde_json::to_vec(&surface.tree).unwrap_or_default();
+                match mote_ui::v1::validate(&bytes) {
+                    Ok(surface_tree) => {
+                        let mut events = Vec::new();
+                        ui.push_id((&host, &surface.thread, surface.surface_seq), |ui| {
+                            ui.add_enabled_ui(online, |ui| {
+                                mote_client_core::surface_v1::draw(ui, &surface_tree, &mut events)
+                            });
+                        });
+                        for event in events {
+                            let (name, args, path) = match event {
+                                mote_client_core::surface_v1::Event::Action { event, path } => {
+                                    (event, serde_json::Map::new(), path)
+                                }
+                                mote_client_core::surface_v1::Event::Change {
+                                    field,
+                                    value,
+                                    path,
+                                } => (
+                                    "change".into(),
+                                    serde_json::json!({"field":field,"value":value})
+                                        .as_object()
+                                        .unwrap()
+                                        .clone(),
+                                    path,
+                                ),
+                            };
+                            self.send(
+                                &host,
+                                ClientFrame::Interaction {
+                                    request_id: RequestId::new(format!("ui-{}", unique_id()))
+                                        .expect("generated ID"),
+                                    interaction: mote_protocol::TypedInteraction {
+                                        host_id: host.clone(),
+                                        thread: surface.thread.clone(),
+                                        surface_seq: surface.surface_seq,
+                                        surface_contract: surface.surface_contract,
+                                        node_path: path
+                                            .into_iter()
+                                            .map(|index| index as u32)
+                                            .collect(),
+                                        event: name,
+                                        args,
+                                    },
+                                },
+                            );
+                        }
+                    }
+                    Err(_) => {
+                        ui.label("This committed surface requires a compatible client");
+                    }
+                }
+            }
+            ui.label(format!("Committed through {snapshot_cursor}"));
+        });
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn attach_host(
+    config: HostConfig,
+    cursor: Cursor,
+    select: bool,
+    commands: Receiver<HostCommand>,
+    updates: &Sender<HostUpdate>,
+    store: Arc<Mutex<crate::keychain::KeychainStore>>,
+    configs: Arc<Mutex<Vec<HostConfig>>>,
+    config_path: &Path,
+    ctx: egui::Context,
+) -> Result<()> {
+    let id = HostId::from_public_key(&config.public_key);
+    updates.send(HostUpdate::Registered {
+        host: PairedHost::new(
+            config.public_key,
+            config.name.clone(),
+            None,
+            mote_protocol::VersionRange::current(),
+        )?,
+    })?;
+    if select {
+        updates.send(HostUpdate::Selected {
+            host_id: id.clone(),
+        })?;
+    }
+    updates.send(HostUpdate::Connection {
+        host_id: id.clone(),
+        state: ConnectionState::Connecting,
+    })?;
+    let gateway_config = GatewayConfig::new(config_path.parent().unwrap_or(Path::new(".")));
+    use mote_gateway::discovery::DiscoveryBrowser;
+    let records = crate::discovery::SimulatorBrowser
+        .browse(Duration::from_secs(2))
+        .unwrap_or_default();
+    network_evidence(
+        config_path,
+        serde_json::json!({"kind":"browse","host_id":id,"records":records.iter().map(|record| serde_json::json!({"endpoint":record.endpoint,"txt":record.txt()})).collect::<Vec<_>>()}),
+    )?;
+    if std::env::var("MOTE_SIMULATOR_KEYCHAIN_DELETE")
+        .ok()
+        .as_deref()
+        == Some(id.as_str())
+    {
+        let mut store = store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("credential store unavailable"))?;
+        store.delete(&id)?;
+        ensure!(
+            store.load(&id)?.is_none(),
+            "deleted credential still exists"
+        );
+        network_evidence(
+            config_path,
+            serde_json::json!({"kind":"keychain_deleted","host_id":id,"missing":true}),
+        )?;
+        anyhow::bail!("Host requires a new owner-present pairing");
+    }
+    let credential_exists = store
+        .lock()
+        .map_err(|_| anyhow::anyhow!("credential store unavailable"))?
+        .load(&id)?
+        .is_some();
+    let mut network = if credential_exists {
+        let mut connected = NetworkHost::connect(
+            id.clone(),
+            config.endpoint,
+            gateway_config.clone(),
+            store.clone(),
+        );
+        if connected.is_err() {
+            for record in &records {
+                let expected = mote_gateway::discovery::DiscoveryRecord::new(
+                    record.endpoint,
+                    1,
+                    &config.public_key,
+                )?;
+                if record.protocol_major != 1 || record.fingerprint != expected.fingerprint {
+                    continue;
+                }
+                connected = NetworkHost::connect(
+                    id.clone(),
+                    record.endpoint,
+                    gateway_config.clone(),
+                    store.clone(),
+                );
+                if connected.is_ok() {
+                    break;
+                }
+            }
+        }
+        connected?
+    } else if let Some(offer) = &config.offer {
+        ensure!(
+            ClientCredential::from_pairing_code(&gateway_config, offer)?.host_id() == &id,
+            "pairing offer has a different host identity"
+        );
+        NetworkHost::pair(
+            config.endpoint,
+            gateway_config.clone(),
+            offer,
+            "Mote iPad Simulator",
+            store.clone(),
+        )?
+    } else {
+        anyhow::bail!("Host requires a new owner-present pairing");
+    };
+    ensure!(
+        network.host_id() == &id,
+        "pairing offer has a different host identity"
+    );
+    network_evidence(
+        config_path,
+        serde_json::json!({"kind":if credential_exists {"keychain_restored"} else {"paired"},"host_id":id,"endpoint":network.endpoint(),"saved_cursor":cursor.seq}),
+    )?;
+    for record in records {
+        if mote_gateway::discovery::DiscoveryRecord::new(record.endpoint, 1, &config.public_key)?
+            .fingerprint
+            != record.fingerprint
+        {
+            continue;
+        }
+        let prior = network.endpoint();
+        let accepted = network.rediscover(&record).is_ok();
+        network_evidence(
+            config_path,
+            serde_json::json!({"kind":"identity_proof","host_id":id,"candidate":record.endpoint,"accepted":accepted,"prior":prior,"current":network.endpoint()}),
+        )?;
+    }
+    {
+        let mut configs = configs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("host metadata unavailable"))?;
+        if let Some(config) = configs
+            .iter_mut()
+            .find(|config| HostId::from_public_key(&config.public_key) == id)
+        {
+            config.endpoint = network.endpoint();
+        }
+        save_configs(config_path, &configs)?;
+    }
+    let snapshot = network.snapshot()?;
+    ensure!(
+        snapshot.host_id == id,
+        "snapshot has a different host identity"
+    );
+    updates.send(HostUpdate::Frame {
+        host_id: id.clone(),
+        frame: HostFrame::Snapshot {
+            snapshot: snapshot.clone(),
+        },
+    })?;
+    let resume_cursor = cursor;
+    let mut event_network = network.reopen()?;
+    let stream = event_network.subscribe(&resume_cursor)?;
+    let command_updates = updates.clone();
+    let repaint = ctx.clone();
+    mote_host_client::command_worker(network, commands, command_updates, move || {
+        repaint.request_repaint()
+    });
+    let mut cursor = resume_cursor;
+    let mut stream = stream;
+    loop {
+        match stream.receive() {
+            Ok(frame) => {
+                match &frame {
+                    HostFrame::Event { host_id, event }
+                        if host_id == &id && event.kind != "resync" =>
+                    {
+                        if event.seq > cursor.seq {
+                            cursor.seq = event.seq;
+                        }
+                    }
+                    HostFrame::Snapshot { snapshot } if snapshot.host_id == id => {
+                        cursor = snapshot.cursor.clone()
+                    }
+                    _ => {}
+                }
+                if updates
+                    .send(HostUpdate::Frame {
+                        host_id: id.clone(),
+                        frame,
+                    })
+                    .is_err()
+                {
+                    return Ok(());
+                }
+            }
+            Err(_) => {
+                updates.send(HostUpdate::Connection {
+                    host_id: id.clone(),
+                    state: ConnectionState::Offline,
+                })?;
+                std::thread::sleep(Duration::from_millis(500));
+                if let Ok(records) =
+                    crate::discovery::SimulatorBrowser.browse(Duration::from_secs(2))
+                {
+                    network_evidence(
+                        config_path,
+                        serde_json::json!({"kind":"rediscover","host_id":id,"records":records.iter().map(|record| serde_json::json!({"endpoint":record.endpoint,"txt":record.txt()})).collect::<Vec<_>>()}),
+                    )?;
+                    for record in records {
+                        let prior = event_network.endpoint();
+                        let accepted = event_network.rediscover(&record).is_ok();
+                        network_evidence(
+                            config_path,
+                            serde_json::json!({"kind":"identity_proof","host_id":id,"candidate":record.endpoint,"accepted":accepted,"prior":prior,"current":event_network.endpoint()}),
+                        )?;
+                        if accepted {
+                            let mut configs = configs
+                                .lock()
+                                .map_err(|_| anyhow::anyhow!("host metadata unavailable"))?;
+                            if let Some(config) = configs
+                                .iter_mut()
+                                .find(|config| HostId::from_public_key(&config.public_key) == id)
+                            {
+                                config.endpoint = event_network.endpoint();
+                            }
+                            save_configs(config_path, &configs)?;
+                            break;
+                        }
+                    }
+                }
+                if let Ok(reconnected) = event_network.subscribe(&cursor) {
+                    stream = reconnected;
+                    updates.send(HostUpdate::Connection {
+                        host_id: id.clone(),
+                        state: ConnectionState::Online,
+                    })?;
+                }
+            }
+        }
+    }
+}
+
+fn save_configs(path: &Path, configs: &[HostConfig]) -> Result<()> {
+    use std::io::Write;
+    let mut file = tempfile::NamedTempFile::new_in(
+        path.parent()
+            .ok_or_else(|| anyhow::anyhow!("missing metadata directory"))?,
+    )?;
+    file.write_all(&serde_json::to_vec(configs)?)?;
+    file.as_file().sync_all()?;
+    file.persist(path)?;
+    Ok(())
+}
+
+fn network_evidence(config_path: &Path, record: serde_json::Value) -> Result<()> {
+    static SERIAL: Mutex<()> = Mutex::new(());
+    let _guard = SERIAL
+        .lock()
+        .map_err(|_| anyhow::anyhow!("network evidence unavailable"))?;
+    let path = config_path.with_file_name("live-network.json");
+    let mut records: Vec<serde_json::Value> = if path.exists() {
+        serde_json::from_reader(std::fs::File::open(&path)?)?
+    } else {
+        Vec::new()
+    };
+    if records.len() >= 256 {
+        records.remove(0);
+    }
+    records.push(record);
+    use std::io::Write;
+    let mut file = tempfile::NamedTempFile::new_in(
+        path.parent()
+            .ok_or_else(|| anyhow::anyhow!("missing evidence directory"))?,
+    )?;
+    file.write_all(&serde_json::to_vec(&records)?)?;
+    file.persist(path)?;
+    Ok(())
+}
+
+fn documents() -> Result<PathBuf> {
+    #[cfg(target_os = "ios")]
+    {
+        extern "C" {
+            fn mote_ios_documents() -> *const std::ffi::c_char;
+        }
+        let path = unsafe { std::ffi::CStr::from_ptr(mote_ios_documents()) }.to_str()?;
+        Ok(PathBuf::from(path))
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        Ok(std::env::var_os("MOTE_SIMULATOR_DATA")
+            .map(PathBuf::from)
+            .unwrap_or(std::env::temp_dir().join("mote-ios-offline")))
+    }
+}

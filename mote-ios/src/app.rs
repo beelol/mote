@@ -8,6 +8,7 @@ pub struct MoteApp {
     composer: String,
     last_event: String,
     reduced_motion: bool,
+    live: Option<crate::live::LiveRuntime>,
     #[cfg(all(target_os = "ios", target_abi = "sim"))]
     probe: Option<crate::probe::native::Probe>,
 }
@@ -19,6 +20,7 @@ impl Default for MoteApp {
             composer: String::new(),
             last_event: "No interaction yet".into(),
             reduced_motion: false,
+            live: None,
             #[cfg(all(target_os = "ios", target_abi = "sim"))]
             probe: None,
         }
@@ -43,6 +45,12 @@ impl eframe::App for MoteApp {
 }
 
 impl MoteApp {
+    pub fn attach_live(&mut self, ctx: &egui::Context) {
+        match crate::live::LiveRuntime::from_environment(ctx.clone()) {
+            Ok(runtime) => self.live = runtime,
+            Err(error) => self.last_event = format!("Host setup failed: {error}"),
+        }
+    }
     pub fn with_launch_options(options: crate::simulator::LaunchOptions) -> Self {
         let mut app = Self::default();
         if let Some(page) = options.page {
@@ -58,6 +66,11 @@ impl MoteApp {
     }
 
     fn draw(&mut self, ctx: &egui::Context, safe_area: egui::Margin) {
+        if let Some(live) = &mut self.live {
+            live.drain();
+            live.draw(ctx, safe_area, &mut self.composer);
+            return;
+        }
         mote_client_core::transition::set_reduced_motion(ctx, self.reduced_motion);
         let mut status = egui::Frame::side_top_panel(&ctx.style());
         status.inner_margin.top = status.inner_margin.top.saturating_add(safe_area.top);
@@ -142,6 +155,37 @@ impl MoteApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_shell_labels_selected_host_and_rejects_cross_host_updates() {
+        use mote_host_client::{HostDirectory, HostUpdate, PairedHost};
+        use mote_protocol::{Event, HostFrame, VersionRange};
+        let first = PairedHost::new([1; 32], "Home", None, VersionRange::current()).unwrap();
+        let second = PairedHost::new([2; 32], "Office", None, VersionRange::current()).unwrap();
+        let first_id = first.host_id().clone();
+        let second_id = second.host_id().clone();
+        let mut directory = HostDirectory::default();
+        directory.register(first).unwrap(); directory.register(second).unwrap();
+        directory.select_host(&first_id).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut app = MoteApp::default();
+        app.live = Some(crate::live::LiveRuntime { directory, rx, persist: tx.clone(), commands: Default::default(), status: Default::default() });
+        tx.send(HostUpdate::Frame { host_id: first_id.clone(), frame: HostFrame::Event { host_id: second_id.clone(), event: Event { seq: 1, ts: 0, scope_id: "main".into(), kind: "turn.user".into(), payload: serde_json::json!({"text":"Must not appear"}) } } }).unwrap();
+        app.live.as_mut().unwrap().drain();
+        let ctx = egui::Context::default();
+        frame(&mut app, &ctx, egui::vec2(834.0, 1210.0), vec![]);
+        let output = frame(&mut app, &ctx, egui::vec2(834.0, 1210.0), vec![]);
+        assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text().contains("Home"))));
+        assert!(!output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Must not appear")));
+        assert_eq!(app.live.as_ref().unwrap().directory.state(&first_id).unwrap().connection(), &mote_host_client::ConnectionState::IdentityChanged);
+        tx.send(HostUpdate::Failed { host_id: second_id.clone(), error: mote_protocol::HostError::new(mote_protocol::HostErrorCode::Internal, "Office-only refusal") }).unwrap();
+        app.live.as_mut().unwrap().drain();
+        let output = frame(&mut app, &ctx, egui::vec2(834.0, 1210.0), vec![]);
+        assert!(!output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text().contains("Office-only refusal"))));
+        app.live.as_mut().unwrap().directory.select_host(&second_id).unwrap();
+        let output = frame(&mut app, &ctx, egui::vec2(834.0, 1210.0), vec![]);
+        assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text().contains("Office-only refusal"))));
+    }
 
     fn frame(
         app: &mut MoteApp,

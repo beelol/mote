@@ -234,6 +234,7 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
 
 - (void)testGalleryPagesAndControlsInBothOrientations {
     XCUIApplication *app = [[XCUIApplication alloc] init];
+    app.launchArguments = @[@"--mote-offline"];
     [app launch];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
     for (NSNumber *orientation in @[@(UIDeviceOrientationPortrait), @(UIDeviceOrientationLandscapeLeft)]) {
@@ -322,6 +323,7 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
 }
 - (void)testOfflineGalleryLaunchRemainsInForeground {
     XCUIApplication *app = [[XCUIApplication alloc] init];
+    app.launchArguments = @[@"--mote-offline"];
     [app launch];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
     XCTAssertTrue([app.windows.firstMatch waitForExistenceWithTimeout:15]);
@@ -339,7 +341,7 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
 
 - (void)testDeterministicFixtureAndReducedMotionLaunch {
     XCUIApplication *app = [[XCUIApplication alloc] init];
-    app.launchArguments = @[@"--mote-fixture", @"slider-layout", @"--mote-reduced-motion"];
+    app.launchArguments = @[@"--mote-offline", @"--mote-fixture", @"slider-layout", @"--mote-reduced-motion"];
     [app launch];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
     [self assertText:@"Mode: normal" app:app];
@@ -351,6 +353,7 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
 
 - (void)testTextTargetRetriesTransientRecognitionMisses {
     XCUIApplication *app = [[XCUIApplication alloc] init];
+    app.launchArguments = @[@"--mote-offline"];
     [app launch];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
     self.recognitionMisses = 2;
@@ -361,7 +364,7 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
 
 - (void)testFixtureSliderReachesExactMinimum {
     XCUIApplication *app = [[XCUIApplication alloc] init];
-    app.launchArguments = @[@"--mote-fixture", @"slider-layout"];
+    app.launchArguments = @[@"--mote-offline", @"--mote-fixture", @"slider-layout"];
     [app launch];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
     CGRect sliderLabel = [self findText:@"Volume" app:app].boundingBox;
@@ -375,7 +378,7 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
 - (void)testDashboardSelectValueVisibleInLandscape {
     XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
     XCUIApplication *app = [[XCUIApplication alloc] init];
-    app.launchArguments = @[@"--mote-page", @"dashboard"];
+    app.launchArguments = @[@"--mote-offline", @"--mote-page", @"dashboard"];
     [app launch];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
     [self tapText:@"Talk model:" app:app];
@@ -414,7 +417,7 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
         for (NSNumber *reduced in @[@NO, @YES]) {
             [app terminate];
             XCUIDevice.sharedDevice.orientation = orientation.integerValue;
-            app.launchArguments = reduced.boolValue ? @[@"--mote-timing-probe", @"--mote-reduced-motion"] : @[@"--mote-timing-probe"];
+            app.launchArguments = reduced.boolValue ? @[@"--mote-offline", @"--mote-timing-probe", @"--mote-reduced-motion"] : @[@"--mote-offline", @"--mote-timing-probe"];
             [app launch];
             XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
             NSTimeInterval start = NSDate.timeIntervalSinceReferenceDate;
@@ -427,5 +430,42 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
             [self capture:[NSString stringWithFormat:@"timing-%@-%@", orientation, reduced] app:app];
         }
     }
+}
+
+- (void)testLivePairedHostsChatDashboardAndRelaunch {
+    XCUIApplication *app = [[XCUIApplication alloc] init];
+    [app activate];
+    XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+    [self assertText:@"Home: online" app:app];
+    [self assertText:@"Home dashboard" app:app];
+    [self capture:@"live-home-paired" app:app];
+    [self tapText:@"Talk model:" app:app];
+    [self tapText:@"qwen3:0.6b" app:app];
+    [self assertText:@"Host accepted interaction" app:app];
+    [self assertControlText:@"Talk model: qwen3:0.6b" label:@"Talk model:" app:app];
+    [self capture:@"live-typed-dashboard-edit" app:app];
+    [self tapText:@"Message your Mote host" app:app];
+    XCTAssertTrue([app.keyboards.firstMatch waitForExistenceWithTimeout:5]);
+    [app.textViews.firstMatch typeText:@"hello"];
+    [self tapText:@"Send" app:app];
+    [self assertText:@"User: hello" app:app];
+    [self assertText:@"greeting" app:app];
+    [self capture:@"live-chat" app:app];
+    [app terminate];
+    [app launch];
+    [self assertText:@"Home: online" app:app];
+    [self assertText:@"User: hello" app:app];
+    [self assertControlText:@"Talk model: qwen3:0.6b" label:@"Talk model:" app:app];
+    [self capture:@"live-relaunched-cursor" app:app];
+    [self tapText:@"Office" app:app];
+    [self assertText:@"Office: online" app:app];
+    [self assertText:@"Office dashboard" app:app];
+    XCTAssertFalse([compactText([self visibleText:app]) containsString:compactText(@"User: hello")]);
+    [self capture:@"live-office-isolated" app:app];
+    [self tapText:@"Home" app:app];
+    [self assertText:@"Home dashboard" app:app];
+    [self assertText:@"User: hello" app:app];
+    XCTAssertFalse([compactText([self visibleText:app]) containsString:compactText(@"Office dashboard")]);
+    [self capture:@"live-home-restored" app:app];
 }
 @end

@@ -12,6 +12,15 @@ crate-type = ["staticlib", "rlib"]
 eframe.workspace = true
 egui.workspace = true
 mote-client-core.workspace = true
+mote-host-client.workspace = true
+mote-gateway.workspace = true
+mote-protocol.workspace = true
+mote-ui.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow = "1"
+libc.workspace = true
+tempfile = "3"
 
 [target.'cfg(target_os = "ios")'.dependencies]
 raw-window-handle = "0.6.2"
@@ -19,7 +28,9 @@ raw-window-handle = "0.6.2"
 [target.'cfg(all(target_os = "ios", target_abi = "sim"))'.dependencies]
 egui-wgpu = "=0.31.0"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
-serde_json.workspace = true
 
 [dev-dependencies]
 mote-client-core = { workspace = true, features = ["test-observation"] }
+mote-testkit.workspace = true
+mote-ipc.workspace = true
+moted = { path = "../moted", features = ["test-fixture"] }

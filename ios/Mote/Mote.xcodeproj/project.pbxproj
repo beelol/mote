@@ -100,6 +100,9 @@
             isa = XCBuildConfiguration;
             name = Debug;
             buildSettings = {
+                "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = YES;
+                "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
+                "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Simulator.entitlements;
                 INFOPLIST_FILE = Info.plist;
                 LIBRARY_SEARCH_PATHS = ("$(inherited)", "$(BUILT_PRODUCTS_DIR)/rust");
                 OTHER_LDFLAGS = ("$(inherited)", "-lmote_ios", "-lc++", "-liconv", "-lobjc", "-framework", UIKit, "-framework", Foundation, "-framework", Metal, "-framework", QuartzCore, "-framework", CoreGraphics, "-framework", CoreText, "-framework", Security, "-framework", SystemConfiguration);
@@ -111,6 +114,9 @@
             isa = XCBuildConfiguration;
             name = Release;
             buildSettings = {
+                "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = YES;
+                "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
+                "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Simulator.entitlements;
                 INFOPLIST_FILE = Info.plist;
                 LIBRARY_SEARCH_PATHS = ("$(inherited)", "$(BUILT_PRODUCTS_DIR)/rust");
                 OTHER_LDFLAGS = ("$(inherited)", "-lmote_ios", "-lc++", "-liconv", "-lobjc", "-framework", UIKit, "-framework", Foundation, "-framework", Metal, "-framework", QuartzCore, "-framework", CoreGraphics, "-framework", CoreText, "-framework", Security, "-framework", SystemConfiguration);
