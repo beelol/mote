@@ -2,8 +2,9 @@
 
 Updated 2026-10-10. Replace this file, never append.
 
-Branch: `main`. Base: `0b7c0a6`.
-Commit: `perf(matrix): benchmark compiler p95`.
+Branch: `main`. Measured implementation: `1960643`.
+Commits: `perf(matrix): benchmark compiler p95` and
+`fix(matrix): require detected Apple hardware`.
 Preserve untracked `.DS_Store` and `.superpowers/`. Do not push.
 
 `moted bench compiler` now benchmarks the production Matrix compiler with a fixed in-memory
@@ -17,9 +18,10 @@ counts, percentile method, nanosecond and millisecond results and target state. 
 to `bench.jsonl`. The compiler command initializes no database, daemon, Ollama client or live user
 configuration.
 
-The Apple M5 Max release run passed. Production end-to-end p95 was 39,458 ns against a strict
+The Apple M5 Max release run passed. Production end-to-end p95 was 67,416 ns against a strict
 2,000,000 ns limit. UI-46 remains partial because no real Raspberry Pi 5 run exists. Raspberry Pi 5
-must be identified by its hardware model before the 10,000,000 ns budget applies.
+must be identified by its hardware model before the 10,000,000 ns budget applies. The Mac budget
+also requires a recognized Apple M-series hardware name. Unknown macOS arm64 hardware cannot pass.
 
 The fixed source hash is `358e1bbbdb30b38a134a6b43152b3b90bddc463ac493920eadcbee8b44f10ea3`.
 The combined fixture hash is `0cacb63fcbfda9cf8f199ccf26516f1e89c505fd8ba435b21109c121ae5305ee`.
