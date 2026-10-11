@@ -91,6 +91,13 @@ Workspace tests and strict clippy passed. IPAD-01 is checked with evidence in
 `docs/verification/IPAD-01.md`. No physical device, signing or TestFlight action has started.
 Next is UI Task 4, page-based gallery data. IPAD-02 remains open until the full gallery and
 transition are driven live on two Simulator sizes and orientations.
+UI Task 4 was pushed in `8798d92`. Eight validated Layout, Toggle, Slider, Select, List, Form,
+Dashboard and Fixture page surfaces are selectable, with the original Mac gallery unchanged.
+The checked-in Dashboard payload has a host-side compiler conformance test. The iPad core does not
+parse untrusted source or depend on matrix-lang. Independent review and driver workspace tests,
+strict clippy and Apple Simulator core check passed. The frozen v1 contract has no text input;
+the later IPAD-02 text-entry journey must use the existing legacy Field or shell composer.
+IPAD-02 remains open. Next is Task 5, red pixel materialization and immediate new hit targets.
 The host plan ledger is
 `.superpowers/sdd/2026-10-11-ipad-simulator-host/progress.md`. The UI plan ledger is
 `.superpowers/sdd/2026-10-11-ipad-simulator-ui/progress.md`. The UI subagent has not yet been
