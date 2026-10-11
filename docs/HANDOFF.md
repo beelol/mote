@@ -83,6 +83,14 @@ the protocol. The review and scoped re-review found no blocking issue. The drive
 reran workspace tests, strict clippy and Simulator core check with exit 0. The 32-frame observation
 regression is fixed and its test passes. Mac-specific observation integration remains in the
 desktop shell. IPAD-01 and IPAD-02 remain open. Next is UI Task 3, the minimal native iPad shell.
+UI Task 3 was pushed in `33e8fd9`. Both Rust Apple targets, Xcode 27 build and the iOS 27 iPad
+Simulator launch passed. The iOS 27 scene adapter attaches the existing winit window without a
+second UIKit loop. The offline gallery screenshot confirms the safe-area heading. XCUITest passed
+one startup test, the process survived 52 seconds, and the driver independently relaunched it.
+Workspace tests and strict clippy passed. IPAD-01 is checked with evidence in
+`docs/verification/IPAD-01.md`. No physical device, signing or TestFlight action has started.
+Next is UI Task 4, page-based gallery data. IPAD-02 remains open until the full gallery and
+transition are driven live on two Simulator sizes and orientations.
 The host plan ledger is
 `.superpowers/sdd/2026-10-11-ipad-simulator-host/progress.md`. The UI plan ledger is
 `.superpowers/sdd/2026-10-11-ipad-simulator-ui/progress.md`. The UI subagent has not yet been
