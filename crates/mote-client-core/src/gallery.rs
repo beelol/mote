@@ -68,13 +68,20 @@ impl GalleryPage {
                     Self::Select => json!([
                         {"type":"select", "label":"Priority", "field":"gallery_priority", "options":["Low", "Normal", "High"], "value":"Normal"}
                     ]),
-                    Self::List => json!([
-                        {"type":"col", "children":[
-                            {"type":"row", "children":[{"type":"text", "value":"Draft", "fill":true}, {"type":"button", "label":"Open draft", "event":"gallery.draft"}]},
-                            {"type":"row", "children":[{"type":"text", "value":"Review", "fill":true}, {"type":"button", "label":"Open review", "event":"gallery.review"}]},
-                            {"type":"row", "children":[{"type":"text", "value":"Ready", "fill":true}, {"type":"button", "label":"Open ready", "event":"gallery.ready"}]}
-                        ]}
-                    ]),
+                    Self::List => {
+                        let mut rows = vec![
+                            json!({"type":"row", "children":[{"type":"text", "value":"Draft", "fill":true}, {"type":"button", "label":"Open draft", "event":"gallery.draft"}]}),
+                            json!({"type":"row", "children":[{"type":"text", "value":"Review", "fill":true}, {"type":"button", "label":"Open review", "event":"gallery.review"}]}),
+                            json!({"type":"row", "children":[{"type":"text", "value":"Ready", "fill":true}, {"type":"button", "label":"Open ready", "event":"gallery.ready"}]})
+                        ];
+                        for index in 4..=20 {
+                            rows.push(json!({"type":"row", "children":[
+                                {"type":"text", "value":format!("Item {index}"), "fill":true},
+                                {"type":"button", "label":format!("Open item {index}"), "event":format!("gallery.item.{index}")}
+                            ]}));
+                        }
+                        json!([{"type":"col", "children":rows}])
+                    },
                     Self::Form => json!([
                         {"type":"col", "children":[
                             {"type":"toggle", "label":"Enable preview", "field":"gallery_form_enabled", "value":true},
@@ -216,6 +223,16 @@ pub fn matrix_tree() -> mote_ui::v1::Surface {
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+
+    #[test]
+    fn list_gallery_contains_a_reachable_long_scroll_sample() {
+        let mut gallery = Gallery::default();
+        gallery.select(GalleryPage::List);
+        let value = serde_json::to_value(gallery.surface().matrix_v1().unwrap()).unwrap();
+        let rows = value["root"]["children"][0]["children"].as_array().unwrap();
+        assert_eq!(rows.len(), 20);
+        assert_eq!(rows[19]["children"][1]["label"], "Open item 20");
+    }
 
     #[test]
     fn gallery_pages_cover_required_names_and_validate() {

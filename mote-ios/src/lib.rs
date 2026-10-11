@@ -1,4 +1,5 @@
 mod app;
+mod simulator;
 
 #[no_mangle]
 pub extern "C" fn mote_ios_main() -> ! {
@@ -14,7 +15,9 @@ pub extern "C" fn mote_ios_main() -> ! {
             #[cfg(target_os = "ios")]
             attach_scene(cc)?;
             mote_client_core::install_theme(&cc.egui_ctx);
-            Ok(Box::new(app::MoteApp::default()))
+            Ok(Box::new(app::MoteApp::with_launch_options(
+                simulator::LaunchOptions::parse(std::env::args()),
+            )))
         }),
     ) {
         eprintln!("Mote could not start: {error}");
