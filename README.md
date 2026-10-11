@@ -262,7 +262,7 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     validity or keep that model disabled, verify ledger rows and typed event rejection, and capture
     success, one-retry recovery, stable prior surface and final prose fallback on the simulator.
     [Evidence](docs/verification/IPAD-04.md) records the 192-of-200 live gate and four paired native captures.
-  - [ ] **IPAD-05** A Mac-hosted browser fixture uses a per-character Mote Chrome for Testing profile
+  - [x] **IPAD-05** A Mac-hosted browser fixture uses a per-character Mote Chrome for Testing profile
     and can browse, read and fill automatically only on an approved site. Mote never opens the default
     Chrome profile or its keychain item. Submit, purchase, message, download, OAuth and non-GET actions
     remain blocked until a durable host-bound approval is accepted from the iPad. **Verify:** record
@@ -271,7 +271,8 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     creates a durable approval and has zero effect before approval, that deny and expiry stay inert,
     and that one approved action executes exactly once after page-state recheck. Also record prompt-
     injection refusal, redacted events, ledger and HAR, before and after commit screenshots and a
-    final validated Matrix result card.
+    final validated Matrix result card. The [verification record](docs/verification/IPAD-05.md)
+    includes the headed fixture and paired native Simulator evidence.
 
 ### Deferred physical iPad delivery
 

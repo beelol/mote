@@ -1,0 +1,16 @@
+   Compiling mote-browser v0.0.0 (/Users/bilal/projects/mote/crates/mote-browser)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.50s
+     Running tests/runtime.rs (target/debug/deps/runtime-3208ac50c81eb894)
+
+running 8 tests
+test background_screenshot_does_not_change_approval_bound_page_state ... ok
+test both_navigation_events_invalidate_retained_requests ... ok
+test browser_session_never_inherits_profile_cookies_or_workers ... ok
+test headed_runtime_reads_fills_and_blocks_effects ... Browser process arguments: ["/private/tmp/mote-browser-runtime-155/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing","--disable-sync","--remote-debugging-address=127.0.0.1","--disable-component-update","--app=about:blank","--user-data-dir=/var/folders/mk/vz_j1tqn0rz6w6f4ztwfv0gr0000gn/T/.tmpdcSdyC/browser/test/local","--disable-background-networking","--enable-automation","--no-default-browser-check","--use-mock-keychain","--remote-debugging-port=0","--disable-extensions","--no-first-run","--flag-switches-begin","--flag-switches-end"]
+ok
+test host_shutdown_closes_retained_session ... ok
+test named_controls_and_fetch_preserve_the_request_boundary ... ok
+test retained_native_request_is_inert_stale_checked_and_consumed_once ... ok
+test webrtc_is_unavailable_before_inline_scripts_and_sends_no_datagrams ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 46.20s

@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "internal",
+    "message": "stale or unknown node reference"
+  },
+  "reference": "f7ea12aa66f282eb181db7866b0b7377:8:66",
+  "submit_effects": 1
+}

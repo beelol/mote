@@ -1,0 +1,38 @@
+{
+  "requests": [
+    {
+      "action_hash": "d410d37fcf63996cd6fc6859ce03ebc7f5c73c1bff4035ae5cbc3cd6d011cf60",
+      "approval_id": "1",
+      "expires_at": 1791747701416,
+      "kind": "browser",
+      "payload": {
+        "effect": "NonGet",
+        "site": "http://127.0.0.1:50751"
+      },
+      "thread": "main"
+    },
+    {
+      "action_hash": "f23fe6a98975910f91972aaf7e74a785cdc3497ac7581bc5a9f4f776352181fc",
+      "approval_id": "2",
+      "expires_at": 1791747716750,
+      "kind": "browser",
+      "payload": {
+        "effect": "NonGet",
+        "site": "http://127.0.0.1:50751"
+      },
+      "thread": "main"
+    },
+    {
+      "action_hash": "03e591c66e56e8cf974c2aacd8393cb395b587a6feaddb437fe8df63eab2957d",
+      "approval_id": "3",
+      "expires_at": 1791747727595,
+      "kind": "browser",
+      "payload": {
+        "effect": "NonGet",
+        "site": "http://127.0.0.1:50751"
+      },
+      "thread": "main"
+    }
+  ],
+  "submit": 1
+}

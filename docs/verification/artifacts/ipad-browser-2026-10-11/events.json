@@ -1,0 +1,476 @@
+[
+  {
+    "seq": 1,
+    "ts": 1791747561752,
+    "scope_id": "main",
+    "kind": "ui.surface",
+    "payload": {
+      "matrix_surface": {
+        "root": {
+          "children": [
+            {
+              "type": "text",
+              "value": "Browser fixture ready"
+            }
+          ],
+          "type": "screen"
+        },
+        "version": 1
+      },
+      "surface": {
+        "type": "text",
+        "value": "Browser fixture ready"
+      },
+      "surface_id": "matrix"
+    }
+  },
+  {
+    "seq": 2,
+    "ts": 1791747580397,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.open",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 925,
+      "status": "ok",
+      "tool_ledger_id": 1
+    }
+  },
+  {
+    "seq": 3,
+    "ts": 1791747580907,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.snapshot",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 509,
+      "status": "ok",
+      "tool_ledger_id": 2
+    }
+  },
+  {
+    "seq": 4,
+    "ts": 1791747580912,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.text",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 2,
+      "status": "ok",
+      "tool_ledger_id": 3
+    }
+  },
+  {
+    "seq": 5,
+    "ts": 1791747580917,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.type",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 2,
+      "status": "ok",
+      "tool_ledger_id": 4
+    }
+  },
+  {
+    "seq": 6,
+    "ts": 1791747581410,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.snapshot",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 492,
+      "status": "ok",
+      "tool_ledger_id": 5
+    }
+  },
+  {
+    "seq": 7,
+    "ts": 1791747581434,
+    "scope_id": "main",
+    "kind": "approval.created",
+    "payload": {
+      "approval": {
+        "action_hash": "d410d37fcf63996cd6fc6859ce03ebc7f5c73c1bff4035ae5cbc3cd6d011cf60",
+        "approval_id": "1",
+        "expires_at": 1791747701416,
+        "kind": "browser",
+        "payload": {
+          "effect": "NonGet",
+          "site": "http://127.0.0.1:50751"
+        },
+        "thread": "main"
+      },
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "status": "pending"
+    }
+  },
+  {
+    "seq": 8,
+    "ts": 1791747581439,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.click",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 28,
+      "status": "ok",
+      "tool_ledger_id": 6
+    }
+  },
+  {
+    "seq": 9,
+    "ts": 1791747593251,
+    "scope_id": "main",
+    "kind": "approval.updated",
+    "payload": {
+      "approval": {
+        "action_hash": "d410d37fcf63996cd6fc6859ce03ebc7f5c73c1bff4035ae5cbc3cd6d011cf60",
+        "approval_id": "1",
+        "expires_at": 1791747701416,
+        "kind": "browser",
+        "payload": {
+          "effect": "NonGet",
+          "site": "http://127.0.0.1:50751"
+        },
+        "thread": "main"
+      },
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "status": "denied"
+    }
+  },
+  {
+    "seq": 10,
+    "ts": 1791747595782,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.open",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 479,
+      "status": "ok",
+      "tool_ledger_id": 7
+    }
+  },
+  {
+    "seq": 11,
+    "ts": 1791747596239,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.snapshot",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 456,
+      "status": "ok",
+      "tool_ledger_id": 8
+    }
+  },
+  {
+    "seq": 12,
+    "ts": 1791747596243,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.text",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 1,
+      "status": "ok",
+      "tool_ledger_id": 9
+    }
+  },
+  {
+    "seq": 13,
+    "ts": 1791747596248,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.type",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 1,
+      "status": "ok",
+      "tool_ledger_id": 10
+    }
+  },
+  {
+    "seq": 14,
+    "ts": 1791747596745,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.snapshot",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 496,
+      "status": "ok",
+      "tool_ledger_id": 11
+    }
+  },
+  {
+    "seq": 15,
+    "ts": 1791747596767,
+    "scope_id": "main",
+    "kind": "approval.created",
+    "payload": {
+      "approval": {
+        "action_hash": "f23fe6a98975910f91972aaf7e74a785cdc3497ac7581bc5a9f4f776352181fc",
+        "approval_id": "2",
+        "expires_at": 1791747716750,
+        "kind": "browser",
+        "payload": {
+          "effect": "NonGet",
+          "site": "http://127.0.0.1:50751"
+        },
+        "thread": "main"
+      },
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "status": "pending"
+    }
+  },
+  {
+    "seq": 16,
+    "ts": 1791747596773,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.click",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 26,
+      "status": "ok",
+      "tool_ledger_id": 12
+    }
+  },
+  {
+    "seq": 17,
+    "ts": 1791747600025,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.approved_request",
+      "approval_id": "2",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "status": "pending",
+      "tool_ledger_id": 13
+    }
+  },
+  {
+    "seq": 18,
+    "ts": 1791747600041,
+    "scope_id": "main",
+    "kind": "approval.updated",
+    "payload": {
+      "approval": {
+        "action_hash": "f23fe6a98975910f91972aaf7e74a785cdc3497ac7581bc5a9f4f776352181fc",
+        "approval_id": "2",
+        "expires_at": 1791747716750,
+        "kind": "browser",
+        "payload": {
+          "effect": "NonGet",
+          "site": "http://127.0.0.1:50751"
+        },
+        "thread": "main"
+      },
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "status": "approved"
+    }
+  },
+  {
+    "seq": 19,
+    "ts": 1791747600275,
+    "scope_id": "main",
+    "kind": "ui.surface",
+    "payload": {
+      "matrix_surface": {
+        "root": {
+          "children": [
+            {
+              "type": "text",
+              "value": "Approved request completed. POST on http://127.0.0.1:50751 returned HTTP 200. Approval 2 was consumed once."
+            }
+          ],
+          "type": "screen"
+        },
+        "version": 1
+      },
+      "surface": {
+        "type": "text",
+        "value": "Approved request completed. POST on http://127.0.0.1:50751 returned HTTP 200. Approval 2 was consumed once."
+      },
+      "surface_id": "matrix"
+    }
+  },
+  {
+    "seq": 20,
+    "ts": 1791747600277,
+    "scope_id": "main",
+    "kind": "browser_step.completed",
+    "payload": {
+      "action": "browser.approved_request",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "status": "ok",
+      "tool_ledger_id": 13
+    }
+  },
+  {
+    "seq": 21,
+    "ts": 1791747606608,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.open",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 484,
+      "status": "ok",
+      "tool_ledger_id": 14
+    }
+  },
+  {
+    "seq": 22,
+    "ts": 1791747607075,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.snapshot",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 466,
+      "status": "ok",
+      "tool_ledger_id": 15
+    }
+  },
+  {
+    "seq": 23,
+    "ts": 1791747607081,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.text",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 2,
+      "status": "ok",
+      "tool_ledger_id": 16
+    }
+  },
+  {
+    "seq": 24,
+    "ts": 1791747607086,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.type",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 2,
+      "status": "ok",
+      "tool_ledger_id": 17
+    }
+  },
+  {
+    "seq": 25,
+    "ts": 1791747607590,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.snapshot",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 502,
+      "status": "ok",
+      "tool_ledger_id": 18
+    }
+  },
+  {
+    "seq": 26,
+    "ts": 1791747607613,
+    "scope_id": "main",
+    "kind": "approval.created",
+    "payload": {
+      "approval": {
+        "action_hash": "03e591c66e56e8cf974c2aacd8393cb395b587a6feaddb437fe8df63eab2957d",
+        "approval_id": "3",
+        "expires_at": 1791747727595,
+        "kind": "browser",
+        "payload": {
+          "effect": "NonGet",
+          "site": "http://127.0.0.1:50751"
+        },
+        "thread": "main"
+      },
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "status": "pending"
+    }
+  },
+  {
+    "seq": 27,
+    "ts": 1791747607618,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.click",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 26,
+      "status": "ok",
+      "tool_ledger_id": 19
+    }
+  },
+  {
+    "seq": 28,
+    "ts": 1791747727789,
+    "scope_id": "main",
+    "kind": "approval.updated",
+    "payload": {
+      "approval": {
+        "action_hash": "03e591c66e56e8cf974c2aacd8393cb395b587a6feaddb437fe8df63eab2957d",
+        "approval_id": "3",
+        "expires_at": 1791747727595,
+        "kind": "browser",
+        "payload": {
+          "effect": "NonGet",
+          "site": "http://127.0.0.1:50751"
+        },
+        "thread": "main"
+      },
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "status": "expired"
+    }
+  },
+  {
+    "seq": 29,
+    "ts": 1791747732990,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.open",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 482,
+      "status": "ok",
+      "tool_ledger_id": 20
+    }
+  },
+  {
+    "seq": 30,
+    "ts": 1791747733459,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.open",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 468,
+      "status": "ok",
+      "tool_ledger_id": 21
+    }
+  },
+  {
+    "seq": 31,
+    "ts": 1791747733460,
+    "scope_id": "main",
+    "kind": "browser_step",
+    "payload": {
+      "action": "browser.type",
+      "host_id": "434e861f48dad1df27ba9df427b6951d751516e31fa33ef860208af2e1aab5e9",
+      "latency_ms": 0,
+      "status": "error",
+      "tool_ledger_id": 22
+    }
+  }
+]

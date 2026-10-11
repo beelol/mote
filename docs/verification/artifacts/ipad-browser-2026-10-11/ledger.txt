@@ -1,0 +1,12 @@
+browser|approved|1
+browser|denied|1
+browser|expired|1
+browser.approved_request|ok|1
+browser.click|ok|3
+browser.open|ok|5
+browser.snapshot|ok|6
+browser.text|ok|3
+browser.type|error|1
+browser.type|ok|3
+0
+0

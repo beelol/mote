@@ -1,0 +1,11 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.58s
+     Running tests/browser_fixture.rs (target/debug/deps/browser_fixture-af0708f6b409a581)
+
+running 5 tests
+test live::denial_expiry_navigation_page_change_and_restart_cannot_release ... ok
+test live::generated_but_undelivered_snapshot_cannot_authorize_its_copied_card ... ok
+test live::page_instructions_are_inert_and_all_observed_triggers_need_cards ... ok
+test live::paired_browser_approval_is_inert_until_one_exact_decision ... ok
+test live::persistence_failures_preserve_accounting_before_and_after_release ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 20.84s
