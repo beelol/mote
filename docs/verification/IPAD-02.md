@@ -300,6 +300,27 @@ The native logs record each actual point target from the successful observation.
 The result bundles retain screenshots for each selected page and both scrolling states.
 IPAD-02 remains open for the temporal evidence described below.
 
+A final review caught a numeric-prefix assertion gap on 2026-10-11.
+The focused negative case rejected `Changed volume: 0.01` when expecting `Changed volume: 0.0`.
+It failed in 0.081 seconds against substring matching.
+Complete normalized status-row equality fixed the gap.
+Exact zero and whitespace-normalized zero remain accepted.
+Trailing text and longer numeric tokens are rejected without value substitution.
+
+```text
+xcodebuild -project ios/Mote/Mote.xcodeproj -scheme Mote -configuration Debug -destination 'platform=iOS Simulator,id=43F2F6ED-5C86-4121-B03F-40FE38891C4E' -derivedDataPath target/ipad-derived -resultBundlePath target/ipad-task6-numeric-green.xcresult -only-testing:MoteUITests/MoteUITests/testExactStatusRejectsLongerNumericTokens -only-testing:MoteUITests/MoteUITests/testFixtureSliderReachesExactMinimum -only-testing:MoteUITests/MoteUITests/testStatusRowOrdersSplitExactEventFragments test
+Executed 3 tests, with 0 failures in 10.722 seconds
+** TEST SUCCEEDED **
+exit 0
+```
+
+The exact event positive and visible edited fixture thumb check both passed in that native run.
+The unchanged full seven-test journeys on both sizes are the broader evidence above.
+Fresh `cargo test --workspace` passed 615 tests with zero failures and two ignored tests.
+Fresh `cargo clippy --workspace -- -D warnings` exited zero in 0.31 seconds.
+The negative-case Xcode process stalled after its completed failing test.
+Only that process was stopped after more than three minutes, preserving its log and partial bundle.
+
 ## Transition evidence gap
 
 The core transition regression suite runs as part of the workspace tests.

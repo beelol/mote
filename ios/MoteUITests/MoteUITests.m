@@ -5,6 +5,10 @@ static NSString *compactText(NSString *text) {
     return [[text componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] componentsJoinedByString:@""];
 }
 
+static BOOL statusTextMatches(NSString *observed, NSString *expected) {
+    return [compactText(observed) isEqualToString:compactText(expected)];
+}
+
 static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix, CGFloat height) {
     NSDictionary *anchor = nil;
     for (NSDictionary *fragment in fragments) {
@@ -99,7 +103,7 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
         } else {
             visible = [self visibleText:app];
         }
-        return [compactText(visible) containsString:expected];
+        return prefix ? statusTextMatches(visible, text) : [compactText(visible) containsString:expected];
     }];
     XCTNSPredicateExpectation *expectation = [[XCTNSPredicateExpectation alloc] initWithPredicate:predicate object:app];
     XCTAssertEqual([XCTWaiter waitForExpectations:@[expectation] timeout:8], XCTWaiterResultCompleted,
@@ -395,5 +399,12 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     ];
     XCTAssertEqualObjects(textInRow(fragments, @"Changed models.think:", 1000), @"Changed models.think: \"qwen3:4b\"");
     XCTAssertEqualObjects(textInRow(fragments, @"missing", 1000), @"");
+}
+
+- (void)testExactStatusRejectsLongerNumericTokens {
+    XCTAssertTrue(statusTextMatches(@"Changed volume: 0.0", @"Changed volume: 0.0"));
+    XCTAssertTrue(statusTextMatches(@"Changed volume: 0.0 \n", @"Changed volume: 0.0"));
+    XCTAssertFalse(statusTextMatches(@"Changed volume: 0.01", @"Changed volume: 0.0"));
+    XCTAssertFalse(statusTextMatches(@"Changed volume: 0.0 extra", @"Changed volume: 0.0"));
 }
 @end
