@@ -250,3 +250,71 @@ client and close its Noise session. The test now checks that refusal and reconne
 These were test setup corrections. They did not require changing production authentication.
 
 HOST-01 remains checked. This harness alone does not close any IPAD criterion.
+
+## External fixture review followup, 2026-10-11
+
+Review found that the generic harness required a daemon factory that existed only in a private
+binary test module. An external integration test reproduced this with E0433 for the unresolved
+`moted` crate when running `cargo test -p moted --test live_loopback --no-run`.
+
+The daemon package now exposes an opt-in test-support library through feature `test-fixture`.
+It compiles the same dispatcher source as a private module and exports `moted::test_fixture::start`.
+The production binary entry point is unchanged. The library is empty without that feature.
+The constructor shares the persisted event, approval, context and ledger database, and uses the
+production model gate against the supplied local scripted server.
+Both original acceptance tests now use this shared constructor.
+
+An external host-side integration test can declare this dependency:
+
+```toml
+[dev-dependencies]
+moted = { path = "../moted", features = ["test-fixture"] }
+mote-testkit = { path = "../crates/mote-testkit" }
+```
+
+Keep the scripted server alive while using the returned host:
+
+```rust
+let models = mote_testkit::ScriptedServer::start()?;
+let host = moted::test_fixture::start(&models)?;
+let offer = host.open_pairing()?;
+let paired = host.pair(&offer, "Simulator fixture")?;
+```
+
+`moted/tests/live_loopback.rs` is compiled as an external crate and imports only this public API.
+It passes actual Noise pairing, chat with a ledger reference, committed Matrix snapshot, rejection
+of remote configuration mutation, and reconnect with exactly-once replay after endpoint movement.
+
+```text
+cargo test -p moted --features test-fixture --test live_loopback -- --nocapture
+1 passed; 0 failed
+cargo test -p moted loopback_acceptance -- --nocapture
+2 passed; 0 failed
+cargo clippy --workspace -- -D warnings
+exit 0
+cargo clippy --workspace --features moted/test-fixture -- -D warnings
+exit 0
+```
+
+The environment is unchanged from the loopback acceptance section.
+No test command, bypass or fixture mode was added to the production daemon command line.
+The test library does not run the daemon's process startup, scheduler loop or charter watcher.
+The Simulator-specific clauses and literal sleep/wake clause remain open.
+
+Both final workspace configurations passed before the review-fix commit:
+
+```text
+cargo test --workspace
+passed=580 failed=0 ignored=2 suites=48
+exit 0
+cargo test --workspace --features moted/test-fixture
+passed=581 failed=0 ignored=2 suites=49
+exit 0
+```
+
+The two ignored live Bonjour checks and existing test-only observation warning are unchanged.
+Logs: `/private/tmp/mote-task7-review1-workspace.log`,
+`/private/tmp/mote-task7-review1-feature-workspace.log`,
+`/private/tmp/mote-task7-review1-clippy.log` and
+`/private/tmp/mote-task7-review1-feature-clippy.log`.
+The review-fix commit is titled `fix(testkit): expose real daemon loopback fixture`.

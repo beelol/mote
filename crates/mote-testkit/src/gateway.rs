@@ -13,6 +13,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub type FixtureResult<T> = anyhow::Result<T>;
+
 /// Owns temporary daemon storage and a real Noise gateway on an ephemeral loopback port.
 /// The event log returned by the factory must be the daemon's own log so broadcasts stay live.
 pub struct LoopbackHost<D: Dispatch> {

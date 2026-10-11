@@ -7,21 +7,7 @@ use mote_protocol::{
 use mote_testkit::gateway::LoopbackHost;
 
 fn fixture(models: &mote_testkit::ScriptedServer) -> LoopbackHost<Daemon> {
-    LoopbackHost::start(|data| {
-        gateway::prepare_identity(data).map_err(std::io::Error::other)?;
-        let mut host = daemon(data);
-        host.log = EventLog::open(&data.join("mote.db"))?;
-        host.watchers = Mutex::new(Watchers::open(rusqlite::Connection::open(
-            data.join("mote.db"),
-        )?)?);
-        host.host_id = mote_gateway::HostIdentity::load_or_create(data)?
-            .host_id()
-            .clone();
-        host.client = Ollama::new(models.base_url());
-        let log = host.log.clone();
-        Ok((Arc::new(host), log))
-    })
-    .unwrap()
+    LoopbackHost::start(|data| test_fixture::build(data, models)).unwrap()
 }
 
 fn call(id: &str, method: &str, params: Value) -> ClientFrame {

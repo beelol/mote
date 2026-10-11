@@ -5,20 +5,23 @@
 
 mod bench;
 mod charter;
-mod config;
+pub(crate) mod config;
 mod embed;
 mod gate;
 mod gateway;
-mod host_snapshot;
-mod inferred_ui;
-mod lanes;
-mod matrix;
+pub(crate) mod host_snapshot;
+pub(crate) mod inferred_ui;
+pub(crate) mod lanes;
+pub(crate) mod matrix;
 mod mcp;
-mod model_call;
-mod pipeline;
+pub(crate) mod model_call;
+pub(crate) mod pipeline;
 mod service;
 mod shutdown;
 mod watchers;
+
+#[cfg(any(test, feature = "test-fixture"))]
+pub mod test_fixture;
 
 use charter::{Charter, CharterWatcher};
 use config::ConfigStore;
@@ -95,11 +98,11 @@ fn think_config(moted_exe: &Path, model: &str) -> String {
     .to_string()
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
-struct Daemon {
+pub(crate) struct Daemon {
     host_id: mote_protocol::HostId,
     gateway: Mutex<Option<std::sync::Weak<mote_gateway::GatewayServer>>>,
     log: EventLog,

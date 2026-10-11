@@ -5,6 +5,18 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+test-fixture = ["dep:mote-testkit"]
+
+[lib]
+path = "src/test_support.rs"
+test = false
+doctest = false
+
+[[test]]
+name = "live_loopback"
+required-features = ["test-fixture"]
+
 [dependencies]
 mote-paths.workspace = true
 mote-eventlog.workspace = true
@@ -27,6 +39,7 @@ cron.workspace = true
 chrono.workspace = true
 libc.workspace = true
 model2vec-rs = "0.3"
+mote-testkit = { workspace = true, optional = true }
 
 [dev-dependencies]
 mote-host-client.workspace = true
