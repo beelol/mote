@@ -1,7 +1,9 @@
 # Mote gateway core
 
 This crate provides owner-confirmed pairing and authenticated encrypted host frames.
-It has no daemon dispatcher, socket listener, discovery service or model integration.
+It also provides a loopback WebSocket listener and local discovery boundaries.
+The daemon supplies the dispatcher.
+The crate has no model integration.
 
 ## Provenance
 
@@ -72,4 +74,25 @@ It must perform event redaction before storage and filter outbound state before 
 Encryption does not grant permission to export secrets, browser cookies or local paths.
 The `classes` allowlist is a narrow starting point for the future dispatcher.
 The dispatcher must explicitly classify any additional method before exposing it remotely.
-Bonjour, WebSocket framing, keychain integration and physical-device verification belong to later tasks.
+Keychain integration and physical-device verification belong to later tasks.
+
+## Local discovery
+
+`Advertiser` and `DiscoveryBrowser` isolate platform discovery from the gateway.
+The Mac implementations invoke `/usr/bin/dns-sd` with separate arguments.
+They terminate and reap their children when an operation or registration ends.
+The current Simulator phase registers `_mote._tcp` on the local-only interface.
+It resolves a proxy hostname to `127.0.0.1` without exposing a LAN listener.
+TXT contains exactly `protocol_major` and the full SHA-256 public-key `fingerprint`.
+
+`GatewayConfig::new` keeps discovery disabled for embedded callers and offline tests.
+The daemon enables it at startup unless `MOTE_DISCOVERY=0`.
+The gateway owns the registration until shutdown.
+An unavailable Bonjour service leaves explicit localhost connections available.
+Discovery does not change the Unix peer-credential boundary.
+
+`EndpointCandidate` filters a hint against the supported protocol and pinned fingerprint.
+This filter does not authenticate the endpoint.
+Its `connect` method updates the caller's saved address only after the pinned-key Noise handshake succeeds.
+The caller persists the resulting address and advances its credential counter before each attempt.
+Simulator discovery and the checked-in local-network purpose text still require UI verification.

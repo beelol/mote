@@ -41,6 +41,7 @@ pub struct GatewayServer {
     shared: Arc<Shared>,
     address: SocketAddr,
     accept: Option<JoinHandle<()>>,
+    advertisement: Option<Box<dyn crate::discovery::Advertisement>>,
 }
 impl GatewayServer {
     pub fn bind_loopback<D: Dispatch>(mut config: GatewayConfig, dispatch: Arc<D>) -> Result<Self> {
@@ -82,10 +83,21 @@ impl GatewayServer {
             shared,
             address,
             accept: Some(accept),
+            advertisement: None,
         })
     }
     pub fn host_id(&self) -> &HostId {
         self.shared.host.host_id()
+    }
+    pub fn start_discovery(&mut self, advertiser: &dyn crate::discovery::Advertiser) -> Result<()> {
+        let record = crate::discovery::DiscoveryRecord::new(
+            self.address,
+            self.shared.config.protocol_major,
+            self.public_key(),
+        )?;
+        self.advertisement =
+            crate::discovery::advertise(self.shared.config.discovery_enabled, advertiser, &record)?;
+        Ok(())
     }
     pub fn public_key(&self) -> &[u8; 32] {
         self.shared.host.public_key()
@@ -134,6 +146,7 @@ impl GatewayServer {
 }
 impl Drop for GatewayServer {
     fn drop(&mut self) {
+        self.advertisement.take();
         self.shared.running.store(false, Ordering::Release);
         for pending in self.shared.pending.lock().unwrap().values() {
             pending.changed.notify_all();

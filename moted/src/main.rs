@@ -4532,7 +4532,9 @@ fn run() -> Result<(), i32> {
             return Err(1);
         }
     };
-    let _gateway = gateway::bind(daemon, mote_gateway::GatewayConfig::new(data)).map_err(|e| {
+    let mut gateway_config = mote_gateway::GatewayConfig::new(data);
+    gateway_config.discovery_enabled = std::env::var("MOTE_DISCOVERY").as_deref() != Ok("0");
+    let _gateway = gateway::bind(daemon, gateway_config).map_err(|e| {
         eprintln!("moted: cannot bind loopback gateway: {e}");
         1
     })?;

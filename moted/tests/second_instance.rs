@@ -27,6 +27,7 @@ fn second_instance_exits_naming_socket() {
     // First instance stays alive in the background.
     let mut first = Command::new(bin)
         .env("MOTE_HOME", &home)
+        .env("MOTE_DISCOVERY", "0")
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
@@ -39,6 +40,7 @@ fn second_instance_exits_naming_socket() {
     // Second instance must fail naming the path.
     let second = Command::new(bin)
         .env("MOTE_HOME", &home)
+        .env("MOTE_DISCOVERY", "0")
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();

@@ -1,12 +1,13 @@
 pub mod base32;
+mod carrier;
 pub mod classes;
+pub mod client;
 pub mod devices;
+pub mod discovery;
 pub mod net;
 pub mod noise;
 pub mod pairing;
 pub mod server;
-pub mod client;
-mod carrier;
 
 pub use client::GatewayClient;
 pub use server::GatewayServer;
@@ -30,6 +31,7 @@ pub struct GatewayConfig {
     pub confirm_timeout: Duration,
     pub handshake_timeout: Duration,
     pub max_message: usize,
+    pub discovery_enabled: bool,
 }
 
 impl GatewayConfig {
@@ -44,6 +46,7 @@ impl GatewayConfig {
             confirm_timeout: Duration::from_secs(60),
             handshake_timeout: Duration::from_secs(10),
             max_message: 1 << 20,
+            discovery_enabled: false,
         }
     }
 
