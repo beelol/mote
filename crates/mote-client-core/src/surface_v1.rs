@@ -1024,8 +1024,10 @@ fn current_hit_response(ui: &egui::Ui, response: &mut egui::Response) {
             position,
         )
     });
-    let cancelled_drag =
-        pending && response.sense.senses_drag() && down && !ui.ctx().is_being_dragged(response.id);
+    let cancelled_drag = pending
+        && response.sense.senses_drag()
+        && (ui.input(|input| input.key_pressed(egui::Key::Escape))
+            || (down && !ui.ctx().is_being_dragged(response.id)));
     let allowed = !cancelled_drag
         && response.enabled()
         && ui.memory(|memory| memory.allows_interaction(ui.layer_id()))

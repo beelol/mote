@@ -774,6 +774,62 @@ mod tests {
     }
 
     #[test]
+    fn escape_with_release_cancels_replacement_slider_click() {
+        for escape_first in [true, false] {
+            let ctx = context();
+            let mut gallery = Gallery::default();
+            frame(&ctx, &gallery, 0.0, vec![]);
+            gallery.select(GalleryPage::Slider);
+            let pointer = click(egui::pos2(700.0, 40.0));
+            assert!(frame(&ctx, &gallery, 1.0, pointer[..2].to_vec())
+                .1
+                .is_empty());
+            let escape = egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            };
+            let release = pointer[2].clone();
+            let events = if escape_first {
+                vec![escape, release]
+            } else {
+                vec![release, escape]
+            };
+            assert_eq!(
+                frame(&ctx, &gallery, 1.016, events).1,
+                vec![],
+                "Escape and release in one frame must cancel the click"
+            );
+            assert!(ctx.dragged_id().is_none());
+            assert!(frame(&ctx, &gallery, 1.032, vec![]).1.is_empty());
+        }
+    }
+
+    #[test]
+    fn replacement_slider_release_click_emits_once() {
+        let ctx = context();
+        let mut gallery = Gallery::default();
+        frame(&ctx, &gallery, 0.0, vec![]);
+        gallery.select(GalleryPage::Slider);
+        let pointer = click(egui::pos2(700.0, 40.0));
+        assert!(frame(&ctx, &gallery, 1.0, pointer[..2].to_vec())
+            .1
+            .is_empty());
+        assert_eq!(
+            frame(&ctx, &gallery, 1.016, pointer[2..].to_vec()).1,
+            vec![surface_v1::Event::Change {
+                field: "gallery_volume".into(),
+                value: serde_json::json!(8.0),
+                path: vec![0]
+            }]
+        );
+        assert!(ctx.dragged_id().is_none());
+        assert!(frame(&ctx, &gallery, 1.032, vec![]).1.is_empty());
+    }
+
+    #[test]
     fn escape_cancels_replacement_slider_capture_until_a_new_press() {
         let ctx = context();
         let mut gallery = Gallery::default();
