@@ -2351,6 +2351,7 @@ dependencies = [
  "eframe",
  "egui",
  "mote-eventlog",
+ "mote-host-client",
  "mote-ipc",
  "mote-paths",
  "mote-ui",
@@ -2388,6 +2389,15 @@ dependencies = [
  "serde",
  "serde_json",
  "ureq",
+]
+
+[[package]]
+name = "mote-host-client"
+version = "0.0.0"
+dependencies = [
+ "mote-protocol",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

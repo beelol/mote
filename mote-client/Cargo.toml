@@ -13,6 +13,7 @@ doctest = false
 test-observation = []
 
 [dependencies]
+mote-host-client.workspace = true
 mote-ipc.workspace = true
 mote-ui.workspace = true
 mote-eventlog.workspace = true
