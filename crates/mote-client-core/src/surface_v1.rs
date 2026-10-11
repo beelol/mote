@@ -72,6 +72,7 @@ pub fn draw(ui: &mut egui::Ui, surface: &Surface, events: &mut Vec<Event>) {
         namespace,
         events,
         live: HashSet::new(),
+        strokes: crate::transition::StrokeRegistry::default(),
     };
     renderer.node(ui, &surface.root, rect, &mut Vec::new());
     let cache = namespace.with("live-controls");
@@ -80,6 +81,7 @@ pub fn draw(ui: &mut egui::Ui, surface: &Surface, events: &mut Vec<Event>) {
         .unwrap_or_default();
     discard_controls(ui, previous.difference(&renderer.live).copied());
     ui.data_mut(|data| data.insert_temp(cache, renderer.live));
+    renderer.strokes.finish(ui, namespace);
 }
 
 pub fn discard(ui: &egui::Ui) {
@@ -96,7 +98,11 @@ fn discard_controls(ui: &egui::Ui, controls: impl IntoIterator<Item = egui::Id>)
             .data_mut(|data| data.get_temp::<State>(id))
             .unwrap_or_default();
         let widget = state.widget.unwrap_or(id);
-        ui.data_mut(|data| data.remove::<State>(id));
+        ui.data_mut(|data| {
+            data.remove::<State>(id);
+            data.remove::<egui::Rect>(widget.with("current-hit"));
+            data.remove::<bool>(widget.with("current-hit-press"));
+        });
         ui.memory_mut(|memory| {
             memory.surrender_focus(widget);
             for widget in &state.confirmation_widgets {
@@ -113,6 +119,7 @@ struct Renderer<'a> {
     namespace: egui::Id,
     events: &'a mut Vec<Event>,
     live: HashSet<egui::Id>,
+    strokes: crate::transition::StrokeRegistry,
 }
 
 fn kind(node: &Node) -> &'static str {
@@ -218,6 +225,7 @@ impl Renderer<'_> {
                 .layout(egui::Layout::top_down(egui::Align::Min)),
         );
         ui.set_clip_rect(parent.clip_rect());
+        let first_paint = crate::transition::paint_start(&ui);
         #[cfg(any(test, feature = "test-observation"))]
         observe(&ui, kind(node), path, rect, id);
         let role = match node {
@@ -254,12 +262,15 @@ impl Renderer<'_> {
                         );
                         path.push(i);
                         self.node(ui, &children[i], r, path);
-                        path.pop();
+                        let start = crate::transition::paint_start(ui);
                         ui.painter().hline(
                             r.x_range(),
                             r.bottom(),
                             ui.visuals().widgets.noninteractive.bg_stroke,
                         );
+                        self.strokes
+                            .capture(ui, self.namespace, path, "header-rule", start, true);
+                        path.pop();
                     }
                     let body = egui::Rect::from_min_max(
                         egui::pos2(rect.left(), rect.top() + header_height),
@@ -324,12 +335,15 @@ impl Renderer<'_> {
                         );
                         path.push(i);
                         self.node(ui, &children[i], r, path);
-                        path.pop();
+                        let start = crate::transition::paint_start(ui);
                         ui.painter().hline(
                             r.x_range(),
                             r.top(),
                             ui.visuals().widgets.noninteractive.bg_stroke,
                         );
+                        self.strokes
+                            .capture(ui, self.namespace, path, "footer-rule", start, true);
+                        path.pop();
                     }
                 });
             }
@@ -405,6 +419,7 @@ impl Renderer<'_> {
                 let hit =
                     egui::Rect::from_min_size(rect.min, egui::vec2(rect.width().max(48.0), 48.0));
                 let mut response = ui.interact(hit, id, egui::Sense::click_and_drag());
+                current_hit_response(&ui, &mut response);
                 let quantum = step.unwrap_or_else(|| {
                     let increment = max / 100.0 - min / 100.0;
                     if increment > 0.0 {
@@ -637,7 +652,7 @@ impl Renderer<'_> {
                     .unwrap_or(value)
                     .to_owned();
                 let previous = edited.clone();
-                let response = ui
+                let mut response = ui
                     .push_id(id, |ui| {
                         ui.spacing_mut().interact_size.y = 48.0;
                         egui::ComboBox::from_id_salt(id)
@@ -660,6 +675,11 @@ impl Renderer<'_> {
                             .response
                     })
                     .inner;
+                let native_click = response.clicked();
+                current_hit_response(&ui, &mut response);
+                if native_click != response.clicked() {
+                    ui.memory_mut(|memory| memory.toggle_popup(response.id.with("popup")));
+                }
                 accessibility::leaf(
                     &ui,
                     response.id,
@@ -753,6 +773,19 @@ impl Renderer<'_> {
                 ui.data_mut(|data| data.insert_temp(id, state));
             }
         }
+        if matches!(
+            node,
+            Node::Button { .. } | Node::Toggle { .. } | Node::Select { .. } | Node::Slider { .. }
+        ) {
+            self.strokes.capture(
+                &ui,
+                self.namespace,
+                path,
+                kind(node),
+                first_paint,
+                matches!(node, Node::Slider { .. }),
+            );
+        }
     }
 
     fn state(&mut self, ui: &egui::Ui, id: egui::Id, host: serde_json::Value) -> State {
@@ -780,6 +813,7 @@ impl Renderer<'_> {
         let mut response = ui
             .add_enabled_ui(!disabled, |ui| ui.interact(hit, id, egui::Sense::click()))
             .inner;
+        current_hit_response(ui, &mut response);
         if let Some(value) = toggle.as_mut() {
             if response.clicked() {
                 **value = !**value;
@@ -797,7 +831,14 @@ impl Renderer<'_> {
         ui.painter().rect_stroke(
             visual,
             0,
-            egui::Stroke::new(1.0, color),
+            egui::Stroke::new(
+                1.0,
+                if disabled || intent.is_some() || response.has_focus() || response.hovered() {
+                    color
+                } else {
+                    ui.visuals().widgets.inactive.bg_stroke.color
+                },
+            ),
             egui::StrokeKind::Inside,
         );
         let display = if let Some(value) = toggle {
@@ -945,6 +986,59 @@ impl Renderer<'_> {
             }
             cross_start += line_cross + 8.0;
         }
+    }
+}
+
+fn current_hit_response(ui: &egui::Ui, response: &mut egui::Response) {
+    let key = response.id.with("current-hit");
+    let previous = ui.data_mut(|data| data.get_temp::<egui::Rect>(key));
+    ui.data_mut(|data| data.insert_temp(key, response.rect));
+    let pending_key = response.id.with("current-hit-press");
+    let pending = ui
+        .data_mut(|data| data.get_temp::<bool>(pending_key))
+        .unwrap_or(false);
+    if previous == Some(response.rect) && !pending {
+        return;
+    }
+    let visible = response.rect.intersect(ui.clip_rect());
+    let (inside, clicked, down, position) = ui.input(|input| {
+        let position = input.pointer.interact_pos();
+        let origin = input
+            .events
+            .iter()
+            .find_map(|event| match event {
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    ..
+                } => Some(*pos),
+                _ => None,
+            })
+            .or(input.pointer.press_origin());
+        let inside = position.is_some_and(|pos| visible.contains(pos))
+            && (pending || origin.is_some_and(|pos| visible.contains(pos)));
+        (
+            inside,
+            input.pointer.primary_clicked(),
+            input.pointer.primary_down(),
+            position,
+        )
+    });
+    let allowed = response.enabled()
+        && ui.memory(|memory| memory.allows_interaction(ui.layer_id()))
+        && position.is_some_and(|pos| ui.ctx().layer_id_at(pos) == Some(ui.layer_id()));
+    ui.data_mut(|data| data.insert_temp(pending_key, inside && allowed && down));
+    response
+        .flags
+        .set(egui::response::Flags::CLICKED, inside && allowed && clicked);
+    response.flags.set(
+        egui::response::Flags::IS_POINTER_BUTTON_DOWN_ON,
+        inside && allowed && down,
+    );
+    if inside && allowed && (clicked || down) {
+        response.interact_pointer_pos = position;
+        response.request_focus();
     }
 }
 

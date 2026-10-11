@@ -1,17 +1,16 @@
-
 pub fn style(dark: bool) -> egui::Style {
     let (surface, text, line, accent) = if dark {
         (
             rgb(11, 11, 12),
             rgb(232, 227, 218),
-            rgb(46, 46, 48),
-            rgb(229, 72, 77),
+            rgb(104, 29, 36),
+            rgb(240, 68, 76),
         )
     } else {
         (
             rgb(244, 241, 234),
             rgb(26, 26, 26),
-            rgb(216, 211, 200),
+            rgb(159, 53, 56),
             rgb(200, 50, 46),
         )
     };
@@ -215,7 +214,7 @@ mod tests {
                 .iter()
                 .any(|shape| matches!(&shape.shape, egui::Shape::Rect(_))));
             let accent = if dark {
-                egui::Color32::from_rgb(229, 72, 77)
+                egui::Color32::from_rgb(240, 68, 76)
             } else {
                 egui::Color32::from_rgb(200, 50, 46)
             };
@@ -259,15 +258,15 @@ mod tests {
                 [11, 11, 12],
                 [232, 227, 218],
                 [138, 133, 120],
-                [46, 46, 48],
-                [229, 72, 77],
+                [104, 29, 36],
+                [240, 68, 76],
             ),
             (
                 false,
                 [244, 241, 234],
                 [26, 26, 26],
                 [107, 102, 89],
-                [216, 211, 200],
+                [159, 53, 56],
                 [200, 50, 46],
             ),
         ] {

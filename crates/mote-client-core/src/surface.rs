@@ -67,7 +67,8 @@ enum ControlKind {
 pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
     let cache = ui.id().with("live-controls");
     let mut live = HashMap::new();
-    draw_at(ui, node, events, &mut Vec::new(), ui.id(), &mut live);
+    let mut strokes = crate::transition::StrokeRegistry::default();
+    draw_at(ui, node, events, &mut Vec::new(), ui.id(), &mut live, &mut strokes);
     let previous = ui
         .data_mut(|data| data.get_temp::<HashMap<egui::Id, egui::Id>>(cache))
         .unwrap_or_default();
@@ -86,6 +87,7 @@ pub fn draw(ui: &mut egui::Ui, node: &Node, events: &mut Vec<SurfaceEvent>) {
         });
     }
     ui.data_mut(|data| data.insert_temp(cache, live));
+    strokes.finish(ui, ui.id());
 }
 
 fn draw_at(
@@ -95,7 +97,9 @@ fn draw_at(
     path: &mut Vec<usize>,
     namespace: egui::Id,
     live: &mut HashMap<egui::Id, egui::Id>,
+    strokes: &mut crate::transition::StrokeRegistry,
 ) {
+    let first_paint = crate::transition::paint_start(ui);
     #[cfg(any(test, feature = "test-observation"))]
     let first_shape = observation::shape_count(ui);
     match node {
@@ -113,7 +117,7 @@ fn draw_at(
                 egui::Frame::new().inner_margin(16).show(ui, |ui| {
                     for (index, child) in children.iter().enumerate() {
                         path.push(index);
-                        ui.push_id(index, |ui| draw_at(ui, child, events, path, namespace, live));
+                        ui.push_id(index, |ui| draw_at(ui, child, events, path, namespace, live, strokes));
                         path.pop();
                     }
                 });
@@ -129,11 +133,17 @@ fn draw_at(
             accessibility::parent(ui, id, role, |ui| {
                 egui::Frame::new().inner_margin(16).show(ui, |ui| {
                     for (index, child) in children.iter().enumerate() {
-                        if index > 0 { ui.separator(); }
+                        if index > 0 {
+                            let start = crate::transition::paint_start(ui);
+                            ui.separator();
+                            path.push(index);
+                            strokes.capture(ui, namespace, path, "list-rule", start, true);
+                            path.pop();
+                        }
                         path.push(index);
                         let item = accessibility::id(namespace, path, "item");
                         accessibility::parent(ui, item, accesskit::Role::ListItem, |ui| {
-                            ui.push_id(index, |ui| draw_at(ui, child, events, path, namespace, live));
+                            ui.push_id(index, |ui| draw_at(ui, child, events, path, namespace, live, strokes));
                         });
                         path.pop();
                     }
@@ -147,7 +157,7 @@ fn draw_at(
                     ui.horizontal_wrapped(|ui| {
                         for (index, child) in children.iter().enumerate() {
                             path.push(index);
-                            ui.push_id(index, |ui| draw_at(ui, child, events, path, namespace, live));
+                            ui.push_id(index, |ui| draw_at(ui, child, events, path, namespace, live, strokes));
                             path.pop();
                         }
                     });
@@ -320,6 +330,15 @@ fn draw_at(
     }
     #[cfg(any(test, feature = "test-observation"))]
     observation::record(ui, node, path, first_shape);
+    let kind = match node {
+        Node::Field { .. } => Some("field"),
+        Node::Toggle { .. } => Some("toggle"),
+        Node::Select { .. } => Some("select"),
+        Node::Action { .. } => Some("action"),
+        Node::Progress { .. } => Some("progress"),
+        _ => None,
+    };
+    if let Some(kind) = kind { strokes.capture(ui, namespace, path, kind, first_paint, false); }
 }
 
 #[cfg(any(test, feature = "test-observation"))]
@@ -879,7 +898,7 @@ mod tests {
             }],
         );
         let (output, _, _) = frame(&ctx, &node, vec![]);
-        assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.stroke.color == egui::Color32::from_rgb(229, 72, 77))));
+        assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Rect(rect) if rect.stroke.color == egui::Color32::from_rgb(240, 68, 76))));
         let (_, clicked, _) = frame(
             &ctx,
             &node,
