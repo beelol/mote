@@ -1,12 +1,55 @@
 use std::ffi::OsString;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChatStateFixture {
+    Sending,
+    Sent,
+    Delivered,
+    Read,
+    Typing,
+}
+
+impl ChatStateFixture {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Sending => "sending",
+            Self::Sent => "sent",
+            Self::Delivered => "delivered",
+            Self::Read => "read",
+            Self::Typing => "typing",
+        }
+    }
+}
+
+pub fn chat_state(args: &[OsString]) -> Result<Option<ChatStateFixture>, String> {
+    let Some(flag) = args.first() else {
+        return Ok(None);
+    };
+    if flag != "--chat-state" {
+        return Ok(None);
+    }
+    let usage = "usage: mote-client --chat-state <sending|sent|delivered|read|typing>";
+    if args.len() != 2 {
+        return Err(usage.into());
+    }
+    let state = match args[1].to_str() {
+        Some("sending") => ChatStateFixture::Sending,
+        Some("sent") => ChatStateFixture::Sent,
+        Some("delivered") => ChatStateFixture::Delivered,
+        Some("read") => ChatStateFixture::Read,
+        Some("typing") => ChatStateFixture::Typing,
+        _ => return Err(usage.into()),
+    };
+    Ok(Some(state))
+}
+
 pub fn load(
     mut args: impl Iterator<Item = OsString>,
 ) -> Result<Option<crate::contract::Surface>, String> {
     let Some(flag) = args.next() else {
         return Ok(None);
     };
-    let usage = "usage: mote-client [--gallery | --fixture <json-path>]";
+    let usage = "usage: mote-client [--gallery | --fixture <json-path> | --chat-state <state>]";
     if flag == "--gallery" {
         return if args.next().is_none() {
             Ok(Some(crate::gallery::preview()))
@@ -178,6 +221,35 @@ mod tests {
             &["--fixture", "file", "extra"][..],
         ] {
             assert!(load(args(values)).unwrap_err().contains("usage:"));
+        }
+    }
+
+    #[test]
+    fn chat_state_fixture_accepts_each_v0_message_state() {
+        for (state, expected) in [
+            ("sending", ChatStateFixture::Sending),
+            ("sent", ChatStateFixture::Sent),
+            ("delivered", ChatStateFixture::Delivered),
+            ("read", ChatStateFixture::Read),
+            ("typing", ChatStateFixture::Typing),
+        ] {
+            let args = [OsString::from("--chat-state"), OsString::from(state)];
+            assert_eq!(chat_state(&args).unwrap(), Some(expected));
+        }
+    }
+
+    #[test]
+    fn chat_state_fixture_rejects_unknown_or_extra_arguments() {
+        for args in [
+            vec![OsString::from("--chat-state")],
+            vec![OsString::from("--chat-state"), OsString::from("unknown")],
+            vec![
+                OsString::from("--chat-state"),
+                OsString::from("sent"),
+                OsString::from("extra"),
+            ],
+        ] {
+            assert!(chat_state(&args).unwrap_err().contains("usage:"));
         }
     }
 }

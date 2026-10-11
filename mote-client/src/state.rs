@@ -77,6 +77,44 @@ impl Default for ChatState {
 }
 
 impl ChatState {
+    pub fn fixture(state: crate::fixture::ChatStateFixture) -> Self {
+        let mut chat = Self::default();
+        let local_id = chat.push_optimistic_user("Native state fixture message".into());
+        match state {
+            crate::fixture::ChatStateFixture::Sending => {}
+            crate::fixture::ChatStateFixture::Sent => chat.mark_sent(&local_id),
+            crate::fixture::ChatStateFixture::Delivered => {
+                chat.reduce(&fixture_event(
+                    1,
+                    "turn.user",
+                    serde_json::json!({
+                        "text": "Native state fixture message",
+                        "client_message_id": local_id
+                    }),
+                ));
+            }
+            crate::fixture::ChatStateFixture::Read | crate::fixture::ChatStateFixture::Typing => {
+                chat.reduce(&fixture_event(
+                    1,
+                    "turn.user",
+                    serde_json::json!({
+                        "text": "Native state fixture message",
+                        "client_message_id": local_id
+                    }),
+                ));
+                chat.reduce(&fixture_event(
+                    2,
+                    "talk.delta",
+                    serde_json::json!({ "text": "Scripted assistant reply" }),
+                ));
+                if state == crate::fixture::ChatStateFixture::Read {
+                    chat.reduce(&fixture_event(3, "talk.done", serde_json::json!({})));
+                }
+            }
+        }
+        chat
+    }
+
     pub fn push_optimistic_user(&mut self, text: String) -> LocalMessageId {
         let local_id = format!("{}-{}", self.session_id, self.next_local_id);
         self.next_local_id += 1;
@@ -280,6 +318,16 @@ impl ChatState {
             });
         }
         Some(SurfaceReduction { revision, superseded_revision })
+    }
+}
+
+fn fixture_event(seq: i64, kind: &str, payload: serde_json::Value) -> Event {
+    Event {
+        seq,
+        ts: 0,
+        scope_id: "main".into(),
+        kind: kind.into(),
+        payload,
     }
 }
 
@@ -525,5 +573,55 @@ mod tests {
         assert_eq!(chat.messages.len(), 1);
         assert_eq!(chat.messages[0].render_revision, Some(1));
         assert!(chat.messages[0].surface.as_ref().unwrap().matrix_v1().is_some());
+    }
+
+    #[test]
+    fn chat_state_fixtures_seed_the_requested_reducer_state() {
+        for (fixture, user_status, assistant_status, typing) in [
+            (
+                crate::fixture::ChatStateFixture::Sending,
+                Status::Sending,
+                None,
+                false,
+            ),
+            (
+                crate::fixture::ChatStateFixture::Sent,
+                Status::Sent,
+                None,
+                false,
+            ),
+            (
+                crate::fixture::ChatStateFixture::Delivered,
+                Status::Delivered,
+                None,
+                false,
+            ),
+            (
+                crate::fixture::ChatStateFixture::Read,
+                Status::Delivered,
+                Some(Status::Read),
+                false,
+            ),
+            (
+                crate::fixture::ChatStateFixture::Typing,
+                Status::Delivered,
+                Some(Status::Delivered),
+                true,
+            ),
+        ] {
+            let chat = ChatState::fixture(fixture);
+            assert!(
+                chat.messages[0].status == user_status,
+                "{}",
+                fixture.label()
+            );
+            assert_eq!(chat.messages[0].text, "Native state fixture message");
+            assert!(
+                chat.messages.get(1).map(|message| message.status) == assistant_status,
+                "{}",
+                fixture.label()
+            );
+            assert_eq!(chat.typing, typing, "{}", fixture.label());
+        }
     }
 }

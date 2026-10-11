@@ -207,6 +207,7 @@ pub struct MoteApp {
     pipeline_rx: Receiver<PipelineResult>,
     status_line: String,
     fixture: Option<crate::contract::Surface>,
+    chat_state_fixture: Option<crate::fixture::ChatStateFixture>,
     turn_tx: Sender<TurnResult>,
     turn_rx: Receiver<TurnResult>,
     ui_event_tx: Sender<crate::surface::SurfaceEvent>,
@@ -225,6 +226,7 @@ impl MoteApp {
         socket: PathBuf,
         rx: Receiver<StreamUpdate>,
         fixture: Option<crate::contract::Surface>,
+        chat_state_fixture: Option<crate::fixture::ChatStateFixture>,
         clock: crate::display_latency::SharedClock,
         cursor_warning: Option<String>,
     ) -> Self {
@@ -237,10 +239,11 @@ impl MoteApp {
         let (ui_event_tx, ui_event_requests) = mpsc::channel();
         let (ui_event_results, ui_event_rx) = mpsc::channel();
         spawn_ui_event_worker(socket.clone(), ui_event_requests, ui_event_results);
+        let live_mode = fixture.is_none() && chat_state_fixture.is_none();
         Self {
             socket,
             rx,
-            chat: ChatState::default(),
+            chat: chat_state_fixture.map_or_else(ChatState::default, ChatState::fixture),
             input: String::new(),
             screen: Screen::Chat,
             stage: 0,
@@ -261,11 +264,12 @@ impl MoteApp {
             pipeline_rx,
             status_line: String::new(),
             fixture,
+            chat_state_fixture,
             turn_tx,
             turn_rx,
             ui_event_tx,
             ui_event_rx,
-            cursor_path: Some(crate::cursor::path()),
+            cursor_path: live_mode.then(crate::cursor::path),
             cursor_issue: cursor_warning,
             cursor_halted: false,
             clock,
@@ -539,17 +543,19 @@ impl MoteApp {
         let _ = scroll;
 
         ui.separator();
-        ui.horizontal(|ui| {
-            let resp = crate::surface::compose(ui, &mut self.input);
-            #[cfg(any(test, feature = "test-observation"))]
-            crate::surface::observation::control(ui, "Composer", &[], &resp);
-            let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            let send = crate::surface::button(ui, "Send");
-            #[cfg(any(test, feature = "test-observation"))]
-            crate::surface::observation::control(ui, "Send", &[], &send);
-            if send.clicked() || enter {
-                self.send_turn();
-            }
+        ui.add_enabled_ui(self.chat_state_fixture.is_none(), |ui| {
+            ui.horizontal(|ui| {
+                let resp = crate::surface::compose(ui, &mut self.input);
+                #[cfg(any(test, feature = "test-observation"))]
+                crate::surface::observation::control(ui, "Composer", &[], &resp);
+                let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let send = crate::surface::button(ui, "Send");
+                #[cfg(any(test, feature = "test-observation"))]
+                crate::surface::observation::control(ui, "Send", &[], &send);
+                if send.clicked() || enter {
+                    self.send_turn();
+                }
+            });
         });
         if !self.status_line.is_empty() {
             ui.colored_label(ui.visuals().error_fg_color, &self.status_line);
@@ -886,6 +892,27 @@ impl MoteApp {
 
 impl MoteApp {
     fn draw_shell(&mut self, ctx: &egui::Context) -> Vec<u64> {
+        if let Some(state) = self.chat_state_fixture {
+            return egui::CentralPanel::default()
+                .frame(
+                    egui::Frame::new()
+                        .fill(ctx.style().visuals.panel_fill)
+                        .inner_margin(16),
+                )
+                .show(ctx, |ui| {
+                    ui.strong("Native state fixture");
+                    crate::theme::caption(
+                        ui,
+                        &format!(
+                            "Synthetic chat state: {}. No daemon events are connected.",
+                            state.label()
+                        ),
+                    );
+                    ui.separator();
+                    self.chat_view(ui)
+                })
+                .inner;
+        }
         if self.fixture.is_some() {
             egui::CentralPanel::default()
                 .frame(
@@ -1032,6 +1059,7 @@ mod tests {
                 pipeline_rx,
                 status_line: String::new(),
                 fixture: None,
+                chat_state_fixture: None,
                 turn_tx,
                 turn_rx,
                 ui_event_tx,

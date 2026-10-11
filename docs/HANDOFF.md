@@ -64,7 +64,14 @@ capture the remaining independent native client evidence, starting with V0-44 me
 V0-47 pipeline navigation, without waiting on the gated Matrix catalog or hardware clauses.
 
 An isolated live `file.write` request produced the native approval card while the outside target
-remained absent and its row remained pending. V0-52 is checked with native evidence in
-`V0-52-native-approval-card.png`. The next action remains V0-44 message states and V0-47 pipeline
-navigation.
-No model was invoked and `MOTE_LIVE` was unset.
+remained absent and its row remained pending. Commit `ecf4bc0` checks V0-52 with native evidence in
+`V0-52-native-approval-card.png`.
+
+An isolated local-only live turn completed through `qwen3:4b` and `qwen3:0.6b`. Five native
+Pipeline captures cover all stages and distribute all four tabs. The 20-combination headless test
+also passed. V0-47 is checked with native evidence. V0-44 has an opt-in native fixture that uses
+the production reducer and renderer. Five native captures show sending, sent, delivered, read and
+typing. The implementation and evidence received independent review approval. V0-44 is checked
+with native evidence. The next independent native client item is V0-48.
+The V0-47 run invoked only the approved local talk and router models with `MOTE_LIVE=1` and an
+isolated data root. No network model, subscription harness or model pull was used.

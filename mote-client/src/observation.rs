@@ -81,6 +81,7 @@ impl Default for ObservationHarness {
                 pipeline_rx,
                 status_line: String::new(),
                 fixture: None,
+                chat_state_fixture: None,
                 turn_tx,
                 turn_rx,
                 ui_event_tx,

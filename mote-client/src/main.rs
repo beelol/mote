@@ -3,7 +3,7 @@
 //! surfaces inline through mote-ui, and offers a pipeline view. See docs/rfcs/v0.md sections 13
 //! and 14.
 //!
-//! Running this needs a desktop session; the V0-43..50 screenshots are captured there.
+//! Running this needs a desktop session; native verification screenshots are captured there.
 
 mod app;
 mod accessibility;
@@ -47,7 +47,14 @@ fn main() -> eframe::Result<()> {
             std::process::exit(2);
         }
     };
-    let fixture = match if source.is_some() {
+    let chat_state_fixture = match fixture::chat_state(&args) {
+        Ok(state) => state,
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(2);
+        }
+    };
+    let fixture = match if source.is_some() || chat_state_fixture.is_some() {
         Ok(None)
     } else {
         fixture::load(args.into_iter())
@@ -67,10 +74,11 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             let clock = display_latency::InstantClock::shared();
-            let loaded_cursor = fixture.is_none().then(|| cursor::load(&cursor::path()));
+            let live_mode = fixture.is_none() && chat_state_fixture.is_none();
+            let loaded_cursor = live_mode.then(|| cursor::load(&cursor::path()));
             let cursor_seq = loaded_cursor.as_ref().map_or(0, |loaded| loaded.seq);
             let cursor_warning = loaded_cursor.and_then(|loaded| loaded.warning);
-            if fixture.is_none() {
+            if live_mode {
                 let sock = socket.clone();
                 let stream_clock = clock.clone();
                 let repaint = cc.egui_ctx.clone();
@@ -100,6 +108,7 @@ fn main() -> eframe::Result<()> {
                 socket,
                 rx,
                 fixture,
+                chat_state_fixture,
                 clock,
                 cursor_warning,
             )))
@@ -111,6 +120,16 @@ fn main() -> eframe::Result<()> {
 mod tests {
     use super::*;
     use std::ffi::OsString;
+
+    #[test]
+    fn chat_state_fixture_is_not_matrix_submission() {
+        let args = vec![OsString::from("--chat-state"), OsString::from("typing")];
+        assert_eq!(matrix_source(&args).unwrap(), None);
+        assert_eq!(
+            fixture::chat_state(&args).unwrap(),
+            Some(fixture::ChatStateFixture::Typing)
+        );
+    }
 
     #[test]
     fn rejected_matrix_submission_still_opens_chat_for_logged_diagnostic() {

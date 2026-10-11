@@ -6,6 +6,7 @@ mod accessibility;
 mod contract;
 mod cursor;
 mod display_latency;
+mod fixture;
 mod gallery;
 mod matrix_submission;
 mod pipeline;

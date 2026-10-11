@@ -191,12 +191,12 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
 - [x] **V0-41** `schemas/tree.v0.json` is generated from the Rust types and a test fails when the file drifts. **Verify:** Test. [§12](docs/rfcs/v0.md#12-surface-tree) [evidence](docs/verification/V0-41.md)
 - [x] **V0-42** Each fixture renders to a PNG through the test renderer and matches its golden image. **Verify:** Tests. [§12](docs/rfcs/v0.md#12-surface-tree) [evidence](docs/verification/V0-42.md)
 - [x] **V0-43** `mote-client` connects, subscribes from its saved cursor, shows threads as chat, and after close and reopen shows nothing twice. **Verify:** Live run; screenshot and cursor check in the evidence file. [§13](docs/rfcs/v0.md#13-mote-client) [evidence](docs/verification/V0-43.md)
-- [ ] **V0-44** Every message shows one of sending, sent, delivered, read, and a typing indicator appears while `talk.delta` events arrive. **Verify:** Screenshots of each state. [§13](docs/rfcs/v0.md#13-mote-client)
+- [x] **V0-44** Every message shows one of sending, sent, delivered, read, and a typing indicator appears while `talk.delta` events arrive. **Verify:** Screenshots of each state. [§13](docs/rfcs/v0.md#13-mote-client) [evidence](docs/verification/V0-44.md)
 - [x] **V0-45** A reply that carries a surface renders inline, and a button press arrives at the daemon as `ui.event`. **Verify:** Live run; event log excerpt in the evidence file. [§13](docs/rfcs/v0.md#13-mote-client) [evidence](docs/verification/V0-45.md)
 - [x] **V0-46** The client follows the system light and dark setting. **Verify:** Two screenshots. [§13](docs/rfcs/v0.md#13-mote-client) [evidence](docs/verification/V0-46.md)
-- [ ] **V0-47** The pipeline screen lists the five stages and each opens Now, Config, Numbers and Requests tabs. **Verify:** Screenshots during a live turn. [§14](docs/rfcs/v0.md#14-pipeline-view)
-  Headless production-shell coverage exercises all 20 stage and tab combinations with populated,
-  stage-distinct content. The live-turn screenshots remain required.
+- [x] **V0-47** The pipeline screen lists the five stages and each opens Now, Config, Numbers and Requests tabs. **Verify:** Screenshots during a live turn. [§14](docs/rfcs/v0.md#14-pipeline-view) [evidence](docs/verification/V0-47.md)
+  Native live-turn captures cover all five stages and all four tabs. Headless production-shell
+  coverage exercises all 20 stage and tab combinations with populated, stage-distinct content.
 - [ ] **V0-48** Changing `models.talk` from the Config tab calls `config.set` and the next turn uses the new model. **Verify:** Live run; ledger rows before and after. [§14](docs/rfcs/v0.md#14-pipeline-view)
   Headless client coverage verifies typed dirty-only background updates, failure preservation and
   refresh reconciliation. The native Config click remains required.
