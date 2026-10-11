@@ -35,7 +35,18 @@ impl crate::HostDirectory {
     pub fn receive_frame(&mut self, host: &HostId, frame: HostFrame) -> Result<(), HostError> {
         use mote_protocol::HostErrorCode;
         self.host(host)?;
+        let frame = match self.snapshot_frame(host, frame) {
+            Ok(Some(frame)) => frame,
+            Ok(None) => return Ok(()),
+            Err(error) => {
+                if error.code == HostErrorCode::IdentityChanged {
+                    self.set_connection(host, ConnectionState::IdentityChanged)?;
+                }
+                return Err(error);
+            }
+        };
         let result = match frame {
+            HostFrame::SnapshotChunk { .. } => unreachable!("snapshot assembler consumes chunks"),
             HostFrame::Hello {
                 host_id,
                 protocol_major,

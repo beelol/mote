@@ -70,6 +70,7 @@ pub trait Dispatch: Send + Sync + 'static {
     fn subscribe_checked(&self, scope_id: &str, cursor: i64) -> Option<mote_eventlog::Replay> {
         self.subscribe(scope_id, cursor).map(mote_eventlog::Replay::Events)
     }
+    fn subscribe_host(&self, _cursor: i64) -> Option<mote_eventlog::Replay> { None }
 }
 
 /// The uid of a connected peer (macOS/BSD `getpeereid`).

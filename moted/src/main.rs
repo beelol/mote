@@ -1036,6 +1036,10 @@ impl Dispatch for Daemon {
     }
 
     fn event_cursor(&self) -> i64 { self.log.max_seq().unwrap_or(0) }
+
+    fn subscribe_host(&self, cursor: i64) -> Option<mote_eventlog::Replay> {
+        self.log.subscribe_host(cursor).ok()
+    }
 }
 
 #[cfg(test)]

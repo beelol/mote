@@ -33,7 +33,7 @@ pub struct Event {
 type Queue = Arc<(Mutex<VecDeque<Event>>, Condvar)>;
 
 struct SubHandle {
-    scope: String,
+    scope: Option<String>,
     queue: Queue,
     alive: Arc<AtomicBool>,
 }
@@ -169,6 +169,25 @@ impl EventLog {
             return Ok(Replay::ResyncRequired { oldest_retained });
         }
         guard.subscribe(scope_id, cursor).map(Replay::Events)
+    }
+
+    pub fn subscribe_host(&self, cursor: i64) -> rusqlite::Result<Replay> {
+        let mut guard = self.inner.lock().unwrap();
+        let floor: i64 =
+            guard
+                .conn
+                .query_row("SELECT COALESCE(MAX(seq),0) FROM replay_floor", [], |r| {
+                    r.get(0)
+                })?;
+        if cursor < floor || cursor < 0 || cursor > guard.max_seq()? {
+            let oldest_retained = guard.conn.query_row(
+                "SELECT COALESCE(MIN(seq),0) FROM events WHERE kind!='retention'",
+                [],
+                |r| r.get(0),
+            )?;
+            return Ok(Replay::ResyncRequired { oldest_retained });
+        }
+        guard.subscribe_to(None, cursor).map(Replay::Events)
     }
 
     pub fn host_snapshot(&self, host_id: &HostId) -> rusqlite::Result<HostSnapshot> {
@@ -336,11 +355,19 @@ impl EventLog {
 
 impl Inner {
     fn subscribe(&mut self, scope_id: &str, cursor: i64) -> rusqlite::Result<Subscription> {
+        self.subscribe_to(Some(scope_id), cursor)
+    }
+
+    fn subscribe_to(
+        &mut self,
+        scope_id: Option<&str>,
+        cursor: i64,
+    ) -> rusqlite::Result<Subscription> {
         let replay = self.read_after(scope_id, cursor)?;
         let queue: Queue = Arc::new((Mutex::new(VecDeque::new()), Condvar::new()));
         let alive = Arc::new(AtomicBool::new(true));
         self.subs.push(SubHandle {
-            scope: scope_id.into(),
+            scope: scope_id.map(str::to_owned),
             queue: queue.clone(),
             alive: alive.clone(),
         });
@@ -408,10 +435,10 @@ impl Inner {
             .query_row("SELECT COALESCE(MAX(seq), 0) FROM events", [], |r| r.get(0))
     }
 
-    fn read_after(&self, scope_id: &str, cursor: i64) -> rusqlite::Result<Vec<Event>> {
+    fn read_after(&self, scope_id: Option<&str>, cursor: i64) -> rusqlite::Result<Vec<Event>> {
         let mut stmt = self.conn.prepare(
             "SELECT seq, ts, scope_id, kind, payload FROM events
-             WHERE scope_id=?1 AND seq>?2 ORDER BY seq ASC",
+             WHERE (?1 IS NULL OR scope_id=?1) AND seq>?2 ORDER BY seq ASC",
         )?;
         let rows = stmt.query_map(rusqlite::params![scope_id, cursor], |r| {
             let payload_text: String = r.get(4)?;
@@ -431,7 +458,7 @@ impl Inner {
     fn broadcast(&mut self, ev: &Event) {
         self.subs.retain(|s| s.alive.load(Ordering::Acquire));
         for s in &self.subs {
-            if s.scope != ev.scope_id {
+            if s.scope.as_ref().is_some_and(|scope| scope != &ev.scope_id) {
                 continue;
             }
             let (lock, cv) = &*s.queue;
@@ -579,6 +606,29 @@ mod tests {
             log.subscribe_checked("main", 2).unwrap(),
             Replay::Events(_)
         ));
+    }
+
+    #[test]
+    fn host_replay_detects_retention_holes_in_every_scope() {
+        let log = EventLog::open_in_memory().unwrap();
+        log.append("A", "test", &val("A1")).unwrap();
+        log.append("B", "test", &val("B2")).unwrap();
+        for _ in 0..5000 {
+            log.append("B", "test", &val("later B")).unwrap();
+        }
+        assert_eq!(log.oldest_retained("A").unwrap(), Some(1));
+        assert!(matches!(
+            log.subscribe_checked("A", 1).unwrap(),
+            Replay::Events(_)
+        ));
+        assert!(matches!(
+            log.subscribe_host(1).unwrap(),
+            Replay::ResyncRequired { .. }
+        ));
+        let Replay::Events(mut replay) = log.subscribe_host(2).unwrap() else {
+            panic!("deleted event was already consumed")
+        };
+        assert_eq!(replay.recv_timeout(Duration::ZERO).unwrap().seq, 3);
     }
 
     #[test]

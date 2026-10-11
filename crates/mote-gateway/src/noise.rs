@@ -240,6 +240,17 @@ impl NoiseSession {
         self.write(frame)
     }
 
+    pub(crate) fn host_frame_fits(&self, frame: &HostFrame) -> Result<bool> {
+        Ok(serde_json::to_vec(&BoundFrame {
+            host_id: self.host_id.clone(),
+            client_id: self.client_id.clone(),
+            protocol_major: self.protocol_major,
+            frame,
+        })?
+        .len()
+            <= self.limit)
+    }
+
     pub fn read_host(&mut self, frame: &[u8]) -> Result<Option<HostFrame>> {
         self.check_direction(true)?;
         let result = self.read(frame)?;
@@ -276,6 +287,7 @@ impl NoiseSession {
             | HostFrame::CommittedSurface { host_id, .. }
             | HostFrame::Acknowledgement { host_id, .. } => Some(host_id),
             HostFrame::Snapshot { snapshot } => Some(&snapshot.host_id),
+            HostFrame::SnapshotChunk { chunk } => Some(&chunk.cursor.host_id),
             _ => None,
         };
         self.check_id(id)

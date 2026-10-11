@@ -243,7 +243,7 @@ fn serve<D: Dispatch>(stream: TcpStream, shared: &Shared, dispatch: &D) -> Resul
         } = frame
         {
             ensure!(cursor.host_id == *session.host_id(), "wrong host cursor");
-            if let Some(mut replay) = dispatch.subscribe_checked(&scope_id, cursor.seq) {
+            if let Some(mut replay) = dispatch.subscribe_host(cursor.seq) {
                 let mut last_seq = cursor.seq;
                 while shared.running.load(Ordering::Acquire)
                     && shared
@@ -278,7 +278,7 @@ fn serve<D: Dispatch>(stream: TcpStream, shared: &Shared, dispatch: &D) -> Resul
                         last_seq = snapshot.cursor.seq;
                         send(&mut stream, &mut session, &HostFrame::Snapshot { snapshot })?;
                         replay = dispatch
-                            .subscribe_checked(&scope_id, last_seq)
+                            .subscribe_host(last_seq)
                             .ok_or_else(|| anyhow::anyhow!("subscription unavailable"))?;
                         continue;
                     }
@@ -528,7 +528,54 @@ fn private_text(text: &str) -> String {
         .collect()
 }
 fn send(stream: &mut Socket, session: &mut NoiseSession, frame: &HostFrame) -> Result<()> {
-    for bytes in session.write_host(&redacted(frame)?)? {
+    let frame = redacted(frame)?;
+    if !session.host_frame_fits(&frame)? {
+        let (snapshot, request_id) = match &frame {
+            HostFrame::Snapshot { snapshot } => (snapshot.clone(), None),
+            HostFrame::Result { request_id, result } => (
+                serde_json::from_value::<mote_protocol::HostSnapshot>(result.clone())?,
+                Some(request_id.clone()),
+            ),
+            _ => anyhow::bail!("message too large"),
+        };
+        let data = serde_json::to_string(&snapshot)?;
+        let mut nonce = [0u8; 16];
+        getrandom::fill(&mut nonce)
+            .map_err(|_| anyhow::anyhow!("snapshot transfer ID unavailable"))?;
+        let transfer_id = RequestId::new(crate::noise::hex(&nonce))?;
+        let mut offset = 0;
+        let mut index = 0;
+        while offset < data.len() {
+            let mut end = (offset + mote_protocol::SNAPSHOT_CHUNK_BYTES).min(data.len());
+            loop {
+                while !data.is_char_boundary(end) {
+                    end -= 1;
+                }
+                ensure!(end > offset, "message limit cannot fit a snapshot chunk");
+                let chunk = HostFrame::SnapshotChunk {
+                    chunk: mote_protocol::SnapshotChunk {
+                        transfer_id: transfer_id.clone(),
+                        request_id: request_id.clone(),
+                        cursor: snapshot.cursor.clone(),
+                        index,
+                        total_bytes: data.len() as u64,
+                        data: data[offset..end].to_owned(),
+                    },
+                };
+                if session.host_frame_fits(&chunk)? {
+                    for bytes in session.write_host(&chunk)? {
+                        stream.write(&bytes)?;
+                    }
+                    break;
+                }
+                end = offset + (end - offset) / 2;
+            }
+            offset = end;
+            index += 1;
+        }
+        return Ok(());
+    }
+    for bytes in session.write_host(&frame)? {
         stream.write(&bytes)?;
     }
     Ok(())

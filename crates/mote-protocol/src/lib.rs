@@ -7,6 +7,8 @@ mod frame;
 mod projection;
 pub use projection::ThreadProjection;
 mod snapshot;
+mod snapshot_transfer;
+pub use snapshot_transfer::{SnapshotAssembler, SnapshotChunk, SNAPSHOT_CHUNK_BYTES};
 mod version;
 
 pub use digest::ActionDigest;

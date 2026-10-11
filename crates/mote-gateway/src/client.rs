@@ -7,6 +7,7 @@ use std::net::SocketAddr;
 pub struct GatewayClient {
     stream: Socket,
     session: NoiseSession,
+    snapshot: mote_protocol::SnapshotAssembler,
 }
 
 impl GatewayClient {
@@ -45,7 +46,11 @@ impl GatewayClient {
             Some(config.confirm_timeout + config.handshake_timeout),
         )?;
         let session = handshake.finish(&second)?;
-        Ok(Self { stream, session })
+        Ok(Self {
+            stream,
+            session,
+            snapshot: Default::default(),
+        })
     }
 
     pub fn host_id(&self) -> &mote_protocol::HostId {
@@ -61,7 +66,9 @@ impl GatewayClient {
         loop {
             let bytes = self.stream.read(65_535, None)?;
             if let Some(frame) = self.session.read_host(&bytes)? {
-                return Ok(frame);
+                if let Some(frame) = self.snapshot.accept(self.session.host_id(), frame)? {
+                    return Ok(frame);
+                }
             }
         }
     }

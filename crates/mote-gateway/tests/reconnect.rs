@@ -39,6 +39,9 @@ impl Dispatch for Host {
     fn subscribe_checked(&self, scope: &str, cursor: i64) -> Option<Replay> {
         self.log.subscribe_checked(scope, cursor).ok()
     }
+    fn subscribe_host(&self, cursor: i64) -> Option<Replay> {
+        self.log.subscribe_host(cursor).ok()
+    }
 }
 fn pair(server: &GatewayServer, config: &GatewayConfig) -> (GatewayClient, ClientCredential) {
     let credential =
@@ -73,6 +76,158 @@ fn acknowledgement(mut client: GatewayClient, host: &HostId) -> GatewayClient {
         matches!(frame.unwrap(), HostFrame::Acknowledgement { host_id, .. } if host_id == *host)
     );
     client
+}
+
+#[test]
+fn interleaved_threads_reconnect_in_one_host_sequence() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = GatewayConfig::new(dir.path().join("data"));
+    config.bind = "127.0.0.1:0".parse().unwrap();
+    let host = Arc::new(Host {
+        log: EventLog::open_in_memory().unwrap(),
+    });
+    for _ in 0..9 {
+        host.log.append("earlier", "heartbeat", &json!({})).unwrap();
+    }
+    host.log
+        .append("A", "turn.user", &json!({"text":"A10"}))
+        .unwrap();
+    host.log
+        .append("B", "turn.user", &json!({"text":"B11"}))
+        .unwrap();
+    let server = GatewayServer::bind_loopback(config.clone(), host.clone()).unwrap();
+    let (mut client, credential) = pair(&server, &config);
+    client
+        .send(&ClientFrame::Subscribe {
+            request_id: RequestId::new("B").unwrap(),
+            scope_id: "B".into(),
+            cursor: Cursor::new(server.host_id().clone(), 9).unwrap(),
+        })
+        .unwrap();
+    let HostFrame::Event { event, .. } = client.receive().unwrap() else {
+        panic!("event")
+    };
+    assert_eq!(
+        (event.seq, event.scope_id.as_str()),
+        (10, "A"),
+        "a host cursor must not advance past an unseen scope"
+    );
+    drop(client);
+    let mut client = GatewayClient::connect(server.local_addr(), &config, &credential, 2).unwrap();
+    client
+        .send(&ClientFrame::Subscribe {
+            request_id: RequestId::new("A").unwrap(),
+            scope_id: "A".into(),
+            cursor: Cursor::new(server.host_id().clone(), event.seq).unwrap(),
+        })
+        .unwrap();
+    let HostFrame::Event { event, .. } = client.receive().unwrap() else {
+        panic!("event")
+    };
+    assert_eq!((event.seq, event.scope_id.as_str()), (11, "B"));
+    let a = host
+        .log
+        .append("A", "turn.user", &json!({"text":"A12"}))
+        .unwrap();
+    let b = host
+        .log
+        .append("B", "turn.user", &json!({"text":"B13"}))
+        .unwrap();
+    for expected in [a, b] {
+        let HostFrame::Event { event, .. } = client.receive().unwrap() else {
+            panic!("event")
+        };
+        assert_eq!(
+            (event.seq, event.scope_id),
+            (expected.seq, expected.scope_id)
+        );
+    }
+}
+
+#[test]
+fn snapshot_larger_than_noise_limit_completes_call_and_resync() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = GatewayConfig::new(dir.path().join("data"));
+    config.bind = "127.0.0.1:0".parse().unwrap();
+    let host = Arc::new(Host {
+        log: EventLog::open_in_memory().unwrap(),
+    });
+    for index in 0..8 {
+        host.log
+            .append(
+                "main",
+                "turn.user",
+                &json!({"text":format!("{index}{}", "x".repeat(140_000))}),
+            )
+            .unwrap();
+    }
+    let server = GatewayServer::bind_loopback(config.clone(), host.clone()).unwrap();
+    let (mut client, _) = pair(&server, &config);
+    let expected = host.log.host_snapshot(server.host_id()).unwrap();
+    assert!(serde_json::to_vec(&expected).unwrap().len() > config.max_message);
+    let result = client
+        .exchange(&ClientFrame::Call {
+            request_id: RequestId::new("large").unwrap(),
+            method: "snapshot".into(),
+            params: json!({}),
+        })
+        .expect("large snapshot call must complete");
+    let HostFrame::Result { result, .. } = result else {
+        panic!("result")
+    };
+    assert_eq!(
+        serde_json::from_value::<mote_protocol::HostSnapshot>(result).unwrap(),
+        expected
+    );
+    client
+        .send(&ClientFrame::Subscribe {
+            request_id: RequestId::new("resync").unwrap(),
+            scope_id: "main".into(),
+            cursor: Cursor::new(server.host_id().clone(), 9).unwrap(),
+        })
+        .unwrap();
+    assert!(
+        matches!(client.receive().unwrap(), HostFrame::Event { event, .. } if event.kind == "resync")
+    );
+    let snapshot = client.receive().expect("large resync must complete");
+    assert_eq!(snapshot, HostFrame::Snapshot { snapshot: expected });
+    let event = host
+        .log
+        .append("other", "turn.user", &json!({"text":"after snapshot"}))
+        .unwrap();
+    assert!(
+        matches!(client.receive().unwrap(), HostFrame::Event {event:actual,..} if actual.seq == event.seq)
+    );
+}
+
+#[test]
+fn snapshot_chunks_fit_small_noise_limits_with_escaped_unicode() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = GatewayConfig::new(dir.path().join("data"));
+    config.bind = "127.0.0.1:0".parse().unwrap();
+    config.max_message = 4096;
+    let host = Arc::new(Host {
+        log: EventLog::open_in_memory().unwrap(),
+    });
+    let text = "λ\"\\\n".repeat(20_000);
+    host.log
+        .append("main", "turn.user", &json!({"text":text}))
+        .unwrap();
+    let server = GatewayServer::bind_loopback(config.clone(), host).unwrap();
+    let (mut client, _) = pair(&server, &config);
+    let HostFrame::Result { result, .. } = client
+        .exchange(&ClientFrame::Call {
+            request_id: RequestId::new("small-limit").unwrap(),
+            method: "snapshot".into(),
+            params: json!({}),
+        })
+        .unwrap()
+    else {
+        panic!("result")
+    };
+    let snapshot: mote_protocol::HostSnapshot = serde_json::from_value(result).unwrap();
+    assert_eq!(snapshot.threads[0].messages[0].text, text);
+    assert_eq!(snapshot.cursor.seq, 1);
 }
 
 #[test]

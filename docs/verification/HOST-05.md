@@ -131,3 +131,65 @@ History deleted before this migration cannot be reconstructed.
 Pending file-write approvals remain visible after restart. Their existing exact-intent safety
 boundary still refuses execution when the in-memory file intent no longer exists.
 Physical iPad, signing, TestFlight and cloud work were not performed.
+
+## Recovery review followup, 2026-10-11
+
+Two review regressions were reproduced on `ea252283ff001de8d692ac121d7831fd36de529a`.
+
+```text
+cargo test -p mote-gateway --test reconnect interleaved_threads_reconnect_in_one_host_sequence
+exit 101
+left: (11, "B")
+right: (10, "A")
+```
+
+The gateway now subscribes to all host scopes in global sequence order.
+Its retention check uses the highest deleted sequence across all scopes.
+The private Unix transport still filters by scope.
+The regression delivers A10 before B11, reconnects from A10, then delivers B11 and live A12/B13.
+An additional test detects a deleted B2 even while A1 remains retained.
+
+```text
+cargo test -p mote-gateway --test reconnect snapshot_larger_than_noise_limit_completes_call_and_resync
+exit 101
+large snapshot call must complete: WebSocket protocol error: Connection reset without closing handshake
+```
+
+Snapshots exceeding the Noise message limit now use typed snapshot chunks.
+Each chunk carries at most 64 KiB of snapshot data and is reduced until its complete envelope fits.
+The sender filters private output before chunking.
+Transfer ID, cursor, request ID, index and total byte count are checked during assembly.
+The previous client cache remains installed until the complete snapshot validates.
+Partial transfer bytes are not persisted and are discarded on the offline transition.
+The test covers eight 140 KB messages through both a snapshot call and authoritative resync.
+A separate check covers escaped Unicode with a 4 KiB Noise message limit.
+
+The new assembly fault test initially failed with `accepted interleaved`.
+The shared assembler now rejects an event or result interleaved with incomplete snapshot chunks.
+It also rejects changed host, cursor, transfer ID, total size and index.
+
+Final commands and results:
+
+```text
+cargo test -p mote-gateway --test reconnect && cargo test -p mote-eventlog
+reconnect: 13 passed; 0 failed
+eventlog: 10 passed; 0 failed
+cargo test -p mote-gateway --test reconnect snapshot_chunks_fit_small_noise_limits_with_escaped_unicode
+1 passed; 0 failed
+cargo test -p mote-host-client --test snapshot_chunks
+2 passed; 0 failed
+cargo test --workspace
+exit 0
+aggregate: passed=578 failed=0 ignored=2 suite_results=48
+cargo clippy --workspace -- -D warnings
+Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.69s
+exit 0
+```
+
+The final workspace run includes all 14 reconnect tests.
+Complete outputs are in `/private/tmp/mote-task6-review1-workspace.log` and
+`/private/tmp/mote-task6-review1-clippy.log`.
+The environment and the two ignored live Bonjour tests are unchanged.
+The implementation commit containing this followup is titled
+`fix(host): replay all scopes and chunk recovery snapshots`.
+HOST-05 remains unchecked because the literal Mac sleep and wake run is still open.

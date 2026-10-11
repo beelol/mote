@@ -16,6 +16,8 @@ pub struct HostSessionState {
     outbox: Outbox,
     #[serde(skip)]
     connection: ConnectionState,
+    #[serde(skip)]
+    snapshot_transfer: mote_protocol::SnapshotAssembler,
 }
 
 #[derive(Deserialize)]
@@ -29,6 +31,8 @@ struct SessionFields {
     outbox: Outbox,
     #[serde(skip)]
     connection: ConnectionState,
+    #[serde(skip)]
+    snapshot_transfer: mote_protocol::SnapshotAssembler,
 }
 
 impl<'de> Deserialize<'de> for HostSessionState {
@@ -51,6 +55,7 @@ impl HostSessionState {
             pending_approvals: BTreeMap::new(),
             outbox: Outbox::new(host_id),
             connection: ConnectionState::Offline,
+            snapshot_transfer: Default::default(),
         }
     }
 
@@ -105,7 +110,16 @@ impl HostSessionState {
     ) -> Result<(), HostError> {
         require_host(&self.cursor.host_id, host_id)?;
         self.connection = connection;
+        self.snapshot_transfer.reset();
         Ok(())
+    }
+
+    pub(crate) fn snapshot_frame(
+        &mut self,
+        host: &HostId,
+        frame: mote_protocol::HostFrame,
+    ) -> Result<Option<mote_protocol::HostFrame>, HostError> {
+        self.snapshot_transfer.accept(host, frame)
     }
 
     pub(crate) fn install_snapshot(
@@ -120,6 +134,7 @@ impl HostSessionState {
             serde_json::from_value(serde_json::to_value(snapshot).map_err(invalid_state)?)
                 .map_err(invalid_state)?;
         let mut next = self.clone();
+        next.snapshot_transfer.reset();
         next.cursor = snapshot.cursor;
         next.threads.clear();
         next.surfaces.clear();

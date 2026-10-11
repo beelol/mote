@@ -129,6 +129,13 @@ impl TryFrom<UncheckedDirectory> for HostDirectory {
 }
 
 impl HostDirectory {
+    pub(crate) fn snapshot_frame(
+        &mut self,
+        host: &HostId,
+        frame: mote_protocol::HostFrame,
+    ) -> Result<Option<mote_protocol::HostFrame>, HostError> {
+        self.state_mut(host)?.snapshot_frame(host, frame)
+    }
     pub fn register(&mut self, host: PairedHost) -> Result<(), HostError> {
         host.validate()?;
         if self.hosts.contains_key(host.host_id()) {

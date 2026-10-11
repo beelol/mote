@@ -105,6 +105,9 @@ pub enum ClientFrame {
     try_from = "UncheckedHostFrame"
 )]
 pub enum HostFrame {
+    SnapshotChunk {
+        chunk: crate::SnapshotChunk,
+    },
     RequestState {
         request_id: RequestId,
         state: RequestState,
@@ -143,6 +146,9 @@ pub enum HostFrame {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum UncheckedHostFrame {
+    SnapshotChunk {
+        chunk: crate::SnapshotChunk,
+    },
     RequestState {
         request_id: RequestId,
         state: RequestState,
@@ -185,6 +191,7 @@ impl TryFrom<UncheckedHostFrame> for HostFrame {
 
     fn try_from(value: UncheckedHostFrame) -> Result<Self, HostError> {
         Ok(match value {
+            UncheckedHostFrame::SnapshotChunk { chunk } => Self::SnapshotChunk { chunk },
             UncheckedHostFrame::RequestState { request_id, state } => {
                 Self::RequestState { request_id, state }
             }

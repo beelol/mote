@@ -66,6 +66,30 @@ Tampering, replay, reordering, wrong role, invalid identity, malformed JSON and 
 permanently close the session reader and writer.
 The caller closes the carrier on any error.
 
+## Recovery
+
+The paired gateway uses one cursor for the entire host.
+Every remote subscription replays all scopes in increasing event sequence order.
+The request's `scope_id` remains a UI selection hint and does not filter remote delivery.
+A retention gap in any scope requires an authoritative snapshot.
+The private Unix transport retains its scope-filtered subscription contract.
+
+A snapshot is captured through one fixed cursor.
+Small snapshots keep the existing complete frame.
+Snapshots larger than the configured Noise message limit use `SnapshotChunk` frames.
+Each chunk carries at most 64 KiB of UTF-8 snapshot data.
+The sender reduces this further until the complete encrypted envelope fits its message limit.
+The transfer binds its ID, optional call request ID, cursor, ordered index and total byte count.
+Output privacy filtering happens before chunking.
+
+`GatewayClient::receive` assembles a complete snapshot or call result before returning it.
+Other consumers can use `SnapshotAssembler` or pass chunks to `HostDirectory::receive_frame`.
+The directory keeps the previous committed cache until assembly and validation succeed.
+Partial transfer bytes are not persisted.
+Disconnect discards a pending transfer through the offline connection transition.
+Unexpected interleaving, missing chunks and changed transfer bindings fail closed.
+Chunking preserves the complete history and does not clip messages to fit the wire limit.
+
 ## Integration limits
 
 The daemon must enforce `handshake_timeout` while receiving transport bytes.

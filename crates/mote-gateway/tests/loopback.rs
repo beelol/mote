@@ -36,6 +36,9 @@ impl Dispatch for Fixture {
     fn subscribe(&self, scope: &str, cursor: i64) -> Option<Subscription> {
         self.log.subscribe(scope, cursor).ok()
     }
+    fn subscribe_host(&self, cursor: i64) -> Option<mote_eventlog::Replay> {
+        self.log.subscribe_host(cursor).ok()
+    }
 }
 fn fixture() -> (
     tempfile::TempDir,
