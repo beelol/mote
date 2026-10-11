@@ -23,7 +23,6 @@ impl Surface {
         }
     }
 
-    #[cfg(any(test, feature = "test-observation"))]
     pub fn matrix_v1(&self) -> Option<&v1::Surface> {
         match self {
             Self::V0(_) => None,

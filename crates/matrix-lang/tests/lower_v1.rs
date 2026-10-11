@@ -95,6 +95,51 @@ fn exact_fixture_lowers_with_layout_fill_and_wire_path_controls() {
 }
 
 #[test]
+fn gallery_dashboard_matches_trusted_host_lowering() {
+    let source = include_str!("../../../matrix/examples/mote-dashboard.matrix");
+    let models = ["qwen3:4b", "qwen3:0.6b", "qwen3-coder:30b-64k"];
+    let mut manifest = Manifest::default();
+    manifest
+        .enums
+        .insert("Model".into(), EnumDefinition::new(models));
+    for (name, ty, initial) in [
+        ("models.local_only", Type::Boolean, json!(true)),
+        ("models.talk", Type::Enum("Model".into()), json!(models[0])),
+        (
+            "models.router",
+            Type::Enum("Model".into()),
+            json!(models[1]),
+        ),
+        ("models.think", Type::Enum("Model".into()), json!(models[2])),
+    ] {
+        manifest.fields.insert(
+            name.into(),
+            FieldDefinition {
+                binding: ty.into(),
+                initial,
+            },
+        );
+    }
+    manifest.values.insert(
+        "model_options".into(),
+        Type::List(Box::new(Type::Enum("Model".into()))).into(),
+    );
+    manifest
+        .actions
+        .insert("refresh".into(), ActionContract::default());
+    let snapshot = BindingSnapshot {
+        values: BTreeMap::from([("model_options".into(), json!(models))]),
+        ..Default::default()
+    };
+    let lowered = lower(source, &manifest, &snapshot).unwrap();
+    let fixture_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../matrix/examples/mote-dashboard.v1.json");
+    let encoded = fs::read(fixture_path).expect("checked-in lowered gallery dashboard");
+    assert_eq!(mote_ui::v1::validate(&encoded).unwrap(), lowered.surface);
+    assert_eq!(lowered.controls.len(), 5);
+}
+
+#[test]
 fn unsupported_catalog_option_labels_and_nonzero_argument_actions_fail_closed() {
     let (mut manifest, snapshot) = fixture();
     manifest
