@@ -39,16 +39,18 @@ only the approved local Ollama models are permitted.
 
 ## Current work
 
-Branch and `origin/main` are at `fb03d97` before this handoff checkpoint. HOST-04 and HOST-05 are
-open. Host plan Task 5 is next. It adds Bonjour address hints but does not trust addresses as
-identity. The host plan ledger is
-`.superpowers/sdd/2026-10-11-ipad-simulator-host/progress.md`. The UI plan ledger is
+`origin/main` contains Task 5 commits `098aaa2` and `198b3e4`. Bonjour advertises only protocol
+major and public fingerprint. Candidate endpoints require pinned-key Noise proof before movement.
+The live Mac stack discovered and removed the service. The process-level shutdown test proved
+SIGTERM/SIGINT reap the `dns-sd` child and remove registration and Unix listener. The independent
+review passed after the fix. The driver reran workspace tests and strict clippy with exit 0.
+HOST-04 stays open until the Simulator discovers the service and verifies purpose text in UI plan
+Task 7.
+
+The next action is host plan Task 6, authoritative resync and visible connection states. The host plan
+ledger is `.superpowers/sdd/2026-10-11-ipad-simulator-host/progress.md`. The UI plan ledger is
 `.superpowers/sdd/2026-10-11-ipad-simulator-ui/progress.md`. The UI subagent has not yet been
 dispatched because the reviewed host foundation interfaces are still being completed.
-
-The next action is to dispatch host plan Task 5 from the current head, review its diff, run the
-workspace suite and strict clippy, and push. Keep HOST-04 unchecked until the Simulator discovers
-the service in UI plan Task 7. Task 6 then adds authoritative resync and visible connection states.
 The literal Mac sleep and wake run in HOST-05 is unsafe unattended without a configured wake
 mechanism. Leave that clause open while completing independent work. After stable host interfaces,
 dispatch the UI plan to a UI subagent, then implement the inferred UI and contained browser plans.
