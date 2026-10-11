@@ -37,7 +37,7 @@ The Unix parser, peer UID checks, socket lifecycle and public transport signatur
 Added compatibility checks preserve arbitrary request IDs, missing optional local fields, extra
 local keys, the legacy event decoder behavior and exact newline event bytes.
 
-## Commands and output
+## Initial implementation commands and output
 
 The expected initial TDD failure occurred before the crate was created:
 
@@ -114,3 +114,91 @@ The approved rerun outside the sandbox passed all 12 IPC tests without changing 
 The workspace run also passed with that access.
 
 The complete HOST-01 Verify clause is covered. HOST-01 is checked in the README.
+
+## Review fix verification
+
+Date: 2026-10-11, completed at 08:30 UTC in the same environment.
+
+Host event deserialization now rejects unknown fields inside the event envelope.
+The legacy Event DTO remains permissive for Unix IPC.
+Approval decisions and pending approval snapshots now require `action_hash` as an `ActionDigest`.
+The digest is a full lowercase SHA-256 hex string.
+Both envelopes also require `expires_at` as nonnegative integer Unix time in milliseconds.
+The host will compare these fields to the held intent and expiry before execution in the gateway task.
+No existing remote deployment needs compatibility with the earlier unbound approval fixture.
+The protocol remains major 1.
+
+The new regression test failed before the strict host deserializer was implemented:
+
+```text
+$ cargo test -p mote-protocol --test golden host_events_reject_unknown_nested_fields_without_changing_legacy_events
+test host_events_reject_unknown_nested_fields_without_changing_legacy_events ... FAILED
+assertion failed: serde_json::from_value::<HostFrame>(frame).is_err()
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+exit status: 101
+```
+
+The same command passed after implementation:
+
+```text
+$ cargo test -p mote-protocol --test golden host_events_reject_unknown_nested_fields_without_changing_legacy_events
+test host_events_reject_unknown_nested_fields_without_changing_legacy_events ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+exit status: 0
+```
+
+The updated approval fixtures and new binding tests failed before the binding fields were added:
+
+```text
+$ cargo test -p mote-protocol --test golden
+test approval_decisions_require_a_complete_action_hash_and_expiry_binding ... FAILED
+test pending_approvals_require_a_complete_action_hash_and_expiry_binding ... FAILED
+test client_frames_preserve_the_golden_wire_contract ... FAILED
+test host_frames_preserve_the_golden_wire_contract ... FAILED
+test approvals_reject_untyped_incomplete_and_extra_decisions ... FAILED
+unknown field `action_hash`, expected one of `host_id`, `thread`, `approval_id`, `decision`
+unknown field `action_hash`, expected one of `approval_id`, `thread`, `kind`, `payload`, `expires_at`
+test result: FAILED. 7 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+exit status: 101
+```
+
+After implementation, the binding tests reject missing fields, empty and truncated digests,
+uppercase and nonhex digests, nonstring digests, and negative, fractional, overflowing,
+string or null expiry values in both decisions and pending approvals.
+
+```text
+$ cargo test -p mote-protocol --test golden
+test host_events_reject_unknown_nested_fields_without_changing_legacy_events ... ok
+test approval_decisions_require_a_complete_action_hash_and_expiry_binding ... ok
+test pending_approvals_require_a_complete_action_hash_and_expiry_binding ... ok
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+exit status: 0
+
+$ cargo test -p mote-protocol && cargo test -p mote-ipc
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test tests::local_event_decoder_keeps_the_legacy_event_dto_behavior ... ok
+test tests::subscribe_streams_and_reconnects_without_duplicates ... ok
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+exit status: 0
+
+$ cargo test --workspace
+test result: ok. 161 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 63.25s
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 129 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.47s
+exit status: 0
+
+$ awk '/test result: ok\./ {passed += $4; failed += $6; suites += 1} END {print "passed=" passed, "failed=" failed, "suites=" suites}' /private/tmp/mote-host-01-fix-workspace-test.log
+passed=493 failed=0 suites=34
+
+$ cargo clippy --workspace -- -D warnings
+    Checking mote-protocol v0.0.0 (/Users/bilal/projects/mote/crates/mote-protocol)
+    Checking mote-ipc v0.0.0 (/Users/bilal/projects/mote/crates/mote-ipc)
+    Checking mote-client v0.0.0 (/Users/bilal/projects/mote/mote-client)
+    Checking moted v0.0.0 (/Users/bilal/projects/mote/moted)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.39s
+exit status: 0
+```
+
+The existing mote-client test warning remains unchanged.
+All 34 suites passed, including documentation tests.
+The full HOST-01 Verify clause remains covered after both fixes.

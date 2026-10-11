@@ -1,6 +1,6 @@
 use crate::{
-    CommittedSurface, Cursor, HostError, HostErrorCode, HostId, HostSnapshot, RequestId,
-    VersionRange, PROTOCOL_MAJOR,
+    ActionDigest, CommittedSurface, Cursor, HostError, HostErrorCode, HostId, HostSnapshot,
+    RequestId, VersionRange, PROTOCOL_MAJOR,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -12,6 +12,16 @@ pub struct Event {
     pub scope_id: String,
     pub kind: String,
     pub payload: Value,
+}
+
+#[derive(Deserialize)]
+#[serde(remote = "Event", deny_unknown_fields)]
+struct HostEvent {
+    seq: i64,
+    ts: i64,
+    scope_id: String,
+    kind: String,
+    payload: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -44,6 +54,9 @@ pub struct ApprovalDecision {
     #[serde(deserialize_with = "crate::nonempty")]
     pub thread: String,
     pub approval_id: RequestId,
+    pub action_hash: ActionDigest,
+    #[serde(deserialize_with = "crate::expiry")]
+    pub expires_at: i64,
     pub decision: ApprovalVerdict,
 }
 
@@ -129,6 +142,7 @@ enum UncheckedHostFrame {
     },
     Event {
         host_id: HostId,
+        #[serde(deserialize_with = "HostEvent::deserialize")]
         event: Event,
     },
     CommittedSurface {

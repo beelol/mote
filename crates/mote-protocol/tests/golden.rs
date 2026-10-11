@@ -198,3 +198,80 @@ fn unknown_frame_types_and_fields_fail_closed() {
     frame["unexpected"] = json!(true);
     assert!(serde_json::from_value::<ClientFrame>(frame).is_err());
 }
+
+#[test]
+fn host_events_reject_unknown_nested_fields_without_changing_legacy_events() {
+    let mut frame: Value = serde_json::from_str(include_str!("golden/event.json")).unwrap();
+    frame["event"]["unexpected"] = json!(true);
+    assert!(serde_json::from_value::<mote_protocol::Event>(frame["event"].clone()).is_ok());
+    assert!(serde_json::from_value::<HostFrame>(frame).is_err());
+}
+
+#[test]
+fn approval_decisions_require_a_complete_action_hash_and_expiry_binding() {
+    let frame: Value = serde_json::from_str(include_str!("golden/approval-decision.json")).unwrap();
+    assert!(serde_json::from_value::<ClientFrame>(frame.clone()).is_ok());
+    for key in ["action_hash", "expires_at"] {
+        let mut incomplete = frame.clone();
+        incomplete["decision"].as_object_mut().unwrap().remove(key);
+        assert!(
+            serde_json::from_value::<ClientFrame>(incomplete).is_err(),
+            "missing {key}"
+        );
+    }
+    for (key, value) in malformed_approval_bindings() {
+        let mut malformed = frame.clone();
+        malformed["decision"][key] = value;
+        assert!(
+            serde_json::from_value::<ClientFrame>(malformed).is_err(),
+            "malformed {key}"
+        );
+    }
+}
+
+#[test]
+fn pending_approvals_require_a_complete_action_hash_and_expiry_binding() {
+    let frame: Value = serde_json::from_str(include_str!("golden/snapshot.json")).unwrap();
+    assert!(serde_json::from_value::<HostFrame>(frame.clone()).is_ok());
+    for key in ["action_hash", "expires_at"] {
+        let mut incomplete = frame.clone();
+        incomplete["snapshot"]["pending_approvals"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove(key);
+        assert!(
+            serde_json::from_value::<HostFrame>(incomplete).is_err(),
+            "missing {key}"
+        );
+    }
+    for (key, value) in malformed_approval_bindings() {
+        let mut malformed = frame.clone();
+        malformed["snapshot"]["pending_approvals"][0][key] = value;
+        assert!(
+            serde_json::from_value::<HostFrame>(malformed).is_err(),
+            "malformed {key}"
+        );
+    }
+}
+
+fn malformed_approval_bindings() -> Vec<(&'static str, Value)> {
+    vec![
+        ("action_hash", json!("")),
+        ("action_hash", json!("abc")),
+        (
+            "action_hash",
+            json!("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"),
+        ),
+        (
+            "action_hash",
+            json!("g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+        ),
+        ("action_hash", json!(7)),
+        ("action_hash", Value::Null),
+        ("expires_at", json!(-1)),
+        ("expires_at", json!(0.5)),
+        ("expires_at", json!(9223372036854775808_u64)),
+        ("expires_at", json!("1791763200000")),
+        ("expires_at", Value::Null),
+    ]
+}

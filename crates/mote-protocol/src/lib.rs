@@ -1,11 +1,13 @@
 //! Transport-independent host frames and the private local JSON envelopes.
 
+mod digest;
 pub mod envelope;
 mod error;
 mod frame;
 mod snapshot;
 mod version;
 
+pub use digest::ActionDigest;
 pub use error::{HostError, HostErrorCode};
 pub use frame::{
     ApprovalDecision, ApprovalVerdict, ClientFrame, Event, HostFrame, TypedInteraction,
@@ -39,4 +41,14 @@ fn surface_contract<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u32, D
         1 => Ok(1),
         _ => Err(D::Error::custom("unsupported Matrix surface contract")),
     }
+}
+
+fn expiry<'de, D: Deserializer<'de>>(deserializer: D) -> Result<i64, D::Error> {
+    let value = i64::deserialize(deserializer)?;
+    if value < 0 {
+        return Err(D::Error::custom(
+            "expiry must be nonnegative Unix time in milliseconds",
+        ));
+    }
+    Ok(value)
 }

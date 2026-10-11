@@ -1,4 +1,4 @@
-use crate::{Cursor, HostError, HostErrorCode, HostId, RequestId};
+use crate::{ActionDigest, Cursor, HostError, HostErrorCode, HostId, RequestId};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -58,6 +58,8 @@ pub struct PendingApproval {
     #[serde(deserialize_with = "crate::nonempty")]
     pub kind: String,
     pub payload: Map<String, Value>,
+    pub action_hash: ActionDigest,
+    #[serde(deserialize_with = "crate::expiry")]
     pub expires_at: i64,
 }
 
