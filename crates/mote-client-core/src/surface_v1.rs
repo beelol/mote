@@ -1004,19 +1004,15 @@ fn current_hit_response(ui: &egui::Ui, response: &mut egui::Response) {
     let visible = response.rect.intersect(ui.clip_rect());
     let (inside, clicked, down, dragging, position) = ui.input(|input| {
         let position = input.pointer.interact_pos();
-        let origin = input
-            .events
-            .iter()
-            .find_map(|event| match event {
-                egui::Event::PointerButton {
-                    pos,
-                    button: egui::PointerButton::Primary,
-                    pressed: true,
-                    ..
-                } => Some(*pos),
-                _ => None,
-            })
-            .or(input.pointer.press_origin());
+        let origin = input.events.iter().find_map(|event| match event {
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                ..
+            } => Some(*pos),
+            _ => None,
+        });
         let inside = position.is_some_and(|pos| visible.contains(pos))
             && ((pending && previous == Some(response.rect))
                 || origin.is_some_and(|pos| visible.contains(pos)));
@@ -1028,7 +1024,10 @@ fn current_hit_response(ui: &egui::Ui, response: &mut egui::Response) {
             position,
         )
     });
-    let allowed = response.enabled()
+    let cancelled_drag =
+        pending && response.sense.senses_drag() && down && !ui.ctx().is_being_dragged(response.id);
+    let allowed = !cancelled_drag
+        && response.enabled()
         && ui.memory(|memory| memory.allows_interaction(ui.layer_id()))
         && (captured_drag
             || position.is_some_and(|pos| ui.ctx().layer_id_at(pos) == Some(ui.layer_id())));

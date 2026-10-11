@@ -774,6 +774,89 @@ mod tests {
     }
 
     #[test]
+    fn escape_cancels_replacement_slider_capture_until_a_new_press() {
+        let ctx = context();
+        let mut gallery = Gallery::default();
+        frame(&ctx, &gallery, 0.0, vec![]);
+        gallery.select(GalleryPage::Slider);
+        let press = click(egui::pos2(300.0, 40.0));
+        assert!(frame(&ctx, &gallery, 1.0, press[..2].to_vec()).1.is_empty());
+        assert_eq!(
+            frame(
+                &ctx,
+                &gallery,
+                1.016,
+                vec![egui::Event::PointerMoved(egui::pos2(700.0, 40.0))]
+            )
+            .1,
+            vec![surface_v1::Event::Change {
+                field: "gallery_volume".into(),
+                value: serde_json::json!(8.0),
+                path: vec![0]
+            }]
+        );
+        assert!(frame(
+            &ctx,
+            &gallery,
+            1.032,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default()
+            }]
+        )
+        .1
+        .is_empty());
+        assert!(
+            ctx.dragged_id().is_none(),
+            "Escape must leave no drag owner"
+        );
+        let end = egui::pos2(20.0, 40.0);
+        assert!(
+            frame(&ctx, &gallery, 1.048, vec![egui::Event::PointerMoved(end)])
+                .1
+                .is_empty()
+        );
+        assert!(
+            ctx.dragged_id().is_none(),
+            "held movement must not reacquire drag ownership"
+        );
+        gallery.select(GalleryPage::Layout);
+        assert!(frame(&ctx, &gallery, 1.05, vec![]).1.is_empty());
+        gallery.select(GalleryPage::Slider);
+        assert!(
+            frame(&ctx, &gallery, 1.056, vec![]).1.is_empty(),
+            "replacement must not adopt a cancelled held gesture"
+        );
+        assert!(ctx.dragged_id().is_none());
+        assert!(frame(
+            &ctx,
+            &gallery,
+            1.064,
+            vec![egui::Event::PointerButton {
+                pos: end,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Default::default()
+            }]
+        )
+        .1
+        .is_empty());
+        assert!(frame(&ctx, &gallery, 1.12, vec![]).1.is_empty());
+        assert_eq!(
+            frame(&ctx, &gallery, 1.2, click(egui::pos2(700.0, 40.0))).1,
+            vec![surface_v1::Event::Change {
+                field: "gallery_volume".into(),
+                value: serde_json::json!(8.0),
+                path: vec![0]
+            }]
+        );
+        assert!(frame(&ctx, &gallery, 1.216, vec![]).1.is_empty());
+    }
+
+    #[test]
     fn reinserted_control_accepts_a_click_at_its_previous_geometry() {
         let ctx = context();
         let mut gallery = Gallery::default();
