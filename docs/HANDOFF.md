@@ -1,18 +1,19 @@
-# Handoff: truthful service uninstall
+# Handoff: Matrix v1 consumer contract
 
 Updated 2026-10-10. Replace this file, never append.
 
-Branch: `main`. Base: `8848f8e`. Preserve untracked `.DS_Store` and `.superpowers/`. Do not push.
+Branch: `main`. Base: `eeaa277`. Preserve untracked `.DS_Store` and `.superpowers/`. Do not push.
 
-Service uninstall now treats the `launchctl unload -w <plist>` result as authoritative. A process
-launch error or nonzero exit returns a meaningful error and leaves the plist intact. This preserves
-the recovery state needed to inspect or retry the unload.
+The next implementation slice is the separately versioned Matrix consumer contract. The accepted
+plan is `docs/superpowers/plans/2026-10-10-matrix-v1-consumer-contract.md`. Keep the v0 tree and
+schema unchanged. Add an unreachable v1 contract first, then lower, decode, render, validate and
+activate slider plus header, footer and fill in separate verified commits.
 
-Only a successful unload removes the plist and prints `removed com.mote.moted`. Successful unload
-remains idempotent when the plist is already absent. Tests use an injected one-shot runner and never
-invoke real launchctl. They cover exact command arguments, nonzero exits with and without stderr, a
-process launch error, successful removal and successful absence.
+The planned compatibility envelope keeps the existing `ui.surface` event and mandatory valid v0
+`surface`. It adds a versioned `matrixSurface`. New clients prefer a valid supported version and
+fall back to v0. Production v1 emission stays disabled until matching compiler, client,
+accessibility, layout and event-admission checks pass.
 
-V0-53 remains open. The existing live install, KeepAlive restart and successful uninstall evidence
-is retained in `docs/verification/V0-53.md`. Literal logout and login survival still requires the
-owner's session.
+The first task creates `matrix/consumer-contract-v1.md`, `mote_ui::v1`, a deterministic schema and
+the slider/anchor/fill fixture. Full catalog choices that are not frozen remain visible in the
+contract artifact. Service uninstall commit `eeaa277` received an independent PASS review.
