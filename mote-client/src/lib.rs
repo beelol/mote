@@ -3,6 +3,7 @@
 
 mod app;
 mod accessibility;
+mod cursor;
 mod display_latency;
 mod pipeline;
 mod state;

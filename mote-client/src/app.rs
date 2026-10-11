@@ -134,31 +134,11 @@ fn spawn_ui_event_worker(
     });
 }
 
-fn cursor_path() -> PathBuf {
-    mote_paths::data_dir().join("client_cursor")
-}
-
-/// Load the saved cursor, or 0.
-pub fn load_cursor() -> i64 {
-    load_cursor_from(&cursor_path())
-}
-
-fn load_cursor_from(path: &std::path::Path) -> i64 {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0)
-}
-
-fn save_cursor_to(path: &std::path::Path, seq: i64) {
-    let _ = std::fs::write(path, seq.to_string());
-}
-
 fn apply_next_event(
     chat: &mut ChatState,
     rx: &Receiver<StreamUpdate>,
     cursor_path: Option<&std::path::Path>,
-) -> Option<(Event, Option<crate::state::SurfaceReduction>, u64)> {
+) -> Option<(Event, Option<crate::state::SurfaceReduction>, u64, std::io::Result<()>)> {
     let (event, arrived_ns) = loop {
         match rx.try_recv().ok()? {
             StreamUpdate::Event { event, arrived_ns } => break (event, arrived_ns),
@@ -167,10 +147,8 @@ fn apply_next_event(
         }
     };
     let reduction = chat.reduce(&event);
-    if let Some(path) = cursor_path {
-        save_cursor_to(path, event.seq);
-    }
-    Some((event, reduction, arrived_ns))
+    let persisted = cursor_path.map_or(Ok(()), |path| crate::cursor::store(path, event.seq));
+    Some((event, reduction, arrived_ns, persisted))
 }
 
 #[derive(PartialEq)]
@@ -223,6 +201,8 @@ pub struct MoteApp {
     ui_event_tx: Sender<crate::surface::SurfaceEvent>,
     ui_event_rx: Receiver<UiEventResult>,
     cursor_path: Option<PathBuf>,
+    cursor_issue: Option<String>,
+    cursor_halted: bool,
     clock: crate::display_latency::SharedClock,
     display_latency: crate::display_latency::DisplayLatency,
     latency_report_path: Option<PathBuf>,
@@ -235,6 +215,7 @@ impl MoteApp {
         rx: Receiver<StreamUpdate>,
         fixture: Option<Node>,
         clock: crate::display_latency::SharedClock,
+        cursor_warning: Option<String>,
     ) -> Self {
         crate::theme::install(&cc.egui_ctx);
         let (turn_tx, turn_rx) = mpsc::channel();
@@ -273,7 +254,9 @@ impl MoteApp {
             turn_rx,
             ui_event_tx,
             ui_event_rx,
-            cursor_path: Some(cursor_path()),
+            cursor_path: Some(crate::cursor::path()),
+            cursor_issue: cursor_warning,
+            cursor_halted: false,
             clock,
             display_latency: Default::default(),
             latency_report_path: std::env::var_os("MOTE_UI_LATENCY_REPORT").map(PathBuf::from),
@@ -281,18 +264,27 @@ impl MoteApp {
     }
 
     fn drain_events(&mut self) {
-        while let Some((event, reduction, arrived_ns)) =
-            apply_next_event(&mut self.chat, &self.rx, self.cursor_path.as_deref())
-        {
-            if let Some(reduction) = reduction {
-                self.display_latency.accept(
-                    reduction.revision,
-                    event.seq,
-                    reduction.superseded_revision,
-                    arrived_ns,
-                );
+        if !self.cursor_halted {
+            while let Some((event, reduction, arrived_ns, persisted)) =
+                apply_next_event(&mut self.chat, &self.rx, self.cursor_path.as_deref())
+            {
+                if let Some(reduction) = reduction {
+                    self.display_latency.accept(
+                        reduction.revision,
+                        event.seq,
+                        reduction.superseded_revision,
+                        arrived_ns,
+                    );
+                }
+                self.remember_pipeline_event(event);
+                if persisted.is_err() {
+                    self.cursor_issue = Some(
+                        "Cannot save the event position. Restart mote after fixing storage.".into(),
+                    );
+                    self.cursor_halted = true;
+                    break;
+                }
             }
-            self.remember_pipeline_event(event);
         }
         while let Ok((pending, result)) = self.turn_rx.try_recv() {
             self.record_turn_result(pending, result);
@@ -516,6 +508,9 @@ impl MoteApp {
         if !self.status_line.is_empty() {
             ui.colored_label(ui.visuals().error_fg_color, &self.status_line);
         }
+        if let Some(issue) = &self.cursor_issue {
+            ui.colored_label(ui.visuals().error_fg_color, issue);
+        }
         drawn_revisions
     }
 
@@ -552,6 +547,9 @@ impl MoteApp {
         }
         if !self.status_line.is_empty() {
             ui.colored_label(ui.visuals().error_fg_color, &self.status_line);
+        }
+        if let Some(issue) = &self.cursor_issue {
+            ui.colored_label(ui.visuals().error_fg_color, issue);
         }
     }
 
@@ -993,6 +991,8 @@ mod tests {
                 ui_event_tx,
                 ui_event_rx,
                 cursor_path: None,
+                cursor_issue: None,
+                cursor_halted: false,
                 clock,
                 display_latency: Default::default(),
                 latency_report_path: None,
@@ -1212,11 +1212,11 @@ mod tests {
             crate::display_latency::InstantClock::shared(), || {},
         ));
         let deadline = Instant::now() + Duration::from_secs(3);
-        while load_cursor_from(&cursor_path) < 7 && Instant::now() < deadline {
+        while crate::cursor::load(&cursor_path).seq < 7 && Instant::now() < deadline {
             app.drain_events();
             std::thread::sleep(Duration::from_millis(2));
         }
-        let cursor = load_cursor_from(&cursor_path);
+        let cursor = crate::cursor::load(&cursor_path).seq;
         let expired_surface = app.chat.messages.iter().any(|message| message.surface_seq == Some(6));
         let chat_count = app.chat.messages.iter().filter(|message| message.text == "Replayed chat").count();
         drop(app);
@@ -1308,11 +1308,11 @@ mod tests {
         ));
         let receive_through = |app: &mut MoteApp, seq| {
             let deadline = Instant::now() + Duration::from_secs(2);
-            while load_cursor_from(&cursor_path) < seq && Instant::now() < deadline {
+            while crate::cursor::load(&cursor_path).seq < seq && Instant::now() < deadline {
                 app.drain_events();
                 std::thread::sleep(Duration::from_millis(2));
             }
-            assert_eq!(load_cursor_from(&cursor_path), seq);
+            assert_eq!(crate::cursor::load(&cursor_path).seq, seq);
         };
         let ctx = egui::Context::default();
         crate::theme::install(&ctx);
@@ -1345,7 +1345,7 @@ mod tests {
         assert!(text_position(&reconnected, "Keep this card").is_some());
         render(&mut app, click(old_button));
         assert!(events.try_recv().is_err(), "expired Matrix control emitted an event");
-        assert_eq!(load_cursor_from(&cursor_path), 6);
+        assert_eq!(crate::cursor::load(&cursor_path).seq, 6);
 
         fresh.send(()).unwrap();
         receive_through(&mut app, 7);
@@ -1544,7 +1544,7 @@ mod tests {
             tx.send(Event { seq, ts:0, scope_id:"main".into(), kind:kind.into(), payload }.into()).unwrap();
         }
         app.drain_events();
-        assert_eq!(load_cursor_from(&cursor), 2);
+        assert_eq!(crate::cursor::load(&cursor).seq, 2);
         let ctx = egui::Context::default();
         crate::theme::install(&ctx);
         let output = ctx.run(egui::RawInput {
@@ -1685,7 +1685,7 @@ mod tests {
         let mut chat = ChatState::default();
 
         assert!(apply_next_event(&mut chat, &rx, Some(&cursor)).is_some());
-        assert_eq!(load_cursor_from(&cursor), 10);
+        assert_eq!(crate::cursor::load(&cursor).seq, 10);
         assert_eq!(chat.messages.len(), 1);
         drop(rx);
 
@@ -1706,10 +1706,239 @@ mod tests {
             Some(&cursor)
         )
         .is_some());
-        assert_eq!(load_cursor_from(&cursor), 11);
+        assert_eq!(crate::cursor::load(&cursor).seq, 11);
         assert_eq!(restarted.messages[0].text, "reply");
 
         std::fs::remove_file(cursor).ok();
+    }
+
+    #[test]
+    fn cursor_write_failure_keeps_reduced_event_visible_and_halts_later_events() {
+        let root = std::env::temp_dir().join(format!(
+            "mote-client-cursor-failure-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let unwritable_cursor = root.join("cursor");
+        std::fs::create_dir(&unwritable_cursor).unwrap();
+        let clock = std::sync::Arc::new(ManualClock(AtomicU64::new(20_000_000)));
+        let (mut app, tx) = app_with_clock(clock.clone());
+        app.cursor_path = Some(unwritable_cursor);
+        tx.send(StreamUpdate::timed(
+            Event {
+                seq: 10,
+                ts: 0,
+                scope_id: "main".into(),
+                kind: "ui.surface".into(),
+                payload: serde_json::json!({
+                    "surface_id":"matrix",
+                    "surface":{"type":"text","value":"Kept after failure"}
+                }),
+            },
+            10_000_000,
+        ))
+        .unwrap();
+        tx.send(Event {
+            seq: 11,
+            ts: 0,
+            scope_id: "main".into(),
+            kind: "turn.user".into(),
+            payload: serde_json::json!({"text":"Must remain queued"}),
+        }
+        .into())
+        .unwrap();
+
+        app.drain_events();
+
+        assert!(app.cursor_halted);
+        assert_eq!(app.chat.messages.len(), 1);
+        assert_eq!(
+            app.chat.messages[0].surface.as_ref(),
+            Some(&Node::Text {
+                value: "Kept after failure".into(),
+            })
+        );
+        assert_eq!(
+            app.pipeline_live_events
+                .iter()
+                .map(|event| event.seq)
+                .collect::<Vec<_>>(),
+            [10]
+        );
+
+        app.record_ui_event_result(
+            &egui::Context::default(),
+            crate::surface::SurfaceEvent::Action {
+                context: Default::default(),
+                event: "refresh".into(),
+            },
+            Ok(()),
+        );
+        app.drain_events();
+        assert_eq!(
+            app.chat.messages.len(),
+            1,
+            "later queued event reduced after failure"
+        );
+        let issue = app
+            .cursor_issue
+            .as_deref()
+            .expect("cursor issue must remain visible");
+        assert!(issue.contains("event position"));
+
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(800.0, 480.0),
+                )),
+                ..Default::default()
+            },
+            |ctx| app.draw_frame(ctx),
+        );
+        assert!(output.shapes.iter().any(|shape| matches!(
+            &shape.shape,
+            egui::Shape::Text(text) if text.galley.text().contains("event position")
+        )));
+        assert_eq!(app.display_latency.samples().len(), 1);
+        assert_eq!(app.display_latency.samples()[0].sequence, 10);
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn close_and_reopen_subscribes_from_durable_cursor_and_ignores_stale_replay() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::os::unix::net::UnixListener;
+        use std::time::{Duration, Instant};
+
+        let root = PathBuf::from("/tmp").join(format!(
+            "mcr-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let cursor_path = root.join("client_cursor");
+        let socket_path = root.join("moted.sock");
+
+        let (mut first, first_tx) = app();
+        first.cursor_path = Some(cursor_path.clone());
+        first_tx
+            .send(
+                Event {
+                    seq: 10,
+                    ts: 0,
+                    scope_id: "main".into(),
+                    kind: "turn.user".into(),
+                    payload: serde_json::json!({"text":"Before close"}),
+                }
+                .into(),
+            )
+            .unwrap();
+        first.drain_events();
+        assert_eq!(crate::cursor::load(&cursor_path).seq, 10);
+        drop(first);
+
+        let listener = UnixListener::bind(&socket_path).unwrap();
+        let (finish, finish_rx) = mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let read_request = |socket: &std::os::unix::net::UnixStream| {
+                let mut line = String::new();
+                BufReader::new(socket.try_clone().unwrap())
+                    .read_line(&mut line)
+                    .unwrap();
+                serde_json::from_str::<serde_json::Value>(&line).unwrap()
+            };
+            let status = read_request(&socket);
+            assert_eq!(status["method"], "status");
+            socket
+                .write_all(
+                    &mote_ipc::encode_frame(&mote_ipc::success_envelope(
+                        status["id"].clone(),
+                        serde_json::json!({"last_seq":11}),
+                    ))
+                    .unwrap(),
+                )
+                .unwrap();
+            let subscription = read_request(&socket);
+            assert_eq!(subscription["method"], "events.subscribe");
+            assert_eq!(subscription["params"]["cursor"], 10);
+            for (seq, text) in [(10, "Stale replay"), (11, "After reopen")] {
+                let event = Event {
+                    seq,
+                    ts: 0,
+                    scope_id: "main".into(),
+                    kind: "turn.user".into(),
+                    payload: serde_json::json!({"text":text}),
+                };
+                socket
+                    .write_all(
+                        &mote_ipc::encode_frame(&mote_ipc::event_envelope(&event)).unwrap(),
+                    )
+                    .unwrap();
+            }
+            finish_rx.recv().unwrap();
+            let event = Event {
+                seq: 12,
+                ts: 0,
+                scope_id: "main".into(),
+                kind: "talk.done".into(),
+                payload: serde_json::json!({}),
+            };
+            socket
+                .write_all(&mote_ipc::encode_frame(&mote_ipc::event_envelope(&event)).unwrap())
+                .unwrap();
+        });
+
+        let loaded = crate::cursor::load(&cursor_path);
+        assert_eq!(loaded.warning, None);
+        let (mut reopened, reopened_tx) = app();
+        reopened.cursor_path = Some(cursor_path.clone());
+        let stream_path = socket_path.clone();
+        let stream = std::thread::spawn(move || {
+            crate::stream::run(
+                &stream_path,
+                "main",
+                loaded.seq,
+                reopened_tx,
+                crate::display_latency::InstantClock::shared(),
+                || {},
+            )
+        });
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while crate::cursor::load(&cursor_path).seq < 11 && Instant::now() < deadline {
+            reopened.drain_events();
+            std::thread::sleep(Duration::from_millis(2));
+        }
+
+        assert_eq!(crate::cursor::load(&cursor_path).seq, 11);
+        assert_eq!(
+            reopened
+                .chat
+                .messages
+                .iter()
+                .map(|message| message.text.as_str())
+                .collect::<Vec<_>>(),
+            ["After reopen"]
+        );
+        drop(reopened);
+        finish.send(()).unwrap();
+        stream.join().unwrap();
+        server.join().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

@@ -7,6 +7,7 @@
 
 mod app;
 mod accessibility;
+mod cursor;
 mod display_latency;
 mod fixture;
 mod gallery;
@@ -81,8 +82,10 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             let clock = display_latency::InstantClock::shared();
+            let loaded_cursor = fixture.is_none().then(|| cursor::load(&cursor::path()));
+            let cursor_seq = loaded_cursor.as_ref().map_or(0, |loaded| loaded.seq);
+            let cursor_warning = loaded_cursor.and_then(|loaded| loaded.warning);
             if fixture.is_none() {
-                let cursor = app::load_cursor();
                 let sock = socket.clone();
                 let stream_clock = clock.clone();
                 let repaint = cc.egui_ctx.clone();
@@ -90,7 +93,7 @@ fn main() -> eframe::Result<()> {
                     if let Some(source) = source {
                         let submission_socket = sock.clone();
                         stream::run_after_connect(
-                            &sock, "main", cursor, tx, stream_clock,
+                            &sock, "main", cursor_seq, tx, stream_clock,
                             move || repaint.request_repaint(),
                             move || {
                                 if let Err(error) = submit_matrix(&submission_socket, &source) {
@@ -101,13 +104,20 @@ fn main() -> eframe::Result<()> {
                         );
                     } else {
                         stream::run(
-                            &sock, "main", cursor, tx, stream_clock,
+                            &sock, "main", cursor_seq, tx, stream_clock,
                             move || repaint.request_repaint(),
                         );
                     }
                 });
             }
-            Ok(Box::new(app::MoteApp::new(cc, socket, rx, fixture, clock)))
+            Ok(Box::new(app::MoteApp::new(
+                cc,
+                socket,
+                rx,
+                fixture,
+                clock,
+                cursor_warning,
+            )))
         }),
     )
 }

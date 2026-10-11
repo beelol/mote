@@ -85,6 +85,8 @@ impl Default for ObservationHarness {
                 ui_event_tx,
                 ui_event_rx,
                 cursor_path: None,
+                cursor_issue: None,
+                cursor_halted: false,
                 clock: crate::display_latency::InstantClock::shared(),
                 display_latency: Default::default(),
                 latency_report_path: None,
