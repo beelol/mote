@@ -47,6 +47,15 @@ pub enum ApprovalVerdict {
     Deny,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RequestState {
+    /// The original request is still running. An identical retry never redispatches it.
+    Pending,
+    /// The host run ended without a durable outcome. The same ID cannot execute again.
+    Indeterminate,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ApprovalDecision {
@@ -96,6 +105,10 @@ pub enum ClientFrame {
     try_from = "UncheckedHostFrame"
 )]
 pub enum HostFrame {
+    RequestState {
+        request_id: RequestId,
+        state: RequestState,
+    },
     Hello {
         host_id: HostId,
         protocol_major: u16,
@@ -130,6 +143,10 @@ pub enum HostFrame {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum UncheckedHostFrame {
+    RequestState {
+        request_id: RequestId,
+        state: RequestState,
+    },
     Hello {
         host_id: HostId,
         protocol_major: u16,
@@ -168,6 +185,9 @@ impl TryFrom<UncheckedHostFrame> for HostFrame {
 
     fn try_from(value: UncheckedHostFrame) -> Result<Self, HostError> {
         Ok(match value {
+            UncheckedHostFrame::RequestState { request_id, state } => {
+                Self::RequestState { request_id, state }
+            }
             UncheckedHostFrame::Hello {
                 host_id,
                 protocol_major,

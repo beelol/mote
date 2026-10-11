@@ -6,6 +6,7 @@ pub mod noise;
 pub mod pairing;
 pub mod server;
 pub mod client;
+mod carrier;
 
 pub use client::GatewayClient;
 pub use server::GatewayServer;

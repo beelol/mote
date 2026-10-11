@@ -1,6 +1,6 @@
 use crate::{
-    client::{read_packet, write_packet},
-    DeviceStore, GatewayConfig, HostIdentity, NoiseSession, PairingOffer, PendingHandshake,
+    carrier::Socket, DeviceStore, GatewayConfig, HostIdentity, NoiseSession, PairingOffer,
+    PendingHandshake,
 };
 use anyhow::{ensure, Result};
 use mote_ipc::{Actor, Dispatch};
@@ -10,7 +10,6 @@ use mote_protocol::{
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
-    io::Read,
     net::{SocketAddr, TcpListener, TcpStream},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -51,9 +50,10 @@ impl GatewayServer {
             "gateway must bind IPv4 loopback"
         );
         let host = HostIdentity::load_or_create(&config.data_dir)?;
-        let store = DeviceStore::open(&config.data_dir.join("mote.db"), host.host_id())?;
+        let mut store = DeviceStore::open(&config.data_dir.join("mote.db"), host.host_id())?;
         let listener = TcpListener::bind(config.bind)?;
         let address = listener.local_addr()?;
+        store.begin_run()?;
         config.bind = address;
         let shared = Arc::new(Shared {
             config,
@@ -144,14 +144,10 @@ impl Drop for GatewayServer {
         }
     }
 }
-fn serve<D: Dispatch>(mut stream: TcpStream, shared: &Shared, dispatch: &D) -> Result<()> {
-    stream.set_read_timeout(Some(shared.config.handshake_timeout))?;
-    stream.set_write_timeout(Some(shared.config.handshake_timeout))?;
-    let mut mode = [0];
-    stream.read_exact(&mut mode)?;
-    ensure!(mode[0] <= 1, "invalid handshake mode");
-    let first = read_packet(&mut stream, 4096)?;
-    let (mut session, second) = if mode[0] == 1 {
+fn serve<D: Dispatch>(stream: TcpStream, shared: &Shared, dispatch: &D) -> Result<()> {
+    let (mut stream, pairing) = Socket::accept(stream, shared.config.handshake_timeout)?;
+    let first = stream.read(4096, Some(shared.config.handshake_timeout))?;
+    let (mut session, second) = if pairing {
         let pending = {
             let mut offer = shared.offer.lock().unwrap();
             PendingHandshake::pairing(
@@ -196,14 +192,13 @@ fn serve<D: Dispatch>(mut stream: TcpStream, shared: &Shared, dispatch: &D) -> R
             &first,
         )?
     };
-    write_packet(&mut stream, &second)?;
-    stream.set_read_timeout(None)?;
+    stream.write(&second)?;
     let actor = Actor::PairedDevice {
         host_id: session.host_id().clone(),
         device_id: session.client_id().into(),
     };
     while shared.running.load(Ordering::Acquire) {
-        let bytes = read_packet(&mut stream, 65_535)?;
+        let bytes = stream.read(65_535, None)?;
         let Some(frame) = session.read_client(&bytes)? else {
             continue;
         };
@@ -322,13 +317,17 @@ fn serve<D: Dispatch>(mut stream: TcpStream, shared: &Shared, dispatch: &D) -> R
                 .unwrap()
                 .claim(session.client_id(), id.as_str(), &hash);
             match claim {
-                Ok(Some(outcome)) => outcome,
+                Ok(crate::devices::Claim::Recorded(outcome)) => outcome,
+                Ok(crate::devices::Claim::Unfinished(state)) => HostFrame::RequestState {
+                    request_id: id.clone(),
+                    state,
+                },
                 Err(_) => error(
                     Some(id.clone()),
                     HostErrorCode::InvalidRequest,
-                    "request already claimed or changed",
+                    "request ID reused for different intent",
                 ),
-                Ok(None) => {
+                Ok(crate::devices::Claim::New) => {
                     let outcome = match dispatch.call_with_context(&actor, method, params) {
                         Ok(result) => HostFrame::Result {
                             request_id: id.clone(),
@@ -346,6 +345,10 @@ fn serve<D: Dispatch>(mut stream: TcpStream, shared: &Shared, dispatch: &D) -> R
                         ),
                     };
                     let outcome = redacted(&outcome)?;
+                    ensure!(
+                        shared.running.load(Ordering::Acquire),
+                        "gateway stopped before recording outcome"
+                    );
                     shared.store.lock().unwrap().finish_request(
                         session.client_id(),
                         id.as_str(),
@@ -374,7 +377,7 @@ fn redacted(frame: &HostFrame) -> Result<HostFrame> {
         HostFrame::Snapshot { snapshot } => {
             for thread in &mut snapshot.threads {
                 for message in &mut thread.messages {
-                    message.text = private_text(&message.text);
+                    message.text = mote_redact::redact(&private_text(&message.text));
                 }
             }
             for surface in &mut snapshot.surfaces {
@@ -384,30 +387,44 @@ fn redacted(frame: &HostFrame) -> Result<HostFrame> {
                 private_map(&mut approval.payload);
             }
         }
+        HostFrame::Error { error, .. } => {
+            error.message = mote_redact::redact(&private_text(&error.message))
+        }
         _ => {}
     }
-    Ok(serde_json::from_str(&mote_redact::redact(
-        &serde_json::to_string(&frame)?,
-    ))?)
+    Ok(frame)
 }
 
 fn private_map(map: &mut serde_json::Map<String, serde_json::Value>) {
-    for (key, value) in map {
+    for (key, mut value) in std::mem::take(map) {
         if matches!(
             key.as_str(),
             "path" | "resolved_path" | "socket" | "data_dir" | "profile_path"
         ) {
-            *value = serde_json::Value::String("[local path]".into());
+            value = serde_json::Value::String("[local path]".into());
+        } else if matches!(
+            key.to_ascii_lowercase().as_str(),
+            "access_token"
+                | "refresh_token"
+                | "id_token"
+                | "api_key"
+                | "apikey"
+                | "password"
+                | "secret"
+        ) && value.is_string()
+        {
+            value = serde_json::Value::String("[redacted]".into());
         } else {
-            private_payload(value);
+            private_payload(&mut value);
         }
+        map.insert(mote_redact::redact(&key), value);
     }
 }
 fn private_payload(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::Object(map) => private_map(map),
         serde_json::Value::Array(values) => values.iter_mut().for_each(private_payload),
-        serde_json::Value::String(text) => *text = private_text(text),
+        serde_json::Value::String(text) => *text = mote_redact::redact(&private_text(text)),
         _ => {}
     }
 }
@@ -435,9 +452,9 @@ fn private_text(text: &str) -> String {
         })
         .collect()
 }
-fn send(stream: &mut TcpStream, session: &mut NoiseSession, frame: &HostFrame) -> Result<()> {
+fn send(stream: &mut Socket, session: &mut NoiseSession, frame: &HostFrame) -> Result<()> {
     for bytes in session.write_host(&redacted(frame)?)? {
-        write_packet(stream, &bytes)?;
+        stream.write(&bytes)?;
     }
     Ok(())
 }

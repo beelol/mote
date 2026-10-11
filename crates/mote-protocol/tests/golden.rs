@@ -33,8 +33,27 @@ fn host_frames_preserve_the_golden_wire_contract() {
         include_str!("golden/snapshot.json"),
         include_str!("golden/acknowledgement.json"),
         include_str!("golden/error.json"),
+        include_str!("golden/request-pending.json"),
+        include_str!("golden/request-indeterminate.json"),
     ] {
         round_trip::<HostFrame>(fixture);
+    }
+}
+
+#[test]
+fn request_states_are_typed_correlated_and_fail_closed() {
+    for state in ["pending", "indeterminate"] {
+        round_trip::<HostFrame>(
+            &json!({"type":"request_state","request_id":"sk-abcdefghijklmnopqrstuv","state":state})
+                .to_string(),
+        );
+    }
+    for malformed in [
+        json!({"type":"request_state","request_id":"id","state":"failed"}),
+        json!({"type":"request_state","request_id":"","state":"pending"}),
+        json!({"type":"request_state","request_id":"id","state":"pending","retry":true}),
+    ] {
+        assert!(serde_json::from_value::<HostFrame>(malformed).is_err());
     }
 }
 

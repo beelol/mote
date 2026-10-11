@@ -23,6 +23,7 @@ No model pulls, subscription logins, LAN listeners or external service changes w
 `paired_hosts_with_colliding_ids_keep_state_and_actions_isolated` starts two real daemon fixtures.
 Each host generates and persists its own 0600 identity key under a 0700 directory.
 Each host binds an encrypted gateway to `127.0.0.1:0`.
+The reviewed carrier performs a WebSocket HTTP upgrade and carries Noise messages in binary frames.
 The same-user Unix owner opens an offer, reads the pending device identity and confirms it.
 Each client completes Noise IKpsk1 pairing and pins that host's public key.
 
@@ -89,3 +90,26 @@ It does not claim an iPad Simulator journey or a native credential-store backend
 The desktop queries the host identity at startup.
 If the host is unavailable then, cursor persistence stays disabled for that window.
 Recovery integration belongs to the next host task.
+
+## Review fix verification
+
+Date: 2026-10-11.
+Review base: `ab0e5b4f93c545e1abc515efbb65cc71d5024c62`.
+The environment and fixture scope above are unchanged.
+The same two real hosts pair over WebSocket binary frames after the carrier correction.
+The colliding IDs, five switches and isolated actions above remain covered.
+
+```text
+$ cargo test -p moted paired_hosts_with_colliding_ids
+paired_hosts_with_colliding_ids_keep_state_and_actions_isolated ... ok
+test result: ok. 1 passed; 0 failed
+exit status: 0
+```
+
+The command used approved local socket access.
+Output: `/private/tmp/mote-task4-review.NHXtxx/green-two-host.log`.
+The final `cargo test --workspace` run passed 549 tests across 44 suites with exit status 0.
+The final `cargo clippy --workspace -- -D warnings` run completed with exit status 0 and no warnings.
+Outputs: `/private/tmp/mote-task4-review.NHXtxx/workspace-final.log` and
+`/private/tmp/mote-task4-review.NHXtxx/clippy-final.log`.
+The workspace test warning still names the unchanged unused observation helpers.

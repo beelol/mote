@@ -10,7 +10,7 @@ mod version;
 pub use digest::ActionDigest;
 pub use error::{HostError, HostErrorCode};
 pub use frame::{
-    ApprovalDecision, ApprovalVerdict, ClientFrame, Event, HostFrame, TypedInteraction,
+    ApprovalDecision, ApprovalVerdict, ClientFrame, Event, HostFrame, RequestState, TypedInteraction,
 };
 pub use snapshot::{
     ChatMessage, CommittedSurface, HostSnapshot, MessageRole, MessageStatus, PendingApproval,

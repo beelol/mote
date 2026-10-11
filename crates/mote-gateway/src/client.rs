@@ -1,30 +1,12 @@
+use crate::carrier::Socket;
 use crate::{ClientCredential, GatewayConfig, NoiseSession};
 use anyhow::Result;
 use mote_protocol::{ClientFrame, HostFrame};
-use std::{
-    io::{Read, Write},
-    net::{SocketAddr, TcpStream},
-};
+use std::net::SocketAddr;
 
 pub struct GatewayClient {
-    stream: TcpStream,
+    stream: Socket,
     session: NoiseSession,
-}
-
-pub(crate) fn write_packet(stream: &mut TcpStream, bytes: &[u8]) -> Result<()> {
-    stream.write_all(&(u32::try_from(bytes.len())?).to_be_bytes())?;
-    stream.write_all(bytes)?;
-    Ok(())
-}
-
-pub(crate) fn read_packet(stream: &mut TcpStream, max: usize) -> Result<Vec<u8>> {
-    let mut size = [0; 4];
-    stream.read_exact(&mut size)?;
-    let size = u32::from_be_bytes(size) as usize;
-    anyhow::ensure!(size > 0 && size <= max, "invalid packet length");
-    let mut bytes = vec![0; size];
-    stream.read_exact(&mut bytes)?;
-    Ok(bytes)
 }
 
 impl GatewayClient {
@@ -56,14 +38,13 @@ impl GatewayClient {
         first: &[u8],
         pairing: bool,
     ) -> Result<Self> {
-        let mut stream = TcpStream::connect_timeout(&address, config.handshake_timeout)?;
-        stream.set_read_timeout(Some(config.confirm_timeout + config.handshake_timeout))?;
-        stream.set_write_timeout(Some(config.handshake_timeout))?;
-        stream.write_all(&[u8::from(pairing)])?;
-        write_packet(&mut stream, first)?;
-        let second = read_packet(&mut stream, 4096)?;
+        let mut stream = Socket::connect(address, pairing, config.handshake_timeout)?;
+        stream.write(first)?;
+        let second = stream.read(
+            4096,
+            Some(config.confirm_timeout + config.handshake_timeout),
+        )?;
         let session = handshake.finish(&second)?;
-        stream.set_read_timeout(Some(std::time::Duration::from_secs(5)))?;
         Ok(Self { stream, session })
     }
 
@@ -72,18 +53,20 @@ impl GatewayClient {
     }
     pub fn send(&mut self, frame: &ClientFrame) -> Result<()> {
         for bytes in self.session.write_client(frame)? {
-            write_packet(&mut self.stream, &bytes)?;
+            self.stream.write(&bytes)?;
         }
         Ok(())
     }
     pub fn receive(&mut self) -> Result<HostFrame> {
         loop {
-            let bytes = read_packet(&mut self.stream, 65_535)?;
+            let bytes = self.stream.read(65_535, None)?;
             if let Some(frame) = self.session.read_host(&bytes)? {
                 return Ok(frame);
             }
         }
     }
+    /// Waits for an authoritative reply without an application deadline.
+    /// RequestState replies are nonterminal. A transport error does not prove action failure.
     pub fn exchange(&mut self, frame: &ClientFrame) -> Result<HostFrame> {
         self.send(frame)?;
         self.receive()

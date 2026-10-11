@@ -33,6 +33,7 @@ They prove ordered encrypted frames, replay and reorder rejection, chunk bounds 
 after identity, direction, framing or authentication failure.
 
 The loopback suite completes encrypted pairing, hello, status, turn and subscription.
+The carrier uses a real WebSocket HTTP upgrade and binary frames for every Noise message.
 It records zero dispatches before successful authentication.
 Plaintext application input is rejected before dispatch.
 Expired and reused offers cannot establish a session.
@@ -68,7 +69,18 @@ An identical retry returns its stored terminal outcome.
 A changed intent under that ID fails.
 Gateway restart preserves completed outcomes.
 A claim without a recorded terminal outcome remains inert and is not dispatched again.
+An identical retry while the original host run is active receives a typed `pending` state.
+It can retry the same ID to retrieve the eventual stored outcome without executing again.
+Gateway startup marks all unfinished claims from prior runs as typed `indeterminate` states.
+Legacy rows with a NULL outcome and no run owner receive the same fail-closed treatment.
+Those IDs never become automatically retryable for execution.
+An operator must reconcile the effect before intentionally creating a new action with a new ID.
+Old run ownership cannot record a late result over an interrupted claim.
+The client has no implicit five-second application deadline.
+A transport failure does not establish that the action failed.
 Secrets and local path tokens are removed from remote results and events.
+Redaction applies to application payloads, not protocol envelope identifiers.
+An opaque request ID shaped like a secret survives storage, gateway restart and outbox correlation.
 Remote turn input is redacted before reaching the daemon's model path.
 The real daemon turn fixture records two approved local model calls and two ledger rows.
 It sends no secret to the scripted model, stores one redacted user event and makes no extra
@@ -129,3 +141,68 @@ This evidence verifies the encrypted loopback daemon and authenticated client fi
 It does not claim the deployed iPad Simulator journey required by IPAD-03.
 Bonjour, LAN operation, physical iPad, sleep and wake, TestFlight and cloud work remain deferred.
 No model was pulled and no subscription harness was used.
+
+## Review fix evidence
+
+Date: 2026-10-11.
+Review base: `ab0e5b4f93c545e1abc515efbb65cc71d5024c62`.
+The environment above is unchanged.
+The controller selected the approved WebSocket architecture.
+The gateway uses `tokio-tungstenite` 0.30 with the existing Noise protocol.
+The binary-frame client asserts HTTP status 101, zero dispatches before authentication,
+one authenticated turn and rejection of plaintext application bytes on an upgraded connection.
+The tamper, revoked-device, vector and application-boundary fixtures remain in the full suite.
+
+```text
+$ cargo test -p mote-gateway --test loopback websocket_http_upgrade_and_binary_noise_frames_authenticate_before_dispatch
+FAILED: HTTP upgrade returned Connection reset by peer.
+exit status: 101
+
+$ cargo test -p mote-gateway --test loopback opaque_request_id_survives_redaction_restart_and_outbox_correlation
+FAILED: actual request_id "[redacted]", expected "sk-abcdefghijklmnopqrstuv".
+exit status: 101
+
+$ cargo test -p mote-gateway --test loopback concurrent_slow_turn
+FAILED: actual terminal invalid_request, expected typed pending state.
+exit status: 101
+
+$ cargo test -p mote-gateway --test loopback interrupted_claim
+FAILED: actual terminal invalid_request, expected typed indeterminate state.
+exit status: 101
+
+$ cargo test -p mote-protocol --test golden request_states
+FAILED: unknown variant request_state.
+exit status: 101
+
+$ cargo test -p mote-gateway -p mote-protocol
+47 passed; 0 failed.
+Loopback: 11 passed; 0 failed.
+Protocol goldens and strict decoding: 13 passed; 0 failed.
+exit status: 0
+
+$ cargo test --workspace
+All 44 unit, integration and documentation suites passed.
+Total: 549 passed; 0 failed.
+exit status: 0
+
+$ cargo clippy --workspace -- -D warnings
+Finished dev profile with no warnings.
+exit status: 0
+```
+
+The slow-turn fixture takes 5.2 seconds and dispatches once across concurrent retries.
+A separate mutation restored the old five-second deadline and failed with `deadline has elapsed`.
+Restoring the correction made the same test pass.
+The interrupted fixture stops the gateway during a running turn, restarts it and retries the same ID.
+It receives `indeterminate` before and after the old worker finishes.
+The old connection receives no terminal success and the action is not dispatched a second time.
+The redaction suite also catches secret-shaped application map keys without changing the envelope ID.
+Unknown request states, empty request IDs and extra state fields still fail strict major-1 decoding.
+
+Socket-dependent commands used approved local socket access.
+Focused output: `/private/tmp/mote-task4-review.NHXtxx/green-focused-final.log`.
+Mutation output: `/private/tmp/mote-task4-review.NHXtxx/red-timeout-mutation.log`.
+Workspace output: `/private/tmp/mote-task4-review.NHXtxx/workspace-final.log`.
+Clippy output: `/private/tmp/mote-task4-review.NHXtxx/clippy-final.log`.
+The workspace test warning still names the unchanged unused observation helpers.
+This correction does not add retry scheduling, native iPad recovery or automatic reconciliation.
