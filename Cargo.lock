@@ -2564,8 +2564,11 @@ version = "0.0.0"
 dependencies = [
  "eframe",
  "egui",
+ "egui-wgpu",
+ "image",
  "mote-client-core",
  "raw-window-handle",
+ "serde_json",
 ]
 
 [[package]]

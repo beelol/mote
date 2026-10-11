@@ -247,7 +247,8 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     **Verify:** drive scrolling, text entry and every control in two iPad sizes and both orientations;
     capture first, midpoint and final transition frames at 60 frames per second; reduced motion must
     swap immediately with only a brief red outline pulse.
-    Interactive shell progress and the remaining presentation-timing gap are recorded in
+    Interactive shell, GPU capture and renderer-cadence evidence are recorded with the remaining
+    presentation-timing limitation in
     [IPAD-02](docs/verification/IPAD-02.md).
   - [ ] **IPAD-03** The simulator pairs with `moted` on the Mac, streams live chat and committed Matrix
     surfaces, returns typed interactions and reconnects from its cursor. **Verify:** complete a live

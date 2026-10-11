@@ -16,5 +16,10 @@ mote-client-core.workspace = true
 [target.'cfg(target_os = "ios")'.dependencies]
 raw-window-handle = "0.6.2"
 
+[target.'cfg(all(target_os = "ios", target_abi = "sim"))'.dependencies]
+egui-wgpu = "=0.31.0"
+image = { version = "=0.25.10", default-features = false, features = ["png"] }
+serde_json.workspace = true
+
 [dev-dependencies]
 mote-client-core = { workspace = true, features = ["test-observation"] }

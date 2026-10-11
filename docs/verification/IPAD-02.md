@@ -321,7 +321,206 @@ Fresh `cargo clippy --workspace -- -D warnings` exited zero in 0.31 seconds.
 The negative-case Xcode process stalled after its completed failing test.
 Only that process was stopped after more than three minutes, preserving its log and partial bundle.
 
-## Transition evidence gap
+## Simulator timing diagnostic
+
+The opt-in `--mote-timing-probe` is compiled only for the Apple iOS Simulator.
+It does not change production defaults or the frozen Matrix contract.
+The app starts from Layout and changes to Form using the real animation clock.
+It never replaces `ctx.input.time`.
+It then alternates Layout and Form every half second during the sustained interval.
+The native test waits without screenshot polling during measurement.
+The two Simulator sizes run sequentially to avoid competing during that interval.
+
+Foundation resolves the app's Documents directory through `NSDocumentDirectory`.
+The bridge copies no environment path and does not assume `HOME`.
+Every launch creates a fresh directory with raw timestamps and original GPU PNGs.
+The final diagnostic retains one warmup image and three transition images.
+Compression and file writes occur after the measured interval, on a worker thread.
+The assets here were exported explicitly from the app container located with
+`xcrun simctl get_app_container <device> local.mote.simulator data`.
+
+The diagnostic distinguishes four boundaries.
+
+| Boundary | Measurement |
+| --- | --- |
+| App update | Unique natural input time, plus monotonic `Instant` milliseconds. Duplicate egui passes are excluded. |
+| Renderer paint | A no-draw `egui_wgpu::CallbackTrait::paint` timestamps an actual render-pass encoding invocation. |
+| GPU image | `ViewportCommand::Screenshot` returns an actual WGPU texture copy through `Event::Screenshot`. |
+| Presentation and scanout | Unknown. The report stores null timestamps and makes no display scanout claim. |
+
+The screenshot command is consumed on the following render pass in the pinned eframe backend.
+A 32-bit red and green marker in each actual image independently identifies its rendered sequence.
+The report retains the request sequence, decoded image sequence, later delivery time and actual
+new-layout-relative update time.
+The marker samples lie at three-point intervals near the upper-right safe area.
+The literal-pixel decoder test rejects an absent marker.
+The reported cadence is render-pass encoding cadence, not nominal display refresh rate.
+The ten-second measurement window is 4000 through 14000 ms after launch.
+Raw tuples in `app_updates` are sequence, monotonic milliseconds and natural input seconds.
+Raw tuples in `render_pass_encodings` are sequence and monotonic milliseconds.
+Summary tuples are measured fps, p95 interval milliseconds and maximum interval milliseconds.
+
+Four diagnostic regressions failed before implementation, then passed.
+They cover duplicate passes, prearmed capture timing, literal marker pixels and measured intervals.
+The opt-in launch regression also failed before implementation, then passed.
+All 16 iPad Rust tests passed after implementation.
+Strict Apple Simulator target clippy passed with no warnings.
+
+The Debug native diagnostic completed four runs and passed its completion test in 100.188 seconds.
+This is not a passing transition-timing claim.
+First-time GPU readback introduced a 346 ms update gap.
+Its normal portrait image times were 0, 443.839 and 450.057 ms.
+Other Debug runs produced midpoint images around 133 ms and final images around 150 ms.
+The selected [Debug report](assets/IPAD-02/timing/debug-11-portrait/report.json) and all three GPU images
+preserve that failed temporal trial.
+The other Debug trials remain in `target/ipad-probe-debug-11`.
+
+The first Release Xcode build failed before app launch because an uncached host build script
+reported `ld: library 'System' not found`.
+The existing locked Rust Release build succeeded outside the Xcode shell in 12.47 seconds.
+The subsequent Xcode Release build succeeded without changing the app or build script.
+
+```text
+cargo build --locked -p mote-ios --target aarch64-apple-ios-sim --release
+Finished release profile in 12.47s
+exit 0
+
+xcodebuild -project ios/Mote/Mote.xcodeproj -scheme Mote -configuration Release -destination 'platform=iOS Simulator,id=43F2F6ED-5C86-4121-B03F-40FE38891C4E' -derivedDataPath target/ipad-release-derived -resultBundlePath target/ipad-task6-probe-release-11-retry.xcresult -only-testing:MoteUITests/MoteUITests/testOptInTimingProbeInBothOrientations test
+Executed 1 test, with 0 failures in 99.309 seconds
+** TEST SUCCEEDED **
+exit 0
+```
+
+The Release measurements occurred on 2026-10-11, starting at 07:56 PDT.
+They use the same SDK, OS, Rust and iPad runtimes recorded above.
+The initial four 11-inch runs captured 0, approximately 66.7 and approximately 133.3 ms.
+Their measured render-pass encoding cadence was approximately 60 fps.
+The superseded successful initial Release exports remain in `target/ipad-probe-before-warmup`.
+The final eight runs and both failed temporal trials are retained under `assets/IPAD-02/timing`.
+
+The first 13-inch Release portrait trial exposed a cold capture-pipeline cost.
+Its three image times were 0, 350.060 and 366.682 ms despite a later encoding cadence of 60.002 fps.
+The [cold 13-inch report](assets/IPAD-02/timing/release-13-portrait/report.json) and its original images
+are retained as a failed temporal trial.
+The other three initial 13-inch runs captured 0, approximately 66.7 and approximately 133.3 ms.
+The completion-only native test passed in 99.814 seconds.
+That test result alone does not establish acceptable capture timing.
+
+The probe now requests one warmup GPU image while Layout remains selected.
+It waits for an actual `Event::Screenshot` with a valid decoded marker before arming the transition.
+The two regressions for first-frame prewarming and the GPU completion barrier failed before the fix.
+They passed after the fix, along with all 18 iPad Rust tests.
+The warmup PNG and its update and delivery timestamps are retained separately in `warmup_capture`.
+This is probe warmup, not a production performance fix.
+No first-use cost is hidden or counted as successful transition timing.
+
+The repeated native tests ran sequentially on 2026-10-11 from 08:06 through 08:11 PDT.
+The 11-inch completion test passed in 100.287 seconds.
+The 13-inch completion test passed in 100.015 seconds.
+
+```text
+xcodebuild -project ios/Mote/Mote.xcodeproj -scheme Mote -configuration Release -destination 'platform=iOS Simulator,id=43F2F6ED-5C86-4121-B03F-40FE38891C4E' -derivedDataPath target/ipad-release-derived -resultBundlePath target/ipad-task6-probe-warm-11.xcresult -only-testing:MoteUITests/MoteUITests/testOptInTimingProbeInBothOrientations test
+Executed 1 test, with 0 failures in 100.287 seconds
+** TEST SUCCEEDED **
+exit 0
+
+xcodebuild -project ios/Mote/Mote.xcodeproj -scheme Mote -configuration Release -destination 'platform=iOS Simulator,id=E1982F50-C8EF-47E9-9854-715268304F2B' -derivedDataPath target/ipad-release-derived -resultBundlePath target/ipad-task6-probe-warm-13.xcresult -only-testing:MoteUITests/MoteUITests/testOptInTimingProbeInBothOrientations test-without-building
+Executed 1 test, with 0 failures in 100.015 seconds
+** TEST EXECUTE SUCCEEDED **
+exit 0
+```
+
+The warmup-barrier reports show these measured results.
+
+| Repeated Release run | Actual image times, ms | Render encoding fps | p95 interval, ms | Maximum interval, ms | Warmup delivered, ms after launch |
+| --- | --- | --- | --- | --- | --- |
+| [11 portrait](assets/IPAD-02/timing/warm-11-portrait/report.json) | 0, 66.680, 133.356 | 60.001 | 16.761 | 17.102 | 302.714 |
+| [11 portrait Reduced Motion](assets/IPAD-02/timing/warm-11-portrait-reduced/report.json) | 0, 66.661, 133.321 | 60.000 | 16.736 | 16.785 | 310.760 |
+| [11 landscape](assets/IPAD-02/timing/warm-11-landscape/report.json) | 0, 66.663, 133.337 | 60.001 | 16.745 | 16.982 | 347.367 |
+| [11 landscape Reduced Motion](assets/IPAD-02/timing/warm-11-landscape-reduced/report.json) | 0, 66.659, 133.337 | 60.001 | 16.741 | 16.788 | 318.958 |
+| [13 portrait](assets/IPAD-02/timing/warm-13-portrait/report.json) | 0, 66.680, 133.352 | 60.001 | 16.758 | 16.994 | 335.377 |
+| [13 portrait Reduced Motion](assets/IPAD-02/timing/warm-13-portrait-reduced/report.json) | 0, 66.667, 133.336 | 60.001 | 16.737 | 16.890 | 314.414 |
+| [13 landscape](assets/IPAD-02/timing/warm-13-landscape/report.json) | 0, 66.671, 133.341 | 60.001 | 16.756 | 17.066 | 325.696 |
+| [13 landscape Reduced Motion](assets/IPAD-02/timing/warm-13-landscape-reduced/report.json) | 0, 66.674, 133.334 | 60.000 | 16.739 | 16.828 | 327.771 |
+
+These are three images from the same natural transition in each run.
+No frames from separate transitions are spliced together.
+The final image is the first sampled frame after the 120 ms duration, at approximately 133 ms.
+The original PNGs show new Form text immediately at the first frame.
+Normal midpoint images show square-pixel borders moving to the new control bounds.
+Normal final images show settled borders with no transition particles.
+Reduced Motion swaps the layout immediately with no square particles.
+Its outline is stronger at the first frame, fades by the midpoint and is absent at the final frame.
+The unchanged navigation and composer retain their bounds throughout the captures.
+
+The following independent raw-report check passed for all eight final runs.
+The midpoint tolerance is 40 through 90 ms and the final tolerance is 120 through 150 ms.
+The measured ten-second render cadence must be at least 60 fps with p95 at most 20 ms.
+These bounds are diagnostic checks, not a substitute for presentation timestamps.
+
+```sh
+for report in docs/verification/assets/IPAD-02/timing/warm-*/report.json; do
+  jq -e '(.captures | length) == 3 and .warmup_capture.decoded_render_sequence != null and .warmup_capture.gpu_event_received_ms < .transition_changed_at_ms and .captures[0].transition_elapsed_ms == 0 and .captures[1].transition_elapsed_ms >= 40 and .captures[1].transition_elapsed_ms <= 90 and .captures[2].transition_elapsed_ms >= 120 and .captures[2].transition_elapsed_ms <= 150 and .render_encoding_cadence_fps_p95_ms_max_ms[0] >= 60 and .render_encoding_cadence_fps_p95_ms_max_ms[1] <= 20 and .present_timestamps == null and .scanout_timestamps == null' "$report"
+done
+```
+
+Output was eight `true` lines with exit zero.
+
+The read-only [pixel comparison](../../ios/compare-probe-frames.swift) uses the original GPU images.
+It defines red as R greater than 20, R greater than twice G and R greater than twice B.
+It excludes the top and bottom 400 physical pixel rows from each two-times-scale image.
+That central region excludes the diagnostic marker, navigation and composer.
+It counts red pixels outside an eight-pixel dilation of the final red border.
+It also sums the red-channel intensity over red pixels to quantify the fading outline.
+The final-frame outside count is zero by construction and is not independent evidence.
+The first and midpoint comparisons are independent of that final mask.
+
+```sh
+xcrun swiftc -O -module-cache-path target/ipad-probe-swift-cache ios/compare-probe-frames.swift -o target/ipad-probe-compare
+target/ipad-probe-compare docs/verification/assets/IPAD-02/timing/warm-*
+```
+
+```text
+warm-11-landscape red=[46518, 34001, 17873] outsideFinalBorder8px=[28370, 0, 0] redEnergy=[4532422, 4317204, 2241537]
+warm-11-landscape-reduced red=[24065, 24026, 17873] outsideFinalBorder8px=[0, 0, 0] redEnergy=[4337790, 3212645, 2241537]
+warm-11-portrait red=[40644, 34390, 18204] outsideFinalBorder8px=[22352, 2, 0] redEnergy=[3938120, 4350545, 2275751]
+warm-11-portrait-reduced red=[24396, 24357, 18204] outsideFinalBorder8px=[0, 0, 0] redEnergy=[4372008, 3246857, 2275751]
+warm-13-landscape red=[50502, 35330, 19201] outsideFinalBorder8px=[31026, 1, 0] redEnergy=[4946758, 4455241, 2379649]
+warm-13-landscape-reduced red=[25393, 25354, 19201] outsideFinalBorder8px=[0, 0, 0] redEnergy=[4475902, 3350757, 2379649]
+warm-13-portrait red=[42246, 32577, 16449] outsideFinalBorder8px=[25522, 0, 0] redEnergy=[4088134, 4169051, 2093441]
+warm-13-portrait-reduced red=[22641, 22602, 16449] outsideFinalBorder8px=[0, 0, 0] redEnergy=[4189694, 3064549, 2093441]
+exit 0
+```
+
+Normal first images have 22352 through 31026 red pixels away from the final border region.
+Normal midpoint images have more red border pixels than the settled final image.
+All Reduced Motion first and midpoint images have zero red pixels away from that region.
+Their red-channel energy strictly decreases across the first, midpoint and final images.
+Those measurements support particles in the normal transition and an outline-only fading pulse
+in Reduced Motion within the analyzed region.
+The original full-frame PNGs remain available for independent inspection.
+
+Final verification on 2026-10-11 from 08:14 through 08:15 PDT used the environment recorded above.
+
+```text
+cargo test --workspace
+53 test result summaries: 622 passed, 0 failed, 2 ignored
+exit 0
+
+cargo clippy --workspace -- -D warnings
+Finished dev profile in 0.47s
+exit 0
+
+cargo check -p mote-ios --target aarch64-apple-ios-sim
+Finished dev profile in 10.55s
+exit 0
+
+cargo clippy -p mote-ios --target aarch64-apple-ios-sim -- -D warnings
+Finished dev profile in 1.01s
+exit 0
+```
+
+## Remaining presentation-timing limitation
 
 The core transition regression suite runs as part of the workspace tests.
 It covers changed square border particles, unchanged structural identity, immediate new hit targets,
@@ -350,8 +549,11 @@ The nominal timestamp denominator is not a measured 600 fps.
 The approximately 10 fps whole-recording average includes idle frames.
 Short timestamp intervals include repeated surface commits and cannot prove sustained 60 fps.
 The capture remains local in `/private/tmp`.
-No first, approximately 60 ms and 120 ms Simulator frame sequence at verified 60 fps is claimed.
-No actual presented-frame timing measurement or temporally resolved Reduced Motion pulse is claimed.
-This missing temporal evidence keeps IPAD-02 open.
+The newer opt-in probe provides actual GPU images and about 60 render-pass encodings per second.
+It also provides a temporally resolved native Reduced Motion outline pulse.
+It does not provide `SurfaceTexture::present` completion or actual scanout timestamps.
+The final GPU sample is approximately 133 ms rather than an exact 120 ms image.
+No stronger presented-frame timing claim is made.
+IPAD-02 remains open while that limitation is reviewed against the full Verify clause.
 
 There is no physical touch, privacy-prompt, VoiceOver, signing or TestFlight evidence here.

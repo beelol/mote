@@ -8,6 +8,8 @@ pub struct MoteApp {
     composer: String,
     last_event: String,
     reduced_motion: bool,
+    #[cfg(all(target_os = "ios", target_abi = "sim"))]
+    probe: Option<crate::probe::native::Probe>,
 }
 
 impl Default for MoteApp {
@@ -17,13 +19,26 @@ impl Default for MoteApp {
             composer: String::new(),
             last_event: "No interaction yet".into(),
             reduced_motion: false,
+            #[cfg(all(target_os = "ios", target_abi = "sim"))]
+            probe: None,
         }
     }
 }
 
 impl eframe::App for MoteApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.draw(ctx, crate::safe_area());
+        let safe_area = crate::safe_area();
+        #[cfg(all(target_os = "ios", target_abi = "sim"))]
+        if let Some(probe) = self.probe.as_mut() {
+            if let Some(page) = probe.begin(ctx) {
+                self.gallery.select(page);
+            }
+        }
+        self.draw(ctx, safe_area);
+        #[cfg(all(target_os = "ios", target_abi = "sim"))]
+        if let Some(probe) = self.probe.as_mut() {
+            probe.after_draw(ctx, safe_area);
+        }
     }
 }
 
@@ -34,6 +49,11 @@ impl MoteApp {
             app.gallery.select(page);
         }
         app.reduced_motion = options.reduced_motion;
+        #[cfg(all(target_os = "ios", target_abi = "sim"))]
+        if options.timing_probe {
+            app.gallery.select(GalleryPage::Layout);
+            app.probe = crate::probe::native::Probe::new(options.reduced_motion);
+        }
         app
     }
 

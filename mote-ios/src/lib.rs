@@ -1,4 +1,6 @@
 mod app;
+#[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]
+mod probe;
 mod simulator;
 
 #[no_mangle]

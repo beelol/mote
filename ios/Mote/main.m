@@ -1,5 +1,17 @@
 #import "mote_ios.h"
 #import <UIKit/UIKit.h>
+#import <TargetConditionals.h>
+
+#if TARGET_OS_SIMULATOR
+const char *mote_ios_probe_documents(void) {
+    static NSString *documents;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    });
+    return documents.UTF8String;
+}
+#endif
 
 static UIWindow *MoteWindow;
 static UIWindowScene *MoteWindowScene;

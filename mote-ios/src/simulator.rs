@@ -4,6 +4,8 @@ use mote_client_core::gallery::GalleryPage;
 pub struct LaunchOptions {
     pub page: Option<GalleryPage>,
     pub reduced_motion: bool,
+    #[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]
+    pub timing_probe: bool,
 }
 
 impl LaunchOptions {
@@ -30,6 +32,8 @@ impl LaunchOptions {
                     }
                 }
                 "--mote-reduced-motion" => options.reduced_motion = true,
+                #[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]
+                "--mote-timing-probe" => options.timing_probe = true,
                 _ => {}
             }
         }
@@ -40,6 +44,14 @@ impl LaunchOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timing_probe_requires_explicit_nonsecret_opt_in() {
+        assert!(!LaunchOptions::parse(["Mote"].map(str::to_owned)).timing_probe);
+        assert!(
+            LaunchOptions::parse(["Mote", "--mote-timing-probe"].map(str::to_owned)).timing_probe
+        );
+    }
 
     #[test]
     fn explicit_launch_options_choose_page_and_reduced_motion() {

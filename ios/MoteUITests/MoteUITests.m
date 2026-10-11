@@ -407,4 +407,25 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     XCTAssertFalse(statusTextMatches(@"Changed volume: 0.01", @"Changed volume: 0.0"));
     XCTAssertFalse(statusTextMatches(@"Changed volume: 0.0 extra", @"Changed volume: 0.0"));
 }
+
+- (void)testOptInTimingProbeInBothOrientations {
+    XCUIApplication *app = [[XCUIApplication alloc] init];
+    for (NSNumber *orientation in @[@(UIDeviceOrientationPortrait), @(UIDeviceOrientationLandscapeLeft)]) {
+        for (NSNumber *reduced in @[@NO, @YES]) {
+            [app terminate];
+            XCUIDevice.sharedDevice.orientation = orientation.integerValue;
+            app.launchArguments = reduced.boolValue ? @[@"--mote-timing-probe", @"--mote-reduced-motion"] : @[@"--mote-timing-probe"];
+            [app launch];
+            XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+            NSTimeInterval start = NSDate.timeIntervalSinceReferenceDate;
+            NSPredicate *elapsed = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+                return NSDate.timeIntervalSinceReferenceDate - start >= 18;
+            }];
+            XCTNSPredicateExpectation *wait = [[XCTNSPredicateExpectation alloc] initWithPredicate:elapsed object:nil];
+            XCTAssertEqual([XCTWaiter waitForExpectations:@[wait] timeout:21], XCTWaiterResultCompleted);
+            [self assertText:@"Timing probe complete" app:app];
+            [self capture:[NSString stringWithFormat:@"timing-%@-%@", orientation, reduced] app:app];
+        }
+    }
+}
 @end
