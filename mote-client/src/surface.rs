@@ -189,25 +189,21 @@ fn draw_at(
         }
         Node::Field { label, value, .. } => {
             let id = namespace.with((ControlKind::Field, &*path));
-            let semantic_id = accessibility::id(namespace, path, "field");
             live.insert(id, id);
             let mut edited = ui
                 .data_mut(|data| data.get_temp::<(String, String)>(id))
                 .filter(|(host, _)| host == value)
                 .map(|(_, edited)| edited)
                 .unwrap_or_else(|| value.clone());
-            accessibility::parent(ui, semantic_id, accesskit::Role::TextInput, |ui| {
-                control(ui, |ui| {
-                    let label_response = ui.label(label);
-                    accessibility::hide(&label_response);
-                    let response = ui.add_sized([ui.available_width().min(320.0), 36.0],
-                        egui::TextEdit::singleline(&mut edited).id(id));
-                    let response = padded_response(ui, response);
-                    accessibility::hide(&response);
-                    accessibility::leaf(ui, semantic_id, accesskit::Role::TextInput, Some(label), AccessibilityValue::Text(&edited), Some(&response));
-                    #[cfg(any(test, feature = "test-observation"))]
-                    observation::control(ui, "Field", path, &response);
-                });
+            control(ui, |ui| {
+                let label_response = ui.label(label);
+                accessibility::hide(&label_response);
+                let response = ui.add_sized([ui.available_width().min(320.0), 36.0],
+                    egui::TextEdit::singleline(&mut edited).id(id));
+                let response = padded_response(ui, response);
+                accessibility::leaf(ui, response.id, accesskit::Role::TextInput, Some(label), AccessibilityValue::Text(&edited), Some(&response));
+                #[cfg(any(test, feature = "test-observation"))]
+                observation::control(ui, "Field", path, &response);
             });
             ui.data_mut(|data| data.insert_temp(id, (value.clone(), edited)));
         }
@@ -218,10 +214,8 @@ fn draw_at(
                 .filter(|(host, _)| host == value)
                 .map(|(_, edited)| edited)
                 .unwrap_or(*value);
-            let semantic_id = accessibility::id(namespace, path, "toggle");
-            let response = accessibility::parent(ui, semantic_id, accesskit::Role::Switch, |ui| identified_control(ui, id, label, Some(&mut edited)));
-            accessibility::hide(&response);
-            accessibility::leaf(ui, semantic_id, accesskit::Role::Switch, Some(label), AccessibilityValue::Toggle(edited), Some(&response));
+            let response = identified_control(ui, id, label, Some(&mut edited));
+            accessibility::leaf(ui, response.id, accesskit::Role::Switch, Some(label), AccessibilityValue::Toggle(edited), Some(&response));
             #[cfg(any(test, feature = "test-observation"))]
             observation::control(ui, "Toggle", path, &response);
             live.insert(id, response.id);
@@ -242,13 +236,12 @@ fn draw_at(
             value,
         } => {
             let id = namespace.with((ControlKind::Select, &*path));
-            let semantic_id = accessibility::id(namespace, path, "select");
             let mut selected = ui
                 .data_mut(|data| data.get_temp::<(String, String)>(id))
                 .filter(|(host, _)| host == value)
                 .map(|(_, selected)| selected)
                 .unwrap_or_else(|| value.clone());
-            let response = accessibility::parent(ui, semantic_id, accesskit::Role::ComboBox, |ui| control(ui, |ui| {
+            let response = control(ui, |ui| {
                 let label_response = ui.label(label);
                 accessibility::hide(&label_response);
                 let mut combo = egui::ComboBox::from_id_salt(id)
@@ -283,9 +276,8 @@ fn draw_at(
                     });
                 combo.response = padded_response(ui, combo.response);
                 combo
-            }));
-            accessibility::hide(&response.response);
-            accessibility::leaf(ui, semantic_id, accesskit::Role::ComboBox, Some(label), AccessibilityValue::Text(&selected), Some(&response.response));
+            });
+            accessibility::leaf(ui, response.response.id, accesskit::Role::ComboBox, Some(label), AccessibilityValue::Text(&selected), Some(&response.response));
             live.insert(id, response.response.id);
             #[cfg(any(test, feature = "test-observation"))]
             observation::control(ui, "Select", path, &response.response);
@@ -293,10 +285,8 @@ fn draw_at(
         }
         Node::Action { label, event } => {
             let id = namespace.with((ControlKind::Action, &*path));
-            let semantic_id = accessibility::id(namespace, path, "action");
-            let response = accessibility::parent(ui, semantic_id, accesskit::Role::Button, |ui| identified_control(ui, id, label, None));
-            accessibility::hide(&response);
-            accessibility::leaf(ui, semantic_id, accesskit::Role::Button, Some(label), AccessibilityValue::None, Some(&response));
+            let response = identified_control(ui, id, label, None);
+            accessibility::leaf(ui, response.id, accesskit::Role::Button, Some(label), AccessibilityValue::None, Some(&response));
             #[cfg(any(test, feature = "test-observation"))]
             observation::control(ui, "Action", path, &response);
             live.insert(id, response.id);
@@ -309,7 +299,6 @@ fn draw_at(
         }
         Node::Progress { value } => {
             let value = value.clamp(0.0, 1.0);
-            let semantic_id = accessibility::id(namespace, path, "progress");
             let (rect, response) = ui.allocate_exact_size(
                 egui::vec2(ui.available_width().min(320.0), 8.0),
                 egui::Sense::hover(),
@@ -331,7 +320,7 @@ fn draw_at(
             let percentage = format!("{:.0}%", value * 100.0);
             let caption = crate::theme::caption(ui, &percentage);
             accessibility::hide(&caption);
-            accessibility::leaf(ui, semantic_id, accesskit::Role::ProgressIndicator, Some(&percentage), AccessibilityValue::Progress(f64::from(value)), Some(&response));
+            accessibility::leaf(ui, response.id, accesskit::Role::ProgressIndicator, Some(&percentage), AccessibilityValue::Progress(f64::from(value)), Some(&response));
         }
     }
     #[cfg(any(test, feature = "test-observation"))]
