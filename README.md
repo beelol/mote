@@ -36,7 +36,7 @@ Planning finished on 2026-10-08. The headless daemon, native client, compact v0 
 Matrix compiler-to-host slice are implemented on `main`. Toolchain on the owner's Mac: cargo 1.89,
 Claude Code 2.1.296, Ollama, 128 GB RAM.
 
-Every product default for the first build is fixed in [docs/rfcs/v0.md](docs/rfcs/v0.md). A driver does not need the owner for any item in the v0 list below. The owner's remaining decisions are deliberately outside v0: flipping `models.local_only` to allow Claude Code and Codex, a Slack bot token, the Overseer work lane, browser use, the Pi, voice. They live in [docs/backlog.md](docs/backlog.md).
+Every product default for the first build is fixed in [docs/rfcs/v0.md](docs/rfcs/v0.md). A driver does not need the owner for any item in the v0 list below. The owner has also approved the native iPad host feature and the browser subset named in its design. Flipping `models.local_only`, a Slack bot token, the Overseer work lane, the Pi, voice and the cloud relay remain deferred in [docs/backlog.md](docs/backlog.md).
 
 ## Try the interface
 
@@ -68,31 +68,29 @@ turn.
 
 ### Continue development
 
-Copy this goal into a driver. Scope is the v0 build list. The backlog is excluded until the owner moves an item in.
+Copy this goal into a driver. Scope is the remaining v0 item and the native iPad host feature below.
 
 ```text
-Continue mote's v0 build from repository state at ~/projects/mote, without relying on chat history.
+Continue mote from repository state at ~/projects/mote without relying on chat history.
 
-Read AGENTS.md, docs/rfcs/v0.md (the build contract; every default is decided there), the root README section "Ready for Go", and docs/HANDOFF.md if present. The criteria are the checkboxes at the bottom of README.md under Ready for Go -> v0 build list. Each one links to the v0.md section that defines it. docs/backlog.md is out of scope until the owner moves an item into the v0 list. The long RFCs and reuse documents are reference only and never override v0.md.
+Read AGENTS.md, docs/rfcs/v0.md, docs/superpowers/specs/2026-10-11-ipad-host.md, root README.md -> Ready for Go, and docs/HANDOFF.md if present. Active ACs are V0-53 under Ready for Go -> v0 build list and the unchecked children under Ready for Go -> Native iPad host feature. The iPad ACs are self-contained. They do not activate additional docs/backlog.md criteria. The older open Matrix parent remains a historical completion record; work its behavior only where a HOST or IPAD AC requires it. Raspberry Pi work is deferred.
 
-Work the list top to bottom. Each item is independent enough to close on its own; respect the order because later crates consume earlier ones. Inspect existing code first and build only what is missing. When work reveals a gap inside v0 scope, add a V0 item with the next free number, link it to the v0.md section, and keep going. Never remove or weaken an item. If a measured number misses its target, record the number in the evidence file and leave the item open.
+Finish independent work even when device, signing or owner-only checks remain open. Respect the delivery order in the iPad spec. Preserve the existing Unix client while adding the protocol, multi-host identity, secure gateway, Rust iPad consumer, simulator journey, inferred Matrix UI, browser approval journey, physical-device checks and finally the separate TestFlight app. models.local_only stays true. Use only the three approved Ollama models. Every model verdict is structured JSON parsed fail-closed. Every model call uses the ledger. Redact before storage. Never read the default Chrome profile or its keychain item.
 
-Rules that are not negotiable: models.local_only stays true; never start Claude Code, Codex or any subscription harness. Pull only the three approved models in v0.md section 0 (22 GB total) and nothing else. Every model verdict is JSON parsed fail-closed. Every Ollama call sets num_ctx explicitly. Redaction runs before storage. No secret enters a model call. No API keys anywhere.
+Choose the smallest actionable AC or coherent dependency set. Inspect existing code first. If delegation is available, send bounded work to the least costly capable subagent with AC IDs, objective, owned files, dependencies and evidence requirements. Parallelize only independent work. Inspect every result before accepting it. Otherwise work directly. Add an AC for any discovered in-scope gap and reopen its parent. Never remove or weaken an unmet requirement.
 
-Delegate bounded items to the least costly capable subagent when delegation is available, with the item IDs, the v0.md section, owned files and the Verify clause. Inspect every result before accepting it. Otherwise implement directly.
+Verify the full AC clause, including failures, reconnect, replay, identity isolation and real UI or device behavior where required. Run cargo test --workspace and cargo clippy --workspace -- -D warnings before every commit. Record commands or manual steps, output, environment, date and commit in docs/verification/<ID>.md. A simulator cannot close a physical-device AC. Upload cannot close TestFlight installation. A checked AC without matching evidence is a bug.
 
-Verify each item by its Verify clause: cargo test --workspace and cargo clippy --workspace -- -D warnings with no network, and live checks only with MOTE_LIVE=1 against the local models. Record command, output, environment, date and commit in docs/verification/<ID>.md. When an item's Verify clause passes, change its box in README.md from [ ] to [x] and append a link to its evidence file, in the same commit as the work. An unchecked box means not done; a checked box without an evidence file is a bug to fix. Recheck affected checked items after changes and uncheck any that no longer pass.
+Deliver small verified Conventional Commits to main and push confirmed commits to the configured origin. Include evidence, AC checkmarks and parent status in the same verified delivery. Do not create the App Store Connect record until HOST-01 through HOST-05 and IPAD-01 through IPAD-06 pass. Do not publish externally, spend on cloud infrastructure, send messages, make purchases or deploy a cloud relay without separate authority.
 
-Deliver small verified changes as Conventional Commits on main in the local repository, no AI attribution trailers. There is no remote until the owner adds one. Never post, send, buy, delete outside the data directory, or deploy; v0 has no such actions.
+After every integration, reread both active README sections and recheck affected completed ACs. Check a parent only when every child is verified. Continue until all authorized ACs close. If one is blocked, leave it open and continue independent work. Stop only for completion, an owner stop, a budget limit or when every remaining AC needs unavailable input, access or authorization. State the exact blockers.
 
-After each commit reread the v0 list for new items. Continue until every V0 item is checked. Stop only for completion, an owner stop, a budget limit, or when every remaining item needs something only the owner can give; say which.
-
-Keep docs/HANDOFF.md current: selected items, branch, delegated tasks, uncommitted work, verified results and limits, blockers, exact next action. Checkpoint before delegation or long operations and after every edit batch, test run, commit or blocker, at most two minutes apart during active work. Before a blocking call record the in-flight action and checkpoint again on return. Save before stopping. Replace the snapshot, never append. On resume reconcile files and commits against it. Delete it when nothing needs transfer.
+Replace docs/HANDOFF.md with current ACs, branch, delegated tasks, uncommitted work, verified results and limits, blockers and exact next action. Checkpoint before delegation or long operations and after every edit batch, subtask, test run, commit, push or blocker, at most two minutes apart during active work. Before a blocking call record the in-flight action and any handle. Save before stopping. On resume reconcile the files and commits against the handoff. Delete it only when nothing needs transfer.
 ```
 
 ### Later
 
-Every other criterion written during planning, 329 of them with stable IDs, is in [docs/backlog.md](docs/backlog.md). The owner moves items from there into a v1 list when ready, starting with flipping `models.local_only`.
+Every other criterion written during planning remains in [docs/backlog.md](docs/backlog.md). The native iPad ACs incorporate their approved Matrix and browser behavior directly and do not activate additional backlog IDs. The older open Matrix parent remains a historical completion record and does not add Raspberry Pi work to the current driver. The owner must explicitly activate anything else.
 
 ### v0 build list
 
@@ -206,3 +204,76 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
 - [ ] **V0-53** `moted install` loads the launchd agent, the daemon survives logout and login, and `moted uninstall` removes it. **Verify:** Live; `launchctl print` output in the evidence file. [§16](docs/rfcs/v0.md#16-service)
 - [x] **V0-54** `moted status` prints socket, uptime, loaded models and the last event seq. **Verify:** Live output in the evidence file. [§16](docs/rfcs/v0.md#16-service) [evidence](docs/verification/V0-54.md)
 - [x] **V0-55** All three bench commands write one JSON line each to `bench.jsonl`. **Verify:** Test. [§17](docs/rfcs/v0.md#17-bench) [evidence](docs/verification/V0-55.md)
+
+### Native iPad host feature
+
+Work in dependency order. Keep device-only and distribution criteria open until their literal
+environments pass. The [approved design](docs/superpowers/specs/2026-10-11-ipad-host.md) defines
+the journeys, security boundary, incorporated Matrix and browser behavior, and deferred scope.
+
+- [ ] **[Native iPad host and TestFlight](docs/superpowers/specs/2026-10-11-ipad-host.md)**
+  - [ ] **HOST-01** A versioned transport-independent host protocol carries requests, events,
+    committed Matrix surfaces, typed interactions, approvals, cursors and structured errors while
+    the existing Unix transport keeps passing its contract. **Verify:** protocol golden tests and
+    the existing Unix reconnect suite pass with no wire-type dependency on a socket implementation.
+  - [ ] **HOST-02** Every host has a stable cryptographic identity, and the client keeps credentials,
+    cursor, thread, surface and approval state isolated per host. **Verify:** pair two fixture hosts
+    with colliding thread and approval IDs, switch repeatedly and prove no state or action crosses.
+  - [ ] **HOST-03** Owner-present pairing uses the `MOTE1` offer and `mote-gateway-v1` Noise
+    protocol to mutually authenticate an iPad and host, encrypt ordered frames, pin both identities
+    and support device revocation. **Verify:** pass shared Noise vectors, complete one pairing and
+    reject expired or reused offers, altered identities, replayed counters, tampered frames and a
+    revoked device before any application action runs.
+  - [ ] **HOST-04** Bonjour discovers a local Mote gateway without treating its address as identity,
+    and a known host can change addresses only after identity proof. **Verify:** discover `_mote._tcp`
+    with only version and fingerprint in TXT, pair on a local network, change the host address,
+    reconnect to the same identity, reject an impersonator and verify the local-network purpose text.
+  - [ ] **HOST-05** Reconnect resumes the selected host's cursor without duplicates, retention loss
+    causes an authoritative resync, and the client visibly distinguishes connecting, online, offline,
+    incompatible and identity-changed states without silent failover. **Verify:** scripted disconnect,
+    lag, restart, version mismatch and identity-change tests plus one live sleep and wake run.
+  - [ ] **IPAD-01** The shared Rust Matrix consumer and protocol build for Apple Silicon simulator and
+    physical iPad targets behind a small native application shell. **Verify:** build both Rust targets
+    and the Xcode app with the existing Mac client and workspace tests still green; record the exact
+    Rust, Xcode, SDK and dependency versions.
+  - [ ] **IPAD-02** The iPad Simulator runs separate Layout, Toggle, Slider, Select, List and Form
+    gallery pages, the checked-in dashboard and a fixture surface. Selecting a page rebuilds the
+    layout immediately while changed red borders split into square pixels and materialize within
+    120 ms. Unchanged nodes do not restart and hit testing uses the new layout on the first frame.
+    **Verify:** drive scrolling, text entry and every control in two iPad sizes and both orientations;
+    capture first, midpoint and final transition frames at 60 frames per second; reduced motion must
+    swap immediately with only a brief red outline pulse.
+  - [ ] **IPAD-03** The simulator pairs with `moted` on the Mac, streams live chat and committed Matrix
+    surfaces, returns typed interactions and reconnects from its cursor. **Verify:** complete a live
+    chat and dashboard edit, kill and relaunch the app, observe no duplicate event, then switch between
+    two paired fixture hosts without mixed state.
+  - [ ] **IPAD-04** A natural-language request produces ordinary prose and at most one Matrix surface
+    using only an approved local model and host-owned bindings and actions. The host parses, resolves,
+    type-checks, lowers and validates it before commitment. Invalid generation cannot replace or
+    activate the previous surface and receives at most one diagnostic retry inside the rate budget.
+    **Verify:** run 200 representative prompts per permitted model, require 95 percent first-try
+    validity or keep that model disabled, verify ledger rows and typed event rejection, and capture
+    success, one-retry recovery, stable prior surface and final prose fallback on the simulator.
+  - [ ] **IPAD-05** A Mac-hosted browser fixture uses a per-character Mote Chrome for Testing profile
+    and can browse, read and fill automatically only on an approved site. Mote never opens the default
+    Chrome profile or its keychain item. Submit, purchase, message, download, OAuth and non-GET actions
+    remain blocked until a durable host-bound approval is accepted from the iPad. **Verify:** record
+    stable-ref snapshot, read, fill and stale-ref refusal; test submit, purchase, message, download,
+    OAuth and non-GET fixtures plus an unknown or malformed outward-action verdict; assert that each
+    creates a durable approval and has zero effect before approval, that deny and expiry stay inert,
+    and that one approved action executes exactly once after page-state recheck. Also record prompt-
+    injection refusal, redacted events, ledger and HAR, before and after commit screenshots and a
+    final validated Matrix result card.
+  - [ ] **IPAD-06** A physical iPad passes touch, keyboard, rotation, split view, background recovery,
+    local-network permission, light and dark appearance, reduced motion and VoiceOver checks.
+    **Verify:** repeat the named journeys on the device, including center and edge taps for every
+    control, and record the device, iPadOS version, role tree, screenshots and observed recovery.
+  - [ ] **IPAD-07** After HOST-01 through HOST-05 and IPAD-01 through IPAD-06 pass, Mote has a new
+    explicit bundle ID, signing configuration and App Store Connect record that do not reuse or alter
+    another app. **Verify:** record the approved display name, bundle ID, SKU and team, confirm their
+    uniqueness against the owner's existing apps, archive the verified client and retain the App
+    Store Connect record link.
+  - [ ] **IPAD-08** After IPAD-07, the processed build installs through internal TestFlight and repeats
+    pairing, live chat, generated Matrix UI, browser approval, reconnect and host-switch isolation.
+    **Verify:** record the build and processing state, install it on the physical iPad, run every
+    journey and keep external testing, App Review and public release disabled.

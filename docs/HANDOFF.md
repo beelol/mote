@@ -1,52 +1,61 @@
-# Handoff: Mote v0 close-out
+# Current development handoff
 
-Updated 2026-10-10 in America/Los_Angeles.
+Updated 2026-10-11 in America/Los_Angeles. Replace this snapshot rather than appending a log.
+
+## Current work
+
 Branch: `main`.
+
+The owner approved the native iPad host design, including multiple hosts in different locations,
+the Mac as the first authoritative host, Bonjour local discovery, a separately encrypted paired
+connection, Rust immediate-mode Matrix rendering, host-side inferred UI, host-side browser use and
+approval cards answerable from the iPad.
+
+The durable design is `docs/superpowers/specs/2026-10-11-ipad-host.md`.
+The active board is root `README.md` under `Ready for Go`.
+The iPad feature states its approved Matrix and browser behavior in self-contained HOST and IPAD ACs.
+It does not activate additional backlog IDs.
+The cloud relay remains deferred, but the protocol must support hosts in different places.
+
 Preserve untracked `.DS_Store` and `.superpowers/`.
 
-The binding contract is `docs/rfcs/v0.md`.
-The root README Ready for Go list is the active scope.
-All other Matrix work remains in `docs/backlog.md`.
+## Delivery state
 
-## Completed native client work
+The design spec, README driver goal and HOST-01 through HOST-05 plus IPAD-01 through IPAD-08 are
+fully reviewed and verified as one planning batch. No iPad implementation or App Store Connect state
+has been created.
 
-Commit `67f019e` records native Matrix and Mote UI evidence.
-Commit `ecf4bc0` records the native approval card evidence for V0-52.
-Commit `8593b5e` verifies chat states and live Pipeline navigation.
-Commit `922bfbe` verifies that Pipeline Config changes the talk model used by the next turn.
-Commit `b085b70` implements and verifies the live Pipeline overhead benchmark.
+The last integrated commits before this design batch are:
 
-V0-50 now runs the fixed talk benchmark through the production daemon lane.
-Benchmark events use the isolated `bench.talk` scope.
-The client subscribes to that scope for live Pipeline display.
-Benchmark events do not reduce chat state or write the saved main cursor.
-The final native pair measured 17.0 ms closed and 19.0 ms open.
-The p50 increase was 2.0 ms over 20 samples per condition.
-The completed ordinary chat and its 280 stored main events were unchanged.
-Independent review approved the fix.
-The global ContextStore lock during the batch and the repeated full-ledger scan are deferred minor improvements.
+- `3de54ef` documents the Vector materialization direction.
+- `b085b70` implements and verifies the live pipeline overhead benchmark.
+- `e134316` records the v0 close-out state.
 
-Commit `3de54ef` records the future Vector gallery direction as UI-49.
-It specifies separate Layout, Toggle, Slider, Select, List and Form pages.
-Changed red structural borders materialize through deterministic square pixels within 120 ms.
-The new layout is interactive on the first frame.
-Reduced motion swaps immediately with a brief red outline pulse.
-This is backlog work and does not change the delivered v0 runtime.
+The configured remote is `https://github.com/beelol/mote.git` on `main`.
 
-## Verification
+## Evidence and limits
 
-`cargo test --workspace` passed 478 tests after V0-50 in an environment that permits local Unix sockets.
-`cargo clippy --workspace -- -D warnings` passed.
-The restricted command sandbox rejects the socket integration tests with `Operation not permitted`.
-That environmental failure was reproduced at the listener bind and the same suite passed with local socket access.
+`cargo test --workspace` passed 478 tests on 2026-10-11 with local Unix socket access.
+`cargo clippy --workspace -- -D warnings` passed on 2026-10-11.
+The first restricted test attempt reproduced the known local-socket failures and was stopped after it
+stalled. The complete run with local socket access passed.
+Independent acceptance review approved the corrected spec and board after checking scope, links,
+unique IDs, the 3,527-character driver goal, parent state and distribution gates.
 
-## Remaining v0 work
+The current desktop client uses eframe, egui and winit. Winit has an iOS backend in the cached
+dependency source. Xcode 27.0 is installed. The Rust iOS targets are not installed. Simulator device
+availability has not been verified because the restricted environment could not reach CoreSimulator.
+No physical iPad behavior, local-network prompt, signing, bundle ID, App Store Connect record or
+TestFlight build has been verified.
 
-V0-53 is the only unchecked v0 item.
-Install, launchd load, KeepAlive restart, socket recovery, uninstall and unload-failure behavior are already verified in `docs/verification/V0-53.md`.
-The literal logout and login survival check remains owner-only because it disrupts the active desktop session.
-Do not mark V0-53 complete without observing that exact check.
+V0-53 remains open only for the literal logout and login survival check. Do not mark it complete
+without observing that check.
 
-The configured remote is `https://github.com/beelol/mote.git`.
-A push attempt was rejected by the environment safety reviewer because the remote and default branch were not trusted.
-Do not bypass that gate.
+## Blockers and next action
+
+There is no design decision blocker. The written spec now awaits the owner's document review.
+
+After the owner approves the written spec, use the plan-writing workflow to create the implementation
+plan. Start implementation only after the written plan is approved and the owner chooses execution in
+the current session or a later session. Work HOST-01 before iPad packaging. Do not create the App Store
+Connect record until HOST-01 through HOST-05 and IPAD-01 through IPAD-06 pass.
