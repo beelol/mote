@@ -35,6 +35,13 @@ pub struct Message {
     pub surface_id: Option<String>,
     pub surface_seq: Option<i64>,
     pub surface_instance: i64,
+    pub render_revision: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SurfaceReduction {
+    pub revision: u64,
+    pub superseded_revision: Option<u64>,
 }
 
 pub struct ChatState {
@@ -45,6 +52,7 @@ pub struct ChatState {
     session_id: String,
     next_local_id: u64,
     diagnostic_cursor: i64,
+    next_render_revision: u64,
 }
 
 impl Default for ChatState {
@@ -62,6 +70,7 @@ impl Default for ChatState {
             session_id: format!("{}-{nanos}-{counter}", std::process::id()),
             next_local_id: 0,
             diagnostic_cursor: 0,
+            next_render_revision: 1,
         }
     }
 }
@@ -79,6 +88,7 @@ impl ChatState {
             surface_id: None,
             surface_seq: None,
             surface_instance: 0,
+            render_revision: None,
         });
         local_id
     }
@@ -113,7 +123,10 @@ impl ChatState {
         self.matrix_replay_through = replay_through;
     }
 
-    pub fn reduce(&mut self, ev: &Event) {
+    pub fn reduce(&mut self, ev: &Event) -> Option<SurfaceReduction> {
+        if ev.kind == "ui.surface" {
+            return self.reduce_surface(ev);
+        }
         match ev.kind.as_str() {
             "turn.user" => {
                 let text = ev.payload["text"].as_str().unwrap_or("");
@@ -131,7 +144,7 @@ impl ChatState {
                     })
                 }) {
                     existing.status = Status::Delivered;
-                    return;
+                    return None;
                 }
                 self.messages.push(Message {
                     local_id: if identity_conflicts {
@@ -146,6 +159,7 @@ impl ChatState {
                     surface_id: None,
                     surface_seq: None,
                     surface_instance: 0,
+                    render_revision: None,
                 });
             }
             "talk.delta" => {
@@ -154,7 +168,7 @@ impl ChatState {
                 if let Some(last) = self.messages.last_mut() {
                     if last.role == "assistant" && last.surface.is_none() {
                         last.text.push_str(delta);
-                        return;
+                        return None;
                     }
                 }
                 self.messages.push(Message {
@@ -166,6 +180,7 @@ impl ChatState {
                     surface_id: None,
                     surface_seq: None,
                     surface_instance: 0,
+                    render_revision: None,
                 });
             }
             "talk.done" => {
@@ -186,16 +201,15 @@ impl ChatState {
                     surface_id: None,
                     surface_seq: None,
                     surface_instance: 0,
+                    render_revision: None,
                 });
             }
             "ui.diagnostic" => {
                 if ev.seq <= self.diagnostic_cursor {
-                    return;
+                    return None;
                 }
                 self.diagnostic_cursor = ev.seq;
-                let Some(diagnostics) = ev.payload["diagnostics"].as_array() else {
-                    return;
-                };
+                let diagnostics = ev.payload["diagnostics"].as_array()?;
                 let mut text = String::from("Matrix source rejected");
                 if let Some(candidate) = ev.payload["candidate"].as_str() {
                     text.push_str(&format!(" (candidate: {candidate})"));
@@ -224,40 +238,48 @@ impl ChatState {
                     surface_id: None,
                     surface_seq: None,
                     surface_instance: 0,
+                    render_revision: None,
                 });
-            }
-            "ui.surface" => {
-                if let Ok(bytes) = serde_json::to_vec(&ev.payload["surface"]) {
-                    if let Ok(node) = mote_ui::validate(&bytes) {
-                        let surface_id = ev.payload["surface_id"].as_str();
-                        if surface_id == Some("matrix") && ev.seq <= self.matrix_replay_through {
-                            return;
-                        }
-                        if let Some(existing) = surface_id.and_then(|surface_id| {
-                            self.messages.iter_mut().find(|message| {
-                                message.surface_id.as_deref() == Some(surface_id)
-                            })
-                        }) {
-                            existing.surface = Some(node);
-                            existing.surface_seq = (surface_id == Some("matrix")).then_some(ev.seq);
-                            existing.status = Status::Read;
-                            return;
-                        }
-                        self.messages.push(Message {
-                            local_id: None,
-                            role: "assistant".into(),
-                            text: String::new(),
-                            status: Status::Read,
-                            surface: Some(node),
-                            surface_id: surface_id.map(str::to_owned),
-                            surface_seq: (surface_id == Some("matrix")).then_some(ev.seq),
-                            surface_instance: ev.seq,
-                        });
-                    }
-                }
             }
             _ => {}
         }
+        None
+    }
+
+    fn reduce_surface(&mut self, ev: &Event) -> Option<SurfaceReduction> {
+        let bytes = serde_json::to_vec(&ev.payload["surface"]).ok()?;
+        let node = mote_ui::validate(&bytes).ok()?;
+        let surface_id = ev.payload["surface_id"].as_str();
+        if surface_id == Some("matrix") && ev.seq <= self.matrix_replay_through {
+            return None;
+        }
+        let revision = self.next_render_revision;
+        self.next_render_revision = self.next_render_revision.saturating_add(1);
+        let mut superseded_revision = None;
+        if let Some(existing) = surface_id.and_then(|surface_id| {
+            self.messages.iter_mut().find(|message| {
+                message.surface_id.as_deref() == Some(surface_id)
+            })
+        }) {
+            superseded_revision = existing.render_revision;
+            existing.surface = Some(node);
+            existing.surface_seq = (surface_id == Some("matrix")).then_some(ev.seq);
+            existing.render_revision = Some(revision);
+            existing.status = Status::Read;
+        } else {
+            self.messages.push(Message {
+                local_id: None,
+                role: "assistant".into(),
+                text: String::new(),
+                status: Status::Read,
+                surface: Some(node),
+                surface_id: surface_id.map(str::to_owned),
+                surface_seq: (surface_id == Some("matrix")).then_some(ev.seq),
+                surface_instance: ev.seq,
+                render_revision: Some(revision),
+            });
+        }
+        Some(SurfaceReduction { revision, superseded_revision })
     }
 }
 
@@ -285,6 +307,7 @@ mod tests {
             surface_id: None,
             surface_seq: None,
             surface_instance: 0,
+            render_revision: None,
         }
     }
 
@@ -419,7 +442,7 @@ mod tests {
     #[test]
     fn repeated_surface_identity_replaces_the_existing_dashboard() {
         let mut chat = ChatState::default();
-        chat.reduce(&event(
+        let first = chat.reduce(&event(
             20,
             "ui.surface",
             serde_json::json!({
@@ -427,7 +450,7 @@ mod tests {
                 "surface":{"type":"text", "value":"first"}
             }),
         ));
-        chat.reduce(&event(
+        let second = chat.reduce(&event(
             21,
             "ui.surface",
             serde_json::json!({
@@ -446,5 +469,14 @@ mod tests {
         );
         assert_eq!(chat.messages[0].surface_seq, Some(21));
         assert_eq!(chat.messages[0].surface_instance, 20);
+        assert_eq!(first, Some(SurfaceReduction {
+            revision: 1,
+            superseded_revision: None,
+        }));
+        assert_eq!(second, Some(SurfaceReduction {
+            revision: 2,
+            superseded_revision: Some(1),
+        }));
+        assert_eq!(chat.messages[0].render_revision, Some(2));
     }
 }

@@ -7,6 +7,7 @@
 
 mod app;
 mod accessibility;
+mod display_latency;
 mod fixture;
 mod gallery;
 mod pipeline;
@@ -74,29 +75,40 @@ fn main() -> eframe::Result<()> {
     let socket = mote_paths::socket_path();
     let (tx, rx) = mpsc::channel();
 
-    if fixture.is_none() {
-        let cursor = app::load_cursor();
-        let sock = socket.clone();
-        std::thread::spawn(move || {
-            if let Some(source) = source {
-                let submission_socket = sock.clone();
-                stream::run_after_connect(&sock, "main", cursor, tx, move || {
-                    if let Err(error) = submit_matrix(&submission_socket, &source) {
-                        eprintln!("{error}");
-                        std::process::exit(2);
-                    }
-                });
-            } else {
-                stream::run(&sock, "main", cursor, tx);
-            }
-        });
-    }
-
     let options = eframe::NativeOptions::default();
     eframe::run_native(
         "mote",
         options,
-        Box::new(move |cc| Ok(Box::new(app::MoteApp::new(cc, socket, rx, fixture)))),
+        Box::new(move |cc| {
+            let clock = display_latency::InstantClock::shared();
+            if fixture.is_none() {
+                let cursor = app::load_cursor();
+                let sock = socket.clone();
+                let stream_clock = clock.clone();
+                let repaint = cc.egui_ctx.clone();
+                std::thread::spawn(move || {
+                    if let Some(source) = source {
+                        let submission_socket = sock.clone();
+                        stream::run_after_connect(
+                            &sock, "main", cursor, tx, stream_clock,
+                            move || repaint.request_repaint(),
+                            move || {
+                                if let Err(error) = submit_matrix(&submission_socket, &source) {
+                                    eprintln!("{error}");
+                                    std::process::exit(2);
+                                }
+                            },
+                        );
+                    } else {
+                        stream::run(
+                            &sock, "main", cursor, tx, stream_clock,
+                            move || repaint.request_repaint(),
+                        );
+                    }
+                });
+            }
+            Ok(Box::new(app::MoteApp::new(cc, socket, rx, fixture, clock)))
+        }),
     )
 }
 

@@ -158,19 +158,19 @@ fn apply_next_event(
     chat: &mut ChatState,
     rx: &Receiver<StreamUpdate>,
     cursor_path: Option<&std::path::Path>,
-) -> Option<Event> {
-    let event = loop {
+) -> Option<(Event, Option<crate::state::SurfaceReduction>, u64)> {
+    let (event, arrived_ns) = loop {
         match rx.try_recv().ok()? {
-            StreamUpdate::Event(event) => break event,
+            StreamUpdate::Event { event, arrived_ns } => break (event, arrived_ns),
             StreamUpdate::Connected { replay_through } => chat.connect_matrix(replay_through),
             StreamUpdate::Disconnected => chat.invalidate_matrix(),
         }
     };
-    chat.reduce(&event);
+    let reduction = chat.reduce(&event);
     if let Some(path) = cursor_path {
         save_cursor_to(path, event.seq);
     }
-    Some(event)
+    Some((event, reduction, arrived_ns))
 }
 
 #[derive(PartialEq)]
@@ -223,6 +223,9 @@ pub struct MoteApp {
     ui_event_tx: Sender<crate::surface::SurfaceEvent>,
     ui_event_rx: Receiver<UiEventResult>,
     cursor_path: Option<PathBuf>,
+    clock: crate::display_latency::SharedClock,
+    display_latency: crate::display_latency::DisplayLatency,
+    latency_report_path: Option<PathBuf>,
 }
 
 impl MoteApp {
@@ -231,6 +234,7 @@ impl MoteApp {
         socket: PathBuf,
         rx: Receiver<StreamUpdate>,
         fixture: Option<Node>,
+        clock: crate::display_latency::SharedClock,
     ) -> Self {
         crate::theme::install(&cc.egui_ctx);
         let (turn_tx, turn_rx) = mpsc::channel();
@@ -270,13 +274,24 @@ impl MoteApp {
             ui_event_tx,
             ui_event_rx,
             cursor_path: Some(cursor_path()),
+            clock,
+            display_latency: Default::default(),
+            latency_report_path: std::env::var_os("MOTE_UI_LATENCY_REPORT").map(PathBuf::from),
         }
     }
 
     fn drain_events(&mut self) {
-        while let Some(event) =
+        while let Some((event, reduction, arrived_ns)) =
             apply_next_event(&mut self.chat, &self.rx, self.cursor_path.as_deref())
         {
+            if let Some(reduction) = reduction {
+                self.display_latency.accept(
+                    reduction.revision,
+                    event.seq,
+                    reduction.superseded_revision,
+                    arrived_ns,
+                );
+            }
             self.remember_pipeline_event(event);
         }
         while let Ok((pending, result)) = self.turn_rx.try_recv() {
@@ -434,8 +449,9 @@ impl MoteApp {
         }
     }
 
-    fn chat_view(&mut self, ui: &mut egui::Ui) {
+    fn chat_view(&mut self, ui: &mut egui::Ui) -> Vec<u64> {
         let mut clicked = Vec::new();
+        let mut drawn_revisions = Vec::new();
         #[cfg(any(test, feature = "test-observation"))]
         let mut scroll_clip = egui::Rect::NOTHING;
         let scroll = egui::ScrollArea::vertical()
@@ -460,6 +476,9 @@ impl MoteApp {
                         }
                         for event in &mut clicked[first_event..] {
                             event.set_surface_seq(m.surface_seq);
+                        }
+                        if let Some(revision) = m.render_revision {
+                            drawn_revisions.push(revision);
                         }
                     } else {
                         ui.label(&m.text);
@@ -497,6 +516,7 @@ impl MoteApp {
         if !self.status_line.is_empty() {
             ui.colored_label(ui.visuals().error_fg_color, &self.status_line);
         }
+        drawn_revisions
     }
 
     fn pipeline_view(&mut self, ui: &mut egui::Ui) {
@@ -821,7 +841,7 @@ impl MoteApp {
 }
 
 impl MoteApp {
-    fn draw_shell(&mut self, ctx: &egui::Context) {
+    fn draw_shell(&mut self, ctx: &egui::Context) -> Vec<u64> {
         if self.fixture.is_some() {
             egui::CentralPanel::default()
                 .frame(
@@ -832,7 +852,7 @@ impl MoteApp {
                 .show(ctx, |ui| {
                     self.preview_view(ui);
                 });
-            return;
+            return Vec::new();
         }
 
         egui::TopBottomPanel::top("top")
@@ -869,8 +889,17 @@ impl MoteApp {
             )
             .show(ctx, |ui| match self.screen {
                 Screen::Chat => self.chat_view(ui),
-                Screen::Pipeline => self.pipeline_view(ui),
-            });
+                Screen::Pipeline => {
+                    self.pipeline_view(ui);
+                    Vec::new()
+                }
+            })
+            .inner
+    }
+
+    fn draw_frame(&mut self, ctx: &egui::Context) {
+        let revisions = self.draw_shell(ctx);
+        self.display_latency.drawn(&revisions, self.clock.now_ns());
     }
 }
 
@@ -879,7 +908,18 @@ impl eframe::App for MoteApp {
         self.drain_events();
         self.drain_ui_event_results(ctx);
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
-        self.draw_shell(ctx);
+        self.draw_frame(ctx);
+    }
+}
+
+impl Drop for MoteApp {
+    fn drop(&mut self) {
+        let Some(path) = &self.latency_report_path else {
+            return;
+        };
+        if let Err(error) = self.display_latency.write_report(path) {
+            eprintln!("cannot write UI latency report {}: {error}", path.display());
+        }
     }
 }
 
@@ -891,8 +931,29 @@ pub mod observation;
 mod tests {
     use super::*;
     use crate::state::Status;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    struct ManualClock(AtomicU64);
+
+    impl crate::display_latency::Clock for ManualClock {
+        fn now_ns(&self) -> u64 {
+            self.0.load(Ordering::SeqCst)
+        }
+    }
+
+    impl ManualClock {
+        fn set(&self, value: u64) {
+            self.0.store(value, Ordering::SeqCst);
+        }
+    }
 
     fn app() -> (MoteApp, std::sync::mpsc::Sender<StreamUpdate>) {
+        app_with_clock(crate::display_latency::InstantClock::shared())
+    }
+
+    fn app_with_clock(
+        clock: crate::display_latency::SharedClock,
+    ) -> (MoteApp, std::sync::mpsc::Sender<StreamUpdate>) {
         let (tx, rx) = std::sync::mpsc::channel();
         let (turn_tx, turn_rx) = std::sync::mpsc::channel();
         let (pipeline_tx, pipeline_rx) = std::sync::mpsc::channel();
@@ -932,9 +993,71 @@ mod tests {
                 ui_event_tx,
                 ui_event_rx,
                 cursor_path: None,
+                clock,
+                display_latency: Default::default(),
+                latency_report_path: None,
             },
             tx,
         )
+    }
+
+    #[test]
+    fn accepted_surface_records_only_its_first_real_chat_draw() {
+        let clock = std::sync::Arc::new(ManualClock(AtomicU64::new(0)));
+        let (mut app, tx) = app_with_clock(clock.clone());
+        tx.send(StreamUpdate::Connected { replay_through: 5 }).unwrap();
+        for (seq, arrived_ns, surface) in [
+            (6, 100_000_000, serde_json::json!({"type":"text","value":"old"})),
+            (7, 105_000_000, serde_json::json!({"type":"text","value":"new"})),
+            (8, 106_000_000, serde_json::json!({"type":"unknown"})),
+            (5, 107_000_000, serde_json::json!({"type":"text","value":"stale"})),
+        ] {
+            tx.send(StreamUpdate::timed(Event {
+                seq, ts: 0, scope_id: "main".into(), kind: "ui.surface".into(),
+                payload: serde_json::json!({"surface_id":"matrix","surface":surface}),
+            }, arrived_ns)).unwrap();
+        }
+        app.drain_events();
+
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        app.screen = Screen::Pipeline;
+        clock.set(111_000_000);
+        let _ = ctx.run(Default::default(), |ctx| app.draw_frame(ctx));
+        assert!(app.display_latency.samples().is_empty());
+
+        app.screen = Screen::Chat;
+        clock.set(112_000_000);
+        let _ = ctx.run(Default::default(), |ctx| app.draw_frame(ctx));
+        clock.set(120_000_000);
+        let _ = ctx.run(Default::default(), |ctx| app.draw_frame(ctx));
+        assert_eq!(app.display_latency.samples(), &[crate::display_latency::Sample {
+            sequence: 7,
+            arrival_offset_ns: 105_000_000,
+            render_offset_ns: 112_000_000,
+            duration_ns: 7_000_000,
+        }]);
+    }
+
+    #[test]
+    fn clean_shutdown_writes_the_opt_in_latency_report() {
+        let path = std::env::temp_dir().join(format!(
+            "mote-ui-latency-{}-{}.json",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let (mut app, _) = app();
+        app.latency_report_path = Some(path.clone());
+
+        drop(app);
+
+        let report: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert_eq!(report["sample_count"], 0);
+        assert_eq!(report["boundary"], crate::display_latency::DISPLAY_BOUNDARY);
+        assert!(report.get("payload").is_none());
+        assert!(report.get("source").is_none());
     }
 
     fn send(tx: &std::sync::mpsc::Sender<StreamUpdate>, kind: &str, payload: serde_json::Value) {
@@ -1084,7 +1207,10 @@ mod tests {
         let (mut app, tx) = app();
         app.cursor_path = Some(cursor_path.clone());
         let stream_path = path.clone();
-        let stream = std::thread::spawn(move || crate::stream::run(&stream_path, "main", 0, tx));
+        let stream = std::thread::spawn(move || crate::stream::run(
+            &stream_path, "main", 0, tx,
+            crate::display_latency::InstantClock::shared(), || {},
+        ));
         let deadline = Instant::now() + Duration::from_secs(3);
         while load_cursor_from(&cursor_path) < 7 && Instant::now() < deadline {
             app.drain_events();
@@ -1174,9 +1300,12 @@ mod tests {
         app.ui_event_tx = outgoing;
         let stream_path = path.clone();
         let submission_path = path.clone();
-        let stream = std::thread::spawn(move || crate::stream::run_after_connect(&stream_path, "main", 0, tx, || {
-            crate::submit_matrix(&submission_path, "screen { button \"Refresh\" -> refresh }").unwrap();
-        }));
+        let stream = std::thread::spawn(move || crate::stream::run_after_connect(
+            &stream_path, "main", 0, tx,
+            crate::display_latency::InstantClock::shared(), || {}, || {
+                crate::submit_matrix(&submission_path, "screen { button \"Refresh\" -> refresh }").unwrap();
+            },
+        ));
         let receive_through = |app: &mut MoteApp, seq| {
             let deadline = Instant::now() + Duration::from_secs(2);
             while load_cursor_from(&cursor_path) < seq && Instant::now() < deadline {

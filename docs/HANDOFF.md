@@ -1,28 +1,30 @@
-# Handoff: Matrix compiler latency
+# Handoff: surface arrival-to-render latency
 
 Updated 2026-10-10. Replace this file, never append.
 
-Branch: `main`. Measured implementation: `1960643`.
-Commits: `perf(matrix): benchmark compiler p95` and
-`fix(matrix): require detected Apple hardware`.
-Preserve untracked `.DS_Store` and `.superpowers/`. Do not push.
+Branch: `main`. Base: `1c54668`. Preserve untracked `.DS_Store` and `.superpowers/`. Do not push.
 
-`moted bench compiler` now benchmarks the production Matrix compiler with a fixed in-memory
-fixture. It performs 200 untimed warmups and 2,000 interleaved samples. It reports nearest-rank p95
-for parsing, resolve and check, v0 lowering and production end-to-end compilation. Debug builds
-refuse to run.
+The client now uses one monotonic clock for stream arrival and rendering. Complete decoded events are
+timestamped before queueing. Every successful queue send requests an immediate egui repaint. The
+100 ms repaint timer remains as an idle fallback.
 
-The JSON report includes the Git revision, release profile, Rust and Cargo versions, operating
-system, architecture, hardware name, source and combined fixture hashes, manifest version, sample
-counts, percentile method, nanosecond and millisecond results and target state. The report appends
-to `bench.jsonl`. The compiler command initializes no database, daemon, Ollama client or live user
-configuration.
+Accepted exact surfaces receive a private render revision after validation and replay checks. The
+first production Chat draw records that revision once. Rejected, malformed, stale and
+superseded-before-frame surfaces do not produce samples. Pipeline frames defer measurement until Chat
+actually draws the surface. Render revisions do not alter surface sequence, instance, widget identity
+or `ui.event` parameters.
 
-The Apple M5 Max release run passed. Production end-to-end p95 was 67,416 ns against a strict
-2,000,000 ns limit. UI-46 remains partial because no real Raspberry Pi 5 run exists. Raspberry Pi 5
-must be identified by its hardware model before the 10,000,000 ns budget applies. The Mac budget
-also requires a recognized Apple M-series hardware name. Unknown macOS arm64 hardware cannot pass.
+Set `MOTE_UI_LATENCY_REPORT` to a file path before starting the client. Clean shutdown writes a JSON
+report with sample count, nearest-rank p50 and p95, boundary, sequence ids and monotonic timing only.
+No payload or source is stored. The boundary is complete decoded IPC frame through first egui
+render-list construction. GPU and compositor presentation are outside it.
 
-The fixed source hash is `358e1bbbdb30b38a134a6b43152b3b90bddc463ac493920eadcbee8b44f10ea3`.
-The combined fixture hash is `0cacb63fcbfda9cf8f199ccf26516f1e89c505fd8ba435b21109c121ae5305ee`.
-The byte and token measurement tools and output were not changed.
+UI-40 remains open. The automated tests are deterministic correctness checks, not native performance
+evidence. Completion still requires an unlocked release Mac run with one temporary `MOTE_HOME`, a
+visible dashboard, at least 20 Refresh actions and `ui.event` round trips, p50 and p95 below 50 ms,
+and close and reopen cursor proof with no duplicate display. Record that run in
+`docs/verification/UI-40.md`.
+
+Verification is green. `cargo test -p mote-client` passed 112 tests. `cargo test --workspace`
+passed 398 tests plus doc-tests. `cargo clippy --workspace -- -D warnings` and `git diff --check`
+passed.

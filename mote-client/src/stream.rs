@@ -9,19 +9,32 @@ const MIN_RETRY: Duration = Duration::from_millis(20);
 const MAX_RETRY: Duration = Duration::from_secs(1);
 
 pub enum StreamUpdate {
-    Event(Event),
+    Event { event: Event, arrived_ns: u64 },
     Connected { replay_through: i64 },
     Disconnected,
 }
 
 impl From<Event> for StreamUpdate {
     fn from(event: Event) -> Self {
-        Self::Event(event)
+        Self::timed(event, 0)
     }
 }
 
-pub fn run(path: &Path, scope_id: &str, cursor: i64, tx: Sender<StreamUpdate>) {
-    run_after_connect(path, scope_id, cursor, tx, || {});
+impl StreamUpdate {
+    pub fn timed(event: Event, arrived_ns: u64) -> Self {
+        Self::Event { event, arrived_ns }
+    }
+}
+
+pub fn run(
+    path: &Path,
+    scope_id: &str,
+    cursor: i64,
+    tx: Sender<StreamUpdate>,
+    clock: crate::display_latency::SharedClock,
+    repaint: impl FnMut(),
+) {
+    run_after_connect(path, scope_id, cursor, tx, clock, repaint, || {});
 }
 
 pub fn run_after_connect(
@@ -29,6 +42,8 @@ pub fn run_after_connect(
     scope_id: &str,
     cursor: i64,
     tx: Sender<StreamUpdate>,
+    clock: crate::display_latency::SharedClock,
+    repaint: impl FnMut(),
     on_connected: impl FnOnce(),
 ) {
     let mut on_connected = Some(on_connected);
@@ -48,7 +63,9 @@ pub fn run_after_connect(
             }
             stream.read_event()
         },
+        || clock.now_ns(),
         |event| tx.send(event).is_ok(),
+        repaint,
         std::thread::sleep,
     );
 }
@@ -57,7 +74,9 @@ fn run_with<S>(
     initial_cursor: i64,
     mut connect: impl FnMut(i64) -> io::Result<(S, i64)>,
     mut read: impl FnMut(&mut S) -> io::Result<Option<Event>>,
+    mut now_ns: impl FnMut() -> u64,
     mut deliver: impl FnMut(StreamUpdate) -> bool,
+    mut wake: impl FnMut(),
     mut wait: impl FnMut(Duration),
 ) {
     let mut cursor = initial_cursor;
@@ -72,23 +91,28 @@ fn run_with<S>(
                 continue;
             }
         };
-        if !deliver(StreamUpdate::Connected { replay_through }) {
+        if !deliver_and_wake(StreamUpdate::Connected { replay_through }, &mut deliver, &mut wake) {
             return;
         }
 
         loop {
             match read(&mut source) {
                 Ok(None) => {}
-                Ok(Some(event)) if event.kind == "resync" => {
-                    if !deliver(StreamUpdate::Disconnected) {
-                        return;
-                    }
-                    break;
-                }
-                Ok(Some(event)) if event.seq <= cursor => {}
                 Ok(Some(event)) => {
+                    let arrived_ns = now_ns();
+                    if event.kind == "resync" {
+                        if !deliver_and_wake(StreamUpdate::Disconnected, &mut deliver, &mut wake) {
+                            return;
+                        }
+                        break;
+                    }
+                    if event.seq <= cursor {
+                        continue;
+                    }
                     let delivered_cursor = event.seq;
-                    if !deliver(event.into()) {
+                    if !deliver_and_wake(
+                        StreamUpdate::timed(event, arrived_ns), &mut deliver, &mut wake,
+                    ) {
                         return;
                     }
                     cursor = delivered_cursor;
@@ -96,7 +120,7 @@ fn run_with<S>(
                 }
                 Err(error) if error.kind() == io::ErrorKind::InvalidData => {}
                 Err(_) => {
-                    if !deliver(StreamUpdate::Disconnected) {
+                    if !deliver_and_wake(StreamUpdate::Disconnected, &mut deliver, &mut wake) {
                         return;
                     }
                     wait(retry);
@@ -106,6 +130,18 @@ fn run_with<S>(
             }
         }
     }
+}
+
+fn deliver_and_wake(
+    update: StreamUpdate,
+    mut deliver: impl FnMut(StreamUpdate) -> bool,
+    mut wake: impl FnMut(),
+) -> bool {
+    let delivered = deliver(update);
+    if delivered {
+        wake();
+    }
+    delivered
 }
 
 #[cfg(test)]
@@ -169,11 +205,12 @@ mod tests {
                 }
             },
             |stream: &mut FakeSource| stream.reads.pop_front().unwrap(),
+            || 0,
             {
                 let delivered = delivered.clone();
                 move |update| {
                     let event = match update {
-                        StreamUpdate::Event(event) => event,
+                        StreamUpdate::Event { event, .. } => event,
                         StreamUpdate::Disconnected => {
                             delivered.lock().unwrap().push(-1);
                             return true;
@@ -190,6 +227,7 @@ mod tests {
                     true
                 }
             },
+            || {},
             {
                 let waits = waits.clone();
                 move |delay| waits.lock().unwrap().push(delay)
@@ -213,12 +251,12 @@ mod tests {
         ]);
         let mut connected = 0;
         let mut delivered = Vec::new();
-        run_with(0, |_| { connected += 1; Ok(((), 0)) }, |_| reads.pop_front().unwrap(),
+        run_with(0, |_| { connected += 1; Ok(((), 0)) }, |_| reads.pop_front().unwrap(), || 0,
             |update| match update {
                 StreamUpdate::Connected { .. } => true,
                 StreamUpdate::Disconnected => panic!("malformed candidate invalidated committed display"),
-                StreamUpdate::Event(event) => { delivered.push(event.seq); event.seq != 2 }
-            }, |_| {});
+                StreamUpdate::Event { event, .. } => { delivered.push(event.seq); event.seq != 2 }
+            }, || {}, |_| {});
         assert_eq!(connected, 1);
         assert_eq!(delivered, [1, 2]);
     }
@@ -243,7 +281,9 @@ mod tests {
                 }
             },
             |stream: &mut FakeSource| stream.reads.pop_front().unwrap(),
+            || 0,
             |_| false,
+            || {},
             {
                 let waits = waits.clone();
                 move |delay| waits.lock().unwrap().push(delay)
@@ -254,5 +294,56 @@ mod tests {
         assert_eq!(waits.first(), Some(&Duration::from_millis(20)));
         assert_eq!(waits.last(), Some(&Duration::from_secs(1)));
         assert!(waits.iter().all(|delay| *delay <= Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn delivered_update_wakes_the_renderer_after_queueing() {
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let delivered = order.clone();
+        let woken = order.clone();
+        assert!(deliver_and_wake(
+            StreamUpdate::Disconnected,
+            move |_| { delivered.lock().unwrap().push("deliver"); true },
+            move || woken.lock().unwrap().push("wake"),
+        ));
+        assert_eq!(*order.lock().unwrap(), ["deliver", "wake"]);
+    }
+
+    #[test]
+    fn decoded_event_carries_the_clock_offset_before_delivery() {
+        let update = StreamUpdate::timed(event(9, "ui.surface"), 123_456);
+        match update {
+            StreamUpdate::Event { event, arrived_ns } => {
+                assert_eq!(event.seq, 9);
+                assert_eq!(arrived_ns, 123_456);
+            }
+            _ => panic!("expected event"),
+        }
+    }
+
+    #[test]
+    fn stream_timestamps_decoded_events_and_wakes_after_successful_delivery() {
+        let mut reads = VecDeque::from([
+            Ok(Some(event(1, "ui.surface"))),
+            Ok(Some(event(2, "ui.surface"))),
+        ]);
+        let mut times = VecDeque::from([123, 456]);
+        let mut arrivals = Vec::new();
+        let mut wakes = 0;
+        run_with(
+            0, |_| Ok(((), 0)), |_| reads.pop_front().unwrap(),
+            || times.pop_front().unwrap(),
+            |update| match update {
+                StreamUpdate::Connected { .. } => true,
+                StreamUpdate::Event { event, arrived_ns } => {
+                    arrivals.push((event.seq, arrived_ns));
+                    event.seq != 2
+                }
+                StreamUpdate::Disconnected => true,
+            },
+            || wakes += 1, |_| {},
+        );
+        assert_eq!(arrivals, [(1, 123), (2, 456)]);
+        assert_eq!(wakes, 2, "connected and first queued event must wake");
     }
 }

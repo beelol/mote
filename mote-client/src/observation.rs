@@ -85,6 +85,9 @@ impl Default for ObservationHarness {
                 ui_event_tx,
                 ui_event_rx,
                 cursor_path: None,
+                clock: crate::display_latency::InstantClock::shared(),
+                display_latency: Default::default(),
+                latency_report_path: None,
             },
             incoming,
             outgoing,
@@ -158,7 +161,7 @@ impl ObservationHarness {
                 events,
                 ..Default::default()
             },
-            |ctx| self.app.draw_shell(ctx),
+            |ctx| self.app.draw_frame(ctx),
         );
         (crate::surface::observation::take(), output)
     }
