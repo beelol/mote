@@ -9,7 +9,6 @@
 
 use mote_protocol::{Cursor, HostId, HostSnapshot, ThreadProjection};
 use rusqlite::{Connection, OptionalExtension};
-use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -20,15 +19,7 @@ pub const RETENTION_LIMIT: i64 = 5000;
 /// A subscriber more than this many events behind is told to resync.
 pub const LAG_LIMIT: usize = 1000;
 
-/// A stored event. `payload` is already redacted.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Event {
-    pub seq: i64,
-    pub ts: i64,
-    pub scope_id: String,
-    pub kind: String,
-    pub payload: serde_json::Value,
-}
+pub use mote_protocol::Event;
 
 type Queue = Arc<(Mutex<VecDeque<Event>>, Condvar)>;
 

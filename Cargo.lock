@@ -2467,11 +2467,24 @@ dependencies = [
  "accesskit_consumer",
  "eframe",
  "egui",
+ "mote-client-core",
  "mote-eventlog",
  "mote-gateway",
  "mote-host-client",
  "mote-ipc",
  "mote-paths",
+ "mote-protocol",
+ "mote-ui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "mote-client-core"
+version = "0.0.0"
+dependencies = [
+ "accesskit",
+ "egui",
  "mote-protocol",
  "mote-ui",
  "serde",

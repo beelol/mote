@@ -1,25 +1,6 @@
 use std::ffi::OsString;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ChatStateFixture {
-    Sending,
-    Sent,
-    Delivered,
-    Read,
-    Typing,
-}
-
-impl ChatStateFixture {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Sending => "sending",
-            Self::Sent => "sent",
-            Self::Delivered => "delivered",
-            Self::Read => "read",
-            Self::Typing => "typing",
-        }
-    }
-}
+pub use mote_client_core::state::ChatStateFixture;
 
 pub fn chat_state(args: &[OsString]) -> Result<Option<ChatStateFixture>, String> {
     let Some(flag) = args.first() else {
@@ -77,7 +58,6 @@ pub fn load(
 mod tests {
     use super::*;
     use mote_ui::Node;
-    use std::collections::BTreeSet;
 
     fn args(values: &[&str]) -> impl Iterator<Item = OsString> {
         values
@@ -103,85 +83,6 @@ mod tests {
             .contains("usage:"));
     }
 
-    #[test]
-    fn gallery_sections_cover_every_surface_variant() {
-        fn collect(node: &Node, found: &mut BTreeSet<&'static str>) {
-            match node {
-                Node::Text { .. } => {
-                    found.insert("Text");
-                }
-                Node::Stack { children } => {
-                    found.insert("Stack");
-                    for child in children {
-                        collect(child, found);
-                    }
-                }
-                Node::Row { children } => {
-                    found.insert("Row");
-                    for child in children {
-                        collect(child, found);
-                    }
-                }
-                Node::List { children } => {
-                    found.insert("List");
-                    for child in children {
-                        collect(child, found);
-                    }
-                }
-                Node::Table { .. } => {
-                    found.insert("Table");
-                }
-                Node::Field { .. } => {
-                    found.insert("Field");
-                }
-                Node::Toggle { .. } => {
-                    found.insert("Toggle");
-                }
-                Node::Select { .. } => {
-                    found.insert("Select");
-                }
-                Node::Action { .. } => {
-                    found.insert("Action");
-                }
-                Node::Progress { .. } => {
-                    found.insert("Progress");
-                }
-                Node::Chat { children } => {
-                    found.insert("Chat");
-                    for child in children {
-                        collect(child, found);
-                    }
-                }
-            }
-        }
-
-        let gallery = crate::gallery::tree();
-        let Node::Stack { children } = &gallery else {
-            panic!("gallery must have one page");
-        };
-        let headings: BTreeSet<&str> = children
-            .iter()
-            .filter_map(|node| match node {
-                Node::Text { value } => Some(value.as_str()),
-                _ => None,
-            })
-            .collect();
-        let expected = [
-            "Text", "Stack", "Row", "List", "Table", "Field", "Toggle", "Select", "Action",
-            "Progress", "Chat",
-        ];
-        for heading in expected {
-            assert!(
-                headings.contains(heading),
-                "missing labeled {heading} section"
-            );
-        }
-        let mut found = BTreeSet::new();
-        collect(&gallery, &mut found);
-        assert_eq!(found, expected.into_iter().collect());
-        let encoded = serde_json::to_vec(&gallery).unwrap();
-        assert_eq!(mote_ui::validate(&encoded).unwrap(), gallery);
-    }
 
     #[test]
     fn fixture_mode_validates_the_existing_tree() {

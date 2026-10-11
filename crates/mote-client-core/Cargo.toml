@@ -1,0 +1,17 @@
+[package]
+name = "mote-client-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+test-observation = []
+
+[dependencies]
+egui = { workspace = true, features = ["accesskit"] }
+accesskit.workspace = true
+mote-ui.workspace = true
+mote-protocol.workspace = true
+serde.workspace = true
+serde_json.workspace = true

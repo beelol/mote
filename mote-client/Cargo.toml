@@ -10,9 +10,10 @@ test = false
 doctest = false
 
 [features]
-test-observation = []
+test-observation = ["mote-client-core/test-observation"]
 
 [dependencies]
+mote-client-core.workspace = true
 mote-host-client.workspace = true
 mote-protocol.workspace = true
 mote-ipc.workspace = true
@@ -26,5 +27,6 @@ serde_json.workspace = true
 accesskit.workspace = true
 
 [dev-dependencies]
+mote-client-core = { workspace = true, features = ["test-observation"] }
 mote-gateway.workspace = true
 accesskit_consumer.workspace = true
