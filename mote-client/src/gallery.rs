@@ -69,3 +69,7 @@ pub fn tree() -> Node {
         ],
     }
 }
+
+pub fn preview() -> crate::contract::Surface {
+    crate::contract::Surface::V0(tree())
+}

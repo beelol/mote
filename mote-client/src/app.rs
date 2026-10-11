@@ -6,6 +6,7 @@ use crate::stream::StreamUpdate;
 use eframe::egui;
 use mote_eventlog::Event;
 use mote_ipc::Client;
+#[cfg(any(test, feature = "test-observation"))]
 use mote_ui::Node;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -195,7 +196,7 @@ pub struct MoteApp {
     pipeline_tx: Sender<PipelineResult>,
     pipeline_rx: Receiver<PipelineResult>,
     status_line: String,
-    fixture: Option<Node>,
+    fixture: Option<crate::contract::Surface>,
     turn_tx: Sender<TurnResult>,
     turn_rx: Receiver<TurnResult>,
     ui_event_tx: Sender<crate::surface::SurfaceEvent>,
@@ -213,7 +214,7 @@ impl MoteApp {
         cc: &eframe::CreationContext<'_>,
         socket: PathBuf,
         rx: Receiver<StreamUpdate>,
-        fixture: Option<Node>,
+        fixture: Option<crate::contract::Surface>,
         clock: crate::display_latency::SharedClock,
         cursor_warning: Option<String>,
     ) -> Self {
@@ -426,7 +427,7 @@ impl MoteApp {
                 #[cfg(any(test, feature = "test-observation"))]
                 { scroll_clip = ui.clip_rect(); }
                 if let Some(node) = &self.fixture {
-                    crate::surface::draw(ui, node, &mut clicked);
+                    crate::surface::draw(ui, node.display_v0(), &mut clicked);
                 }
             });
         crate::accessibility::hide_id(ui.ctx(), scroll.id.with(0));
@@ -1099,10 +1100,10 @@ mod tests {
     #[test]
     fn preview_action_displays_its_event_without_a_daemon() {
         let (mut app, _) = app();
-        app.fixture = Some(Node::Action {
+        app.fixture = Some(crate::contract::Surface::V0(Node::Action {
             label: "Preview action".into(),
             event: "gallery.preview".into(),
-        });
+        }));
         let ctx = egui::Context::default();
         crate::theme::install(&ctx);
         let render = |app: &mut MoteApp, events| {
@@ -1405,6 +1406,54 @@ mod tests {
         assert_eq!(observed_rx.recv_timeout(std::time::Duration::from_secs(1)).unwrap(), serde_json::json!({
             "thread":"main", "event":"refresh", "args":{}, "surface_seq":19, "node_path":[0,1]
         }));
+    }
+
+    #[test]
+    fn dual_surface_interaction_emits_one_v0_event_without_contract_context() {
+        let (mut app, tx) = app();
+        let (events, event_rx) = mpsc::channel();
+        app.ui_event_tx = events;
+        tx.send(Event {
+            seq: 23, ts: 0, scope_id: "main".into(), kind: "ui.surface".into(),
+            payload: serde_json::json!({
+                "surface_id":"matrix",
+                "surface":{"type":"stack", "children":[
+                    {"type":"text", "value":"Fallback controls"},
+                    {"type":"action", "label":"Refresh fallback", "event":"refresh"}
+                ]},
+                "matrix_surface":{"version":1, "root":{"type":"screen", "children":[
+                    {"type":"text", "value":"Retained Matrix surface"}
+                ]}}
+            }),
+        }.into()).unwrap();
+        app.drain_events();
+        assert!(app.chat.messages[0].surface.as_ref().unwrap().matrix_v1().is_some());
+
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let render = |app: &mut MoteApp, events| ctx.run(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0))),
+            events, ..Default::default()
+        }, |ctx| { egui::CentralPanel::default().show(ctx, |ui| app.chat_view(ui)); });
+        let output = render(&mut app, vec![]);
+        let pos = output.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.text() == "Refresh fallback" => {
+                Some(text.pos + text.galley.rect.center().to_vec2())
+            }
+            _ => None,
+        }).unwrap();
+        render(&mut app, vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::PointerButton { pos, button:egui::PointerButton::Primary, pressed:true, modifiers:Default::default() },
+            egui::Event::PointerButton { pos, button:egui::PointerButton::Primary, pressed:false, modifiers:Default::default() },
+        ]);
+
+        let params = ui_event_params(&event_rx.try_recv().unwrap());
+        assert_eq!(params, serde_json::json!({
+            "thread":"main", "event":"refresh", "args":{}, "surface_seq":23, "node_path":[1]
+        }));
+        assert!(params.get("surface_contract").is_none());
+        assert!(event_rx.try_recv().is_err());
     }
 
     #[test]

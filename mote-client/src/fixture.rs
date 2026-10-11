@@ -1,14 +1,15 @@
-use mote_ui::Node;
 use std::ffi::OsString;
 
-pub fn load(mut args: impl Iterator<Item = OsString>) -> Result<Option<Node>, String> {
+pub fn load(
+    mut args: impl Iterator<Item = OsString>,
+) -> Result<Option<crate::contract::Surface>, String> {
     let Some(flag) = args.next() else {
         return Ok(None);
     };
     let usage = "usage: mote-client [--gallery | --fixture <json-path>]";
     if flag == "--gallery" {
         return if args.next().is_none() {
-            Ok(Some(crate::gallery::tree()))
+            Ok(Some(crate::gallery::preview()))
         } else {
             Err(usage.into())
         };
@@ -24,6 +25,7 @@ pub fn load(mut args: impl Iterator<Item = OsString>) -> Result<Option<Node>, St
     let bytes =
         std::fs::read(&path).map_err(|e| format!("cannot read fixture {}: {e}", path.display()))?;
     mote_ui::validate(&bytes)
+        .map(crate::contract::Surface::V0)
         .map(Some)
         .map_err(|e| format!("invalid fixture {}: {e}", path.display()))
 }
@@ -31,6 +33,7 @@ pub fn load(mut args: impl Iterator<Item = OsString>) -> Result<Option<Node>, St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mote_ui::Node;
     use std::collections::BTreeSet;
 
     fn args(values: &[&str]) -> impl Iterator<Item = OsString> {
@@ -48,7 +51,10 @@ mod tests {
 
     #[test]
     fn gallery_mode_opens_without_a_fixture_path() {
-        assert!(load(args(&["--gallery"])).unwrap().is_some());
+        assert_eq!(
+            load(args(&["--gallery"])).unwrap(),
+            Some(crate::gallery::preview())
+        );
         assert!(load(args(&["--gallery", "extra"]))
             .unwrap_err()
             .contains("usage:"));
@@ -106,7 +112,7 @@ mod tests {
             }
         }
 
-        let gallery = load(args(&["--gallery"])).unwrap().unwrap();
+        let gallery = crate::gallery::tree();
         let Node::Stack { children } = &gallery else {
             panic!("gallery must have one page");
         };
@@ -142,14 +148,14 @@ mod tests {
         );
         assert_eq!(
             load(args(&["--fixture", path])).unwrap(),
-            Some(Node::Chat {
+            Some(crate::contract::Surface::V0(Node::Chat {
                 children: vec![
                     Node::Text {
                         value: "working".into()
                     },
                     Node::Progress { value: 0.42 }
                 ],
-            })
+            }))
         );
     }
 

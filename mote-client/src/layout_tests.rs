@@ -29,7 +29,7 @@ fn harness(node: &Node, viewport: egui::Vec2, preview: bool) -> ObservationHarne
         ..Default::default()
     };
     if preview {
-        harness.app.fixture = Some(node.clone());
+        harness.app.fixture = Some(crate::contract::Surface::V0(node.clone()));
     } else {
         harness.event(&Event {
             seq: 17,

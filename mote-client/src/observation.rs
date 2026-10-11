@@ -135,7 +135,7 @@ impl ObservationHarness {
     }
 
     pub fn preview(&mut self, node: Node, viewport: egui::Vec2) {
-        self.app.fixture = Some(node);
+        self.app.fixture = Some(crate::contract::Surface::V0(node));
         self.viewport = viewport;
     }
 

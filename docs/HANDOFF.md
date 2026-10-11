@@ -15,9 +15,10 @@ when version 1 is valid. Rejected updates preserve the committed display and ren
 the receipt cursor still advances for the received event.
 
 Version 1 remains unsupported for drawing until Task 4. The app draws only the retained v0 fallback.
-The existing v0 fixture, gallery, accessibility and layout paths are unchanged. Production
-`matrix.render` and daemon emission remain on v0. Surface persistence across a restart or binary
-upgrade remains open and out of scope.
+Live messages and local previews both cross the version-aware surface boundary. Fixture and gallery
+previews are wrapped as version 0 and keep their existing rendering, accessibility and layout
+behavior. Production `matrix.render` and daemon emission remain on v0. Surface persistence across a
+restart or binary upgrade remains open and out of scope.
 
 Task 4 is next. It adds the separate anchored version 1 renderer and keeps production emission
 disabled until the later daemon task.
