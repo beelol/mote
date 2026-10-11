@@ -468,4 +468,36 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     XCTAssertFalse([compactText([self visibleText:app]) containsString:compactText(@"Office dashboard")]);
     [self capture:@"live-home-restored" app:app];
 }
+
+- (void)sendInferenceMessage:(NSString *)message prose:(NSString *)prose app:(XCUIApplication *)app {
+    [self tapText:@"Message your Mote host" app:app];
+    XCTAssertTrue([app.keyboards.firstMatch waitForExistenceWithTimeout:5]);
+    [app.textViews.firstMatch typeText:message];
+    [self tapText:@"Send" app:app];
+    [self assertText:prose app:app];
+}
+
+- (void)testInferredSurfaceSuccessRetryPreservationAndFallback {
+    XCUIApplication *app = [[XCUIApplication alloc] init];
+    [app activate];
+    [self assertText:@"Inference: online" app:app];
+    [self assertText:@"Prior panel" app:app];
+    [self sendInferenceMessage:@"Show a success panel" prose:@"Success prose." app:app];
+    [self assertText:@"Success panel" app:app];
+    [self capture:@"inferred-success" app:app];
+    [self tapText:@"Refresh" app:app];
+    [self assertText:@"Host accepted interaction" app:app];
+    [self sendInferenceMessage:@"Recover a panel" prose:@"Recovery prose." app:app];
+    [self assertText:@"Recovered panel" app:app];
+    [self capture:@"inferred-one-retry" app:app];
+    [self sendInferenceMessage:@"Keep my prior panel" prose:@"Preservation prose." app:app];
+    [self assertText:@"Matrix source rejected" app:app];
+    [self assertText:@"E_RESOLVE_ACTION" app:app];
+    [self assertText:@"Recovered panel" app:app];
+    XCTAssertFalse([[self visibleText:app] containsString:@"Invented"]);
+    [self capture:@"inferred-prior-preserved" app:app];
+    [self sendInferenceMessage:@"Answer with ordinary prose" prose:@"Ordinary prose fallback." app:app];
+    [self assertText:@"Recovered panel" app:app];
+    [self capture:@"inferred-prose-fallback" app:app];
+}
 @end

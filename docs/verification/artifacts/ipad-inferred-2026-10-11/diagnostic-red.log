@@ -1,0 +1,25 @@
+    Blocking waiting for file lock on build directory
+   Compiling mote-testkit v0.0.0 (/Users/bilal/projects/mote/crates/mote-testkit)
+   Compiling moted v0.0.0 (/Users/bilal/projects/mote/moted)
+   Compiling mote-ios v0.0.0 (/Users/bilal/projects/mote/mote-ios)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.13s
+     Running tests/inferred_surface_simulator.rs (target/debug/deps/inferred_surface_simulator-a2ae178f5d6bb7d8)
+
+running 1 test
+test terminal_inference_diagnostic_remains_visible_in_paired_thread ... FAILED
+
+failures:
+
+---- terminal_inference_diagnostic_remains_visible_in_paired_thread stdout ----
+
+thread 'terminal_inference_diagnostic_remains_visible_in_paired_thread' panicked at mote-ios/tests/inferred_surface_simulator.rs:11:5:
+assertion failed: ThreadProjection::handles(&event.kind)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    terminal_inference_diagnostic_remains_visible_in_paired_thread
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p mote-ios --test inferred_surface_simulator`

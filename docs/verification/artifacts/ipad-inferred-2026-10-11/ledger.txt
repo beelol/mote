@@ -1,0 +1,5 @@
+router|qwen3:0.6b|ok|4
+surface|qwen3:4b|ok|6
+talk|qwen3:4b|ok|4
+14
+14

@@ -41,6 +41,7 @@ impl ThreadProjection {
                 | "think.done"
                 | "talk.handoff"
                 | "ui.surface"
+                | "ui.diagnostic"
         )
     }
 
@@ -93,6 +94,26 @@ impl ThreadProjection {
                         surface_contract: 1,
                         tree: tree.clone(),
                     });
+                }
+            }
+            "ui.diagnostic" => {
+                if let Some(diagnostics) = event.payload["diagnostics"].as_array() {
+                    let mut text = String::from("Matrix source rejected");
+                    for diagnostic in diagnostics {
+                        let code = diagnostic["code"].as_str().unwrap_or("E_HOST");
+                        let message = diagnostic["message"].as_str().unwrap_or("Source rejected");
+                        text.push_str(&format!("\n{code}: {message}"));
+                        if let Some(hint) = diagnostic["hint"].as_str() {
+                            text.push_str(&format!("\nHint: {hint}"));
+                        }
+                    }
+                    self.thread.messages.push(ChatMessage {
+                        id: event.seq.to_string(),
+                        role: MessageRole::System,
+                        text,
+                        status: MessageStatus::Delivered,
+                    });
+                    self.streaming = false;
                 }
             }
             _ => {}

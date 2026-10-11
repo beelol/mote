@@ -254,13 +254,14 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     surfaces, returns typed interactions and reconnects from its cursor. **Verify:** complete a live
     chat and dashboard edit, kill and relaunch the app, observe no duplicate event, then switch between
     two paired fixture hosts without mixed state.
-  - [ ] **IPAD-04** A natural-language request produces ordinary prose and at most one Matrix surface
+  - [x] **IPAD-04** A natural-language request produces ordinary prose and at most one Matrix surface
     using only an approved local model and host-owned bindings and actions. The host parses, resolves,
     type-checks, lowers and validates it before commitment. Invalid generation cannot replace or
     activate the previous surface and receives at most one diagnostic retry inside the rate budget.
     **Verify:** run 200 representative prompts per permitted model, require 95 percent first-try
     validity or keep that model disabled, verify ledger rows and typed event rejection, and capture
     success, one-retry recovery, stable prior surface and final prose fallback on the simulator.
+    [Evidence](docs/verification/IPAD-04.md) records the 192-of-200 live gate and four paired native captures.
   - [ ] **IPAD-05** A Mac-hosted browser fixture uses a per-character Mote Chrome for Testing profile
     and can browse, read and fill automatically only on an approved site. Mote never opens the default
     Chrome profile or its keychain item. Submit, purchase, message, download, OAuth and non-GET actions

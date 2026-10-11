@@ -1,0 +1,18 @@
+    Blocking waiting for file lock on build directory
+   Compiling mote-protocol v0.0.0 (/Users/bilal/projects/mote/crates/mote-protocol)
+   Compiling mote-eventlog v0.0.0 (/Users/bilal/projects/mote/crates/mote-eventlog)
+   Compiling mote-client-core v0.0.0 (/Users/bilal/projects/mote/crates/mote-client-core)
+   Compiling mote-host-client v0.0.0 (/Users/bilal/projects/mote/crates/mote-host-client)
+   Compiling mote-ipc v0.0.0 (/Users/bilal/projects/mote/crates/mote-ipc)
+   Compiling mote-gateway v0.0.0 (/Users/bilal/projects/mote/crates/mote-gateway)
+   Compiling mote-testkit v0.0.0 (/Users/bilal/projects/mote/crates/mote-testkit)
+   Compiling mote-ios v0.0.0 (/Users/bilal/projects/mote/mote-ios)
+   Compiling moted v0.0.0 (/Users/bilal/projects/mote/moted)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 40.35s
+     Running tests/inferred_surface_simulator.rs (target/debug/deps/inferred_surface_simulator-a2ae178f5d6bb7d8)
+
+running 1 test
+test terminal_inference_diagnostic_remains_visible_in_paired_thread ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+

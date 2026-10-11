@@ -2,7 +2,7 @@
 
 Date: 2026-10-11.
 Implementation commit: `6c8d6ac923436761325648e8b9a0439a725a18bd`.
-Status: The live model validity gate passes. The criterion remains open pending Simulator captures.
+Status: Verified. The live model validity gate and paired native Simulator journey pass.
 
 ## Environment and boundaries
 
@@ -185,8 +185,147 @@ The focused tests then passed.
 The final workspace and lint outputs are retained at `/private/tmp/mote-surface-final-tests.log` and `/private/tmp/mote-surface-final-clippy.log`.
 The production-turn output is retained at `/private/tmp/mote-surface-production-tests.log`.
 
-## Remaining verification
+## Paired native Simulator verification
 
-The Simulator must still capture success, one-retry recovery, stable prior surface and final prose fallback through the paired client.
-This file does not claim those UI captures.
-IPAD-04 remains unchecked until that remaining Verify clause is covered.
+Date: 2026-10-11, 10:48 to 10:49 PDT.
+Source base: `61f6bfd64850b8333627f25dea8155b1af123e1a`.
+Device: iPad Pro 11-inch (M5), iOS 27.0.
+UDID: `43F2F6ED-5C86-4121-B03F-40FE38891C4E`.
+Viewport: 834 by 1210 points in portrait.
+Native capture: 1668 by 2420 pixels.
+Xcode 27.0, build 27A266a, iPhoneSimulator 27.0 SDK.
+The macOS and Rust versions remain those recorded above.
+
+The harness builds and installs the exact native app before its first launch.
+It starts the real daemon dispatcher and Noise gateway in isolated `/private/tmp` storage.
+It generates a new host identity and pairs the app using a real single-use MOTE1 offer.
+The harness confirms the pending native device on the host.
+There is no authentication bypass or hard-coded host key.
+The final host is `bb39981f246e887b6d5f7996520c5b27c6bb50cd521f3fa940f4f3fefc44e354`.
+
+The local scripted model boundary returns four ordinary talk answers and six structured surface replies.
+The surface and talk lanes use the approved `qwen3:4b` name.
+The router uses the approved `qwen3:0.6b` name with deterministic talk verdicts.
+No model is loaded or pulled for this deterministic failure journey.
+These scripted replies test production behavior, not live model quality.
+The original 192-of-200 live gate remains the model-quality evidence.
+The harness copies its passing attestation only to the temporary host directory with mode 0600.
+The scripted inventory returns that exact model digest.
+The daemon still applies its normal identity, corpus and compiler activation checks.
+`models.local_only` remains true.
+The default MOTE_HOME is untouched.
+
+Command:
+
+```text
+MOTE_LIVE=1 TMPDIR=/private/tmp MOTE_SIMULATOR_ID=43F2F6ED-5C86-4121-B03F-40FE38891C4E MOTE_ARTIFACTS=/private/tmp/mote-inferred-native-attempt3 MOTE_SURFACE_ATTESTATION=/private/tmp/mote-surface-attested.8F07uH/surface-activation.json cargo test -p mote-ios --test inferred_surface_simulator native_inferred -- --ignored --nocapture
+```
+
+The harness runs:
+
+```text
+xcodebuild -project ios/Mote/Mote.xcodeproj -scheme Mote -destination id=43F2F6ED-5C86-4121-B03F-40FE38891C4E -derivedDataPath /private/tmp/mote-inferred-derived build
+xcrun simctl install 43F2F6ED-5C86-4121-B03F-40FE38891C4E /private/tmp/mote-inferred-derived/Build/Products/Debug-iphonesimulator/Mote.app
+xcodebuild -project ios/Mote/Mote.xcodeproj -scheme Mote -destination id=43F2F6ED-5C86-4121-B03F-40FE38891C4E -derivedDataPath /private/tmp/mote-inferred-derived -resultBundlePath /private/tmp/mote-inferred-native-attempt3/native.xcresult -only-testing:MoteUITests/MoteUITests/testInferredSurfaceSuccessRetryPreservationAndFallback test
+```
+
+Output:
+
+```text
+** BUILD SUCCEEDED **
+Executed 1 test, with 0 failures (0 unexpected) in 49.920 seconds
+** TEST SUCCEEDED **
+Native inferred success, one retry, stable prior surface, visible terminal diagnostic and prose fallback passed. 14 calls, 14 ledger rows, 14 packs; 3 authenticated typed refusals.
+test result: ok. 1 passed; 0 failed; 0 ignored; finished in 72.60s
+exit 0
+```
+
+XCUITest enters each natural-language request in the actual native composer and taps Send.
+It uses native screenshots and on-screen text recognition to assert each resulting state.
+All four final screenshots were directly inspected.
+
+| Native state | Event evidence | Visible capture |
+| --- | --- | --- |
+| Success | User seq 2, talk.done seq 7, one generated surface seq 12. | [Success](artifacts/ipad-inferred-2026-10-11/success.png) shows ordinary prose and Success panel with Refresh. |
+| One retry recovery | User seq 15, talk.done seq 21, two surface calls, one accepted surface seq 27. | [Recovery](artifacts/ipad-inferred-2026-10-11/one-retry.png) shows Recovery prose and Recovered panel. |
+| Two invalid replies | User seq 28, talk.done seq 35, two surface calls, terminal diagnostic seq 40, no new surface. | [Preservation](artifacts/ipad-inferred-2026-10-11/prior-preserved.png) shows Preservation prose, E_RESOLVE_ACTION and the same Recovered panel. |
+| Ordinary prose fallback | User seq 41, talk.done seq 47, one none decision, cursor 50, no new surface. | [Fallback](artifacts/ipad-inferred-2026-10-11/prose-fallback.png) shows Ordinary prose fallback and the preserved panel. |
+
+Both retry requests carry the actual structured `E_RESOLVE_PATH` and `Unknown Value path` diagnostic.
+The first invalid source uses an unresolved Value path.
+The second invalid source attempts an invented action.
+The host rejects it with `E_RESOLVE_ACTION` and `Unknown action`.
+No invalid source or invented control reaches the consumer.
+The saved paired client retains the exact committed surface sequence 27 through final cursor 50.
+The terminal diagnostic appears as a delivered System message rather than replacing that surface.
+
+The native Refresh tap creates one typed ui.event at seq 13 and a host re-render at seq 14.
+It is not another inference call.
+The host receives at most one generated surface for each completed turn.
+The complete log has four surfaces: initial fixture, success, typed Refresh and recovery.
+It has four turn.user events, four ledger-linked talk.done events and one terminal ui.diagnostic.
+
+A second real paired authenticated client submits three invalid typed interactions.
+A stale surface sequence, an invented action and invented action arguments each return InvalidParams.
+They add zero model calls.
+No rejected generated action is activated.
+
+Ledger query and output:
+
+```text
+select lane,model,status,count(*) from ledger group by lane,model,status;
+select count(*) from ledger;
+select count(*) from packs;
+router|qwen3:0.6b|ok|4
+surface|qwen3:4b|ok|6
+talk|qwen3:4b|ok|4
+14
+14
+```
+
+The scripted server recorded exactly 14 POST /api/chat calls.
+The redacted host event log contains exactly 14 model.request and 14 model.response events.
+Each call has one ledger row and one pack.
+The six surface calls are distributed 1, 2, 2 and 1 across the four native turns.
+The ordinary native typed tap and all three refused interactions make no extra model call.
+
+The [artifact directory](artifacts/ipad-inferred-2026-10-11/) contains the exact build, native and harness logs, public host state, redacted events, ledger counts and four PNG captures.
+No pairing offer, private credential, host database or displaced prior Documents state is checked in.
+The harness deletes only its temporary native Keychain credential and confirms that it is missing.
+It stops the app and restores all displaced prior Documents files.
+Temporary host storage is then removed by the fixture lifecycle.
+No physical iPad, Apple account, provisioning, distribution signing or TestFlight work occurs.
+
+## Diagnostic regression and final gates
+
+The paired ThreadProjection previously ignored ui.diagnostic while advancing its cursor.
+The focused terminal_inference_diagnostic_remains_visible_in_paired_thread test failed before the fix.
+It now passes and verifies the projected code, message and optional hint.
+The projection fix does not mutate committed surfaces or authorize an interaction.
+
+The first native attempt activated the previously installed running app before rebuilding and failed the visible-diagnostic assertion.
+Its host diagnostic and preserved surface were intact.
+The harness now terminates, rebuilds and installs before pairing.
+The second native XCUITest passed all four states but its post-run assertion incorrectly expected the rejected identifier in a compiler diagnostic.
+The captured request contained the correct structured diagnostic without that identifier.
+The corrected structured-field assertion and every post-run check passed in the third complete journey above.
+The red native logs remain under `/private/tmp/mote-inferred-native-attempt1` and `/private/tmp/mote-inferred-native-attempt2`.
+The focused red and green diagnostic logs are included in the artifact directory.
+
+The final frozen-source workspace gate ran after the complete native journey:
+
+```text
+cargo test --workspace > /private/tmp/mote-inferred-final-workspace.log 2>&1
+exit 0
+61 test and documentation suites; 668 passed; 0 failed; 9 ignored
+
+cargo clippy --workspace -- -D warnings > /private/tmp/mote-inferred-final-clippy.log 2>&1
+exit 0
+Finished dev profile in 13.85 seconds
+```
+
+The nine ignored tests require explicitly enabled live or native boundaries.
+The native inference test was separately enabled and passed above.
+The exact final outputs are included as [workspace.log](artifacts/ipad-inferred-2026-10-11/workspace.log) and [clippy.log](artifacts/ipad-inferred-2026-10-11/clippy.log).
+Every IPAD-04 Verify clause now has evidence.
+The README acceptance checkbox is checked.

@@ -1,0 +1,1211 @@
+[
+  {
+    "seq": 1,
+    "ts": 1791740913031,
+    "scope_id": "main",
+    "kind": "ui.surface",
+    "payload": {
+      "matrix_surface": {
+        "root": {
+          "children": [
+            {
+              "type": "text",
+              "value": "Prior panel"
+            },
+            {
+              "event": "refresh",
+              "label": "Refresh",
+              "type": "button"
+            }
+          ],
+          "type": "screen"
+        },
+        "version": 1
+      },
+      "surface": {
+        "children": [
+          {
+            "type": "text",
+            "value": "Prior panel"
+          },
+          {
+            "event": "refresh",
+            "label": "Refresh",
+            "type": "action"
+          }
+        ],
+        "type": "stack"
+      },
+      "surface_id": "matrix"
+    }
+  },
+  {
+    "seq": 2,
+    "ts": 1791740934636,
+    "scope_id": "main",
+    "kind": "turn.user",
+    "payload": {
+      "text": "Show a success panel"
+    }
+  },
+  {
+    "seq": 3,
+    "ts": 1791740935106,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "talk",
+      "model": "qwen3:4b",
+      "payload": {
+        "messages": [
+          {
+            "content": "",
+            "role": "system"
+          },
+          {
+            "content": "Show a success panel",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768
+      },
+      "request_id": "69366-1791740935106410000-1"
+    }
+  },
+  {
+    "seq": 4,
+    "ts": 1791740935107,
+    "scope_id": "main",
+    "kind": "talk.delta",
+    "payload": {
+      "text": "Success prose."
+    }
+  },
+  {
+    "seq": 5,
+    "ts": 1791740935107,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": 0,
+      "lane": "talk",
+      "model": "qwen3:4b",
+      "request_id": "69366-1791740935106410000-1",
+      "status": "ok",
+      "total_ms": 0
+    }
+  },
+  {
+    "seq": 6,
+    "ts": 1791740935111,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "router",
+      "model": "qwen3:0.6b",
+      "payload": {
+        "messages": [
+          {
+            "content": "You are a strict router for a two-lane agent. Output ONLY a JSON object {\"route\": \"think\" | \"talk\", \"reason\": string}. Never answer or do the request yourself.\n\nKey fact: the TALK lane is a tiny model with NO tools and NO memory. It can only make social small talk. It CANNOT read, open, list, search, summarise, compute, recall, look up, draft, or touch any file, note, email, log, or past conversation. The THINK lane has the tools.\n\nDecision rule, in order:\n1. If the message asks to read, open, write, rename, find, search, grep, list, show, summarise, count, compute, explain, fix, debug, refactor, convert, compare, analyse, plan, draft, remember, recall, look up, trace, extract or check ANYTHING -> think.\n2. If it mentions a file, code, logs, notes, emails, a ticket, a document, or the past (\"what did I/you\", \"last week\", \"the decision we made\") -> think.\n3. If it is a factual question that needs an answer -> think.\n4. ONLY if the whole message is a greeting, closing, thanks, acknowledgement, compliment, or pure small talk about the agent/user with no task -> talk.\nWhen torn between the two, choose think.\n\nExamples:\nhey there -> {\"route\":\"talk\",\"reason\":\"greeting\"}\nmorning! -> {\"route\":\"talk\",\"reason\":\"greeting\"}\nhow are you today -> {\"route\":\"talk\",\"reason\":\"small talk\"}\nwhat's your name -> {\"route\":\"talk\",\"reason\":\"small talk about the agent\"}\nthanks, appreciate it -> {\"route\":\"talk\",\"reason\":\"acknowledgement\"}\nread my config file and summarise it -> {\"route\":\"think\",\"reason\":\"needs file tools\"}\nsummarise the last ten emails -> {\"route\":\"think\",\"reason\":\"needs to read emails\"}\nlist the files in my downloads folder -> {\"route\":\"think\",\"reason\":\"needs to list files\"}\nlook up when I last changed my password -> {\"route\":\"think\",\"reason\":\"needs to look up a fact\"}\nwhat did I tell you about my sister last week -> {\"route\":\"think\",\"reason\":\"needs memory\"}\nwhat's the capital of France -> {\"route\":\"think\",\"reason\":\"a factual question to answer\"}",
+            "role": "system"
+          },
+          {
+            "content": "Show a success panel",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768
+      },
+      "request_id": "69366-1791740935110954000-2"
+    }
+  },
+  {
+    "seq": 7,
+    "ts": 1791740935117,
+    "scope_id": "main",
+    "kind": "talk.done",
+    "payload": {
+      "ledger_id": 1,
+      "pack_id": 1
+    }
+  },
+  {
+    "seq": 8,
+    "ts": 1791740935118,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": null,
+      "lane": "router",
+      "model": "qwen3:0.6b",
+      "request_id": "69366-1791740935110954000-2",
+      "status": "ok",
+      "total_ms": 0
+    }
+  },
+  {
+    "seq": 9,
+    "ts": 1791740935121,
+    "scope_id": "main",
+    "kind": "router.verdict",
+    "payload": {
+      "reason": "fixture",
+      "route": "talk"
+    }
+  },
+  {
+    "seq": 10,
+    "ts": 1791740935137,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "surface",
+      "model": "qwen3:4b",
+      "payload": {
+        "format": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "matrix"
+                  ],
+                  "type": "string"
+                },
+                "source": {
+                  "maxLength": 262144,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "source"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "none"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            }
+          ],
+          "type": "object"
+        },
+        "messages": [
+          {
+            "content": "You generate one compact Matrix interface for the request JSON in this conversation.\nRead request as the task. Prose is the completed answer, not a replacement task.\nPrevious_surface and diagnostics are context for repairs, not requests.\nAn explicit request to show a panel, form, list, progress, row, selection control, stack, table, text surface or toggle requires kind matrix.\nUse kind none for a plain explanation that does not request an interface.\nReturn only one JSON object. A matrix object has kind and source. A none object has only kind.\nMatrix is a declaration language, not JSON, HTML, JavaScript or a function call.\nThe complete source starts with screen { and ends with }. Strings in source use double quotes escaped inside the JSON string.\nUse the following exact syntax examples. Adapt literal labels to the request. Keep host paths and action names exactly as shown.\nPlain explanation:\n{\"kind\":\"none\"}\nPanel with refresh button:\n{\"kind\":\"matrix\",\"source\":\"screen { text \\\"Panel\\\" button \\\"Refresh\\\" -> refresh }\"}\nForm with local-only boolean field (boolean fields use toggle):\n{\"kind\":\"matrix\",\"source\":\"screen { col { toggle \\\"Local only\\\" models.local_only } }\"}\nList of available host items:\n{\"kind\":\"matrix\",\"source\":\"screen { list from host.items { item { text .label } } }\"}\nProgress:\n{\"kind\":\"matrix\",\"source\":\"screen { progress value host.progress }\"}\nTwo labels side by side:\n{\"kind\":\"matrix\",\"source\":\"screen { row { text \\\"First\\\" text \\\"Second\\\" } }\"}\nTalk model selection:\n{\"kind\":\"matrix\",\"source\":\"screen { select \\\"Talk model\\\" models.talk options model_options }\"}\nVertical stack of three labels:\n{\"kind\":\"matrix\",\"source\":\"screen { col { text \\\"First\\\" text \\\"Second\\\" text \\\"Third\\\" } }\"}\nPipeline stage table (columns go directly inside table):\n{\"kind\":\"matrix\",\"source\":\"screen { table from pipeline.stages { column \\\"Stage\\\" .stage column \\\"Calls\\\" .calls } }\"}\nLiteral text surface:\n{\"kind\":\"matrix\",\"source\":\"screen { text \\\"Requested text\\\" }\"}\nLocal-only toggle:\n{\"kind\":\"matrix\",\"source\":\"screen { toggle \\\"Local only\\\" models.local_only }\"}\nHost-owned manifest: fields models.local_only:boolean, models.talk:Model, models.router:Model, models.think:Model.\nValues model_options:list Model, pipeline.stages:list PipelineStage(stage,calls,latency), host.progress:number, host.items:list HostItem(label).\nOnly action refresh exists and takes no arguments. Do not create bindings or actions.\nUse only screen, col, row, text, progress value, toggle, select options, button ->, list from with item, and table from with column.\nDo not add selection, keys, overlays, pending states, failure states or action arguments.\nNow return the decision for request, even when prose is already complete or diagnostics is empty.",
+            "role": "system"
+          },
+          {
+            "content": "{\"request\":\"Show a success panel\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"prose\":\"Success prose.\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"previous_surface\":\"screen { text \\\"Prior panel\\\" button \\\"Refresh\\\" -> refresh }\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"diagnostics\":\"\"}",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768,
+        "temperature": 0.0,
+        "think": false
+      },
+      "request_id": "69366-1791740935137264000-3"
+    }
+  },
+  {
+    "seq": 11,
+    "ts": 1791740935140,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": null,
+      "lane": "surface",
+      "model": "qwen3:4b",
+      "request_id": "69366-1791740935137264000-3",
+      "status": "ok",
+      "total_ms": 0
+    }
+  },
+  {
+    "seq": 12,
+    "ts": 1791740935149,
+    "scope_id": "main",
+    "kind": "ui.surface",
+    "payload": {
+      "matrix_surface": {
+        "root": {
+          "children": [
+            {
+              "type": "text",
+              "value": "Success panel"
+            },
+            {
+              "event": "refresh",
+              "label": "Refresh",
+              "type": "button"
+            }
+          ],
+          "type": "screen"
+        },
+        "version": 1
+      },
+      "surface": {
+        "children": [
+          {
+            "type": "text",
+            "value": "Success panel"
+          },
+          {
+            "event": "refresh",
+            "label": "Refresh",
+            "type": "action"
+          }
+        ],
+        "type": "stack"
+      },
+      "surface_id": "matrix"
+    }
+  },
+  {
+    "seq": 13,
+    "ts": 1791740940219,
+    "scope_id": "main",
+    "kind": "ui.event",
+    "payload": {
+      "args": {},
+      "event": "refresh"
+    }
+  },
+  {
+    "seq": 14,
+    "ts": 1791740940221,
+    "scope_id": "main",
+    "kind": "ui.surface",
+    "payload": {
+      "matrix_surface": {
+        "root": {
+          "children": [
+            {
+              "type": "text",
+              "value": "Success panel"
+            },
+            {
+              "event": "refresh",
+              "label": "Refresh",
+              "type": "button"
+            }
+          ],
+          "type": "screen"
+        },
+        "version": 1
+      },
+      "surface": {
+        "children": [
+          {
+            "type": "text",
+            "value": "Success panel"
+          },
+          {
+            "event": "refresh",
+            "label": "Refresh",
+            "type": "action"
+          }
+        ],
+        "type": "stack"
+      },
+      "surface_id": "matrix"
+    }
+  },
+  {
+    "seq": 15,
+    "ts": 1791740947819,
+    "scope_id": "main",
+    "kind": "turn.user",
+    "payload": {
+      "text": "Recover a panel"
+    }
+  },
+  {
+    "seq": 16,
+    "ts": 1791740947820,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "talk",
+      "model": "qwen3:4b",
+      "payload": {
+        "messages": [
+          {
+            "content": "you: Show a success panel\nmote: Success prose.\n",
+            "role": "system"
+          },
+          {
+            "content": "Recover a panel",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768
+      },
+      "request_id": "69366-1791740947820797000-4"
+    }
+  },
+  {
+    "seq": 17,
+    "ts": 1791740947823,
+    "scope_id": "main",
+    "kind": "talk.delta",
+    "payload": {
+      "text": "Recovery prose."
+    }
+  },
+  {
+    "seq": 18,
+    "ts": 1791740947827,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "router",
+      "model": "qwen3:0.6b",
+      "payload": {
+        "messages": [
+          {
+            "content": "You are a strict router for a two-lane agent. Output ONLY a JSON object {\"route\": \"think\" | \"talk\", \"reason\": string}. Never answer or do the request yourself.\n\nKey fact: the TALK lane is a tiny model with NO tools and NO memory. It can only make social small talk. It CANNOT read, open, list, search, summarise, compute, recall, look up, draft, or touch any file, note, email, log, or past conversation. The THINK lane has the tools.\n\nDecision rule, in order:\n1. If the message asks to read, open, write, rename, find, search, grep, list, show, summarise, count, compute, explain, fix, debug, refactor, convert, compare, analyse, plan, draft, remember, recall, look up, trace, extract or check ANYTHING -> think.\n2. If it mentions a file, code, logs, notes, emails, a ticket, a document, or the past (\"what did I/you\", \"last week\", \"the decision we made\") -> think.\n3. If it is a factual question that needs an answer -> think.\n4. ONLY if the whole message is a greeting, closing, thanks, acknowledgement, compliment, or pure small talk about the agent/user with no task -> talk.\nWhen torn between the two, choose think.\n\nExamples:\nhey there -> {\"route\":\"talk\",\"reason\":\"greeting\"}\nmorning! -> {\"route\":\"talk\",\"reason\":\"greeting\"}\nhow are you today -> {\"route\":\"talk\",\"reason\":\"small talk\"}\nwhat's your name -> {\"route\":\"talk\",\"reason\":\"small talk about the agent\"}\nthanks, appreciate it -> {\"route\":\"talk\",\"reason\":\"acknowledgement\"}\nread my config file and summarise it -> {\"route\":\"think\",\"reason\":\"needs file tools\"}\nsummarise the last ten emails -> {\"route\":\"think\",\"reason\":\"needs to read emails\"}\nlist the files in my downloads folder -> {\"route\":\"think\",\"reason\":\"needs to list files\"}\nlook up when I last changed my password -> {\"route\":\"think\",\"reason\":\"needs to look up a fact\"}\nwhat did I tell you about my sister last week -> {\"route\":\"think\",\"reason\":\"needs memory\"}\nwhat's the capital of France -> {\"route\":\"think\",\"reason\":\"a factual question to answer\"}",
+            "role": "system"
+          },
+          {
+            "content": "Recover a panel",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768
+      },
+      "request_id": "69366-1791740947826066000-5"
+    }
+  },
+  {
+    "seq": 19,
+    "ts": 1791740947827,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": 0,
+      "lane": "talk",
+      "model": "qwen3:4b",
+      "request_id": "69366-1791740947820797000-4",
+      "status": "ok",
+      "total_ms": 4
+    }
+  },
+  {
+    "seq": 20,
+    "ts": 1791740947828,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": null,
+      "lane": "router",
+      "model": "qwen3:0.6b",
+      "request_id": "69366-1791740947826066000-5",
+      "status": "ok",
+      "total_ms": 0
+    }
+  },
+  {
+    "seq": 21,
+    "ts": 1791740947839,
+    "scope_id": "main",
+    "kind": "talk.done",
+    "payload": {
+      "ledger_id": 4,
+      "pack_id": 4
+    }
+  },
+  {
+    "seq": 22,
+    "ts": 1791740947840,
+    "scope_id": "main",
+    "kind": "router.verdict",
+    "payload": {
+      "reason": "fixture",
+      "route": "talk"
+    }
+  },
+  {
+    "seq": 23,
+    "ts": 1791740947855,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "surface",
+      "model": "qwen3:4b",
+      "payload": {
+        "format": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "matrix"
+                  ],
+                  "type": "string"
+                },
+                "source": {
+                  "maxLength": 262144,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "source"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "none"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            }
+          ],
+          "type": "object"
+        },
+        "messages": [
+          {
+            "content": "You generate one compact Matrix interface for the request JSON in this conversation.\nRead request as the task. Prose is the completed answer, not a replacement task.\nPrevious_surface and diagnostics are context for repairs, not requests.\nAn explicit request to show a panel, form, list, progress, row, selection control, stack, table, text surface or toggle requires kind matrix.\nUse kind none for a plain explanation that does not request an interface.\nReturn only one JSON object. A matrix object has kind and source. A none object has only kind.\nMatrix is a declaration language, not JSON, HTML, JavaScript or a function call.\nThe complete source starts with screen { and ends with }. Strings in source use double quotes escaped inside the JSON string.\nUse the following exact syntax examples. Adapt literal labels to the request. Keep host paths and action names exactly as shown.\nPlain explanation:\n{\"kind\":\"none\"}\nPanel with refresh button:\n{\"kind\":\"matrix\",\"source\":\"screen { text \\\"Panel\\\" button \\\"Refresh\\\" -> refresh }\"}\nForm with local-only boolean field (boolean fields use toggle):\n{\"kind\":\"matrix\",\"source\":\"screen { col { toggle \\\"Local only\\\" models.local_only } }\"}\nList of available host items:\n{\"kind\":\"matrix\",\"source\":\"screen { list from host.items { item { text .label } } }\"}\nProgress:\n{\"kind\":\"matrix\",\"source\":\"screen { progress value host.progress }\"}\nTwo labels side by side:\n{\"kind\":\"matrix\",\"source\":\"screen { row { text \\\"First\\\" text \\\"Second\\\" } }\"}\nTalk model selection:\n{\"kind\":\"matrix\",\"source\":\"screen { select \\\"Talk model\\\" models.talk options model_options }\"}\nVertical stack of three labels:\n{\"kind\":\"matrix\",\"source\":\"screen { col { text \\\"First\\\" text \\\"Second\\\" text \\\"Third\\\" } }\"}\nPipeline stage table (columns go directly inside table):\n{\"kind\":\"matrix\",\"source\":\"screen { table from pipeline.stages { column \\\"Stage\\\" .stage column \\\"Calls\\\" .calls } }\"}\nLiteral text surface:\n{\"kind\":\"matrix\",\"source\":\"screen { text \\\"Requested text\\\" }\"}\nLocal-only toggle:\n{\"kind\":\"matrix\",\"source\":\"screen { toggle \\\"Local only\\\" models.local_only }\"}\nHost-owned manifest: fields models.local_only:boolean, models.talk:Model, models.router:Model, models.think:Model.\nValues model_options:list Model, pipeline.stages:list PipelineStage(stage,calls,latency), host.progress:number, host.items:list HostItem(label).\nOnly action refresh exists and takes no arguments. Do not create bindings or actions.\nUse only screen, col, row, text, progress value, toggle, select options, button ->, list from with item, and table from with column.\nDo not add selection, keys, overlays, pending states, failure states or action arguments.\nNow return the decision for request, even when prose is already complete or diagnostics is empty.",
+            "role": "system"
+          },
+          {
+            "content": "{\"request\":\"Recover a panel\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"prose\":\"Recovery prose.\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"previous_surface\":\"screen {\\n  text \\\"Success panel\\\"\\n  button \\\"Refresh\\\" -> refresh\\n}\\n\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"diagnostics\":\"\"}",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768,
+        "temperature": 0.0,
+        "think": false
+      },
+      "request_id": "69366-1791740947855612000-6"
+    }
+  },
+  {
+    "seq": 24,
+    "ts": 1791740947857,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": null,
+      "lane": "surface",
+      "model": "qwen3:4b",
+      "request_id": "69366-1791740947855612000-6",
+      "status": "ok",
+      "total_ms": 0
+    }
+  },
+  {
+    "seq": 25,
+    "ts": 1791740947877,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "surface",
+      "model": "qwen3:4b",
+      "payload": {
+        "format": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "matrix"
+                  ],
+                  "type": "string"
+                },
+                "source": {
+                  "maxLength": 262144,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "source"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "none"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            }
+          ],
+          "type": "object"
+        },
+        "messages": [
+          {
+            "content": "You generate one compact Matrix interface for the request JSON in this conversation.\nRead request as the task. Prose is the completed answer, not a replacement task.\nPrevious_surface and diagnostics are context for repairs, not requests.\nAn explicit request to show a panel, form, list, progress, row, selection control, stack, table, text surface or toggle requires kind matrix.\nUse kind none for a plain explanation that does not request an interface.\nReturn only one JSON object. A matrix object has kind and source. A none object has only kind.\nMatrix is a declaration language, not JSON, HTML, JavaScript or a function call.\nThe complete source starts with screen { and ends with }. Strings in source use double quotes escaped inside the JSON string.\nUse the following exact syntax examples. Adapt literal labels to the request. Keep host paths and action names exactly as shown.\nPlain explanation:\n{\"kind\":\"none\"}\nPanel with refresh button:\n{\"kind\":\"matrix\",\"source\":\"screen { text \\\"Panel\\\" button \\\"Refresh\\\" -> refresh }\"}\nForm with local-only boolean field (boolean fields use toggle):\n{\"kind\":\"matrix\",\"source\":\"screen { col { toggle \\\"Local only\\\" models.local_only } }\"}\nList of available host items:\n{\"kind\":\"matrix\",\"source\":\"screen { list from host.items { item { text .label } } }\"}\nProgress:\n{\"kind\":\"matrix\",\"source\":\"screen { progress value host.progress }\"}\nTwo labels side by side:\n{\"kind\":\"matrix\",\"source\":\"screen { row { text \\\"First\\\" text \\\"Second\\\" } }\"}\nTalk model selection:\n{\"kind\":\"matrix\",\"source\":\"screen { select \\\"Talk model\\\" models.talk options model_options }\"}\nVertical stack of three labels:\n{\"kind\":\"matrix\",\"source\":\"screen { col { text \\\"First\\\" text \\\"Second\\\" text \\\"Third\\\" } }\"}\nPipeline stage table (columns go directly inside table):\n{\"kind\":\"matrix\",\"source\":\"screen { table from pipeline.stages { column \\\"Stage\\\" .stage column \\\"Calls\\\" .calls } }\"}\nLiteral text surface:\n{\"kind\":\"matrix\",\"source\":\"screen { text \\\"Requested text\\\" }\"}\nLocal-only toggle:\n{\"kind\":\"matrix\",\"source\":\"screen { toggle \\\"Local only\\\" models.local_only }\"}\nHost-owned manifest: fields models.local_only:boolean, models.talk:Model, models.router:Model, models.think:Model.\nValues model_options:list Model, pipeline.stages:list PipelineStage(stage,calls,latency), host.progress:number, host.items:list HostItem(label).\nOnly action refresh exists and takes no arguments. Do not create bindings or actions.\nUse only screen, col, row, text, progress value, toggle, select options, button ->, list from with item, and table from with column.\nDo not add selection, keys, overlays, pending states, failure states or action arguments.\nNow return the decision for request, even when prose is already complete or diagnostics is empty.",
+            "role": "system"
+          },
+          {
+            "content": "{\"request\":\"Recover a panel\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"prose\":\"Recovery prose.\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"previous_surface\":\"screen {\\n  text \\\"Success panel\\\"\\n  button \\\"Refresh\\\" -> refresh\\n}\\n\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"diagnostics\":\"[{\\\"code\\\":\\\"E_RESOLVE_PATH\\\",\\\"declaration_path\\\":[\\\"screen\\\",\\\"0\\\"],\\\"hint\\\":null,\\\"message\\\":\\\"Unknown Value path\\\",\\\"severity\\\":\\\"error\\\",\\\"span\\\":{\\\"end\\\":29,\\\"start\\\":14}}]\"}",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768,
+        "temperature": 0.0,
+        "think": false
+      },
+      "request_id": "69366-1791740947877359000-7"
+    }
+  },
+  {
+    "seq": 26,
+    "ts": 1791740947878,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": null,
+      "lane": "surface",
+      "model": "qwen3:4b",
+      "request_id": "69366-1791740947877359000-7",
+      "status": "ok",
+      "total_ms": 0
+    }
+  },
+  {
+    "seq": 27,
+    "ts": 1791740947887,
+    "scope_id": "main",
+    "kind": "ui.surface",
+    "payload": {
+      "matrix_surface": {
+        "root": {
+          "children": [
+            {
+              "type": "text",
+              "value": "Recovered panel"
+            },
+            {
+              "event": "refresh",
+              "label": "Refresh",
+              "type": "button"
+            }
+          ],
+          "type": "screen"
+        },
+        "version": 1
+      },
+      "surface": {
+        "children": [
+          {
+            "type": "text",
+            "value": "Recovered panel"
+          },
+          {
+            "event": "refresh",
+            "label": "Refresh",
+            "type": "action"
+          }
+        ],
+        "type": "stack"
+      },
+      "surface_id": "matrix"
+    }
+  },
+  {
+    "seq": 28,
+    "ts": 1791740957303,
+    "scope_id": "main",
+    "kind": "turn.user",
+    "payload": {
+      "text": "Keep my prior panel"
+    }
+  },
+  {
+    "seq": 29,
+    "ts": 1791740957304,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "talk",
+      "model": "qwen3:4b",
+      "payload": {
+        "messages": [
+          {
+            "content": "you: Show a success panel\nmote: Success prose.\nyou: Recover a panel\nmote: Recovery prose.\n",
+            "role": "system"
+          },
+          {
+            "content": "Keep my prior panel",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768
+      },
+      "request_id": "69366-1791740957304210000-8"
+    }
+  },
+  {
+    "seq": 30,
+    "ts": 1791740957309,
+    "scope_id": "main",
+    "kind": "talk.delta",
+    "payload": {
+      "text": "Preservation prose."
+    }
+  },
+  {
+    "seq": 31,
+    "ts": 1791740957313,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "router",
+      "model": "qwen3:0.6b",
+      "payload": {
+        "messages": [
+          {
+            "content": "You are a strict router for a two-lane agent. Output ONLY a JSON object {\"route\": \"think\" | \"talk\", \"reason\": string}. Never answer or do the request yourself.\n\nKey fact: the TALK lane is a tiny model with NO tools and NO memory. It can only make social small talk. It CANNOT read, open, list, search, summarise, compute, recall, look up, draft, or touch any file, note, email, log, or past conversation. The THINK lane has the tools.\n\nDecision rule, in order:\n1. If the message asks to read, open, write, rename, find, search, grep, list, show, summarise, count, compute, explain, fix, debug, refactor, convert, compare, analyse, plan, draft, remember, recall, look up, trace, extract or check ANYTHING -> think.\n2. If it mentions a file, code, logs, notes, emails, a ticket, a document, or the past (\"what did I/you\", \"last week\", \"the decision we made\") -> think.\n3. If it is a factual question that needs an answer -> think.\n4. ONLY if the whole message is a greeting, closing, thanks, acknowledgement, compliment, or pure small talk about the agent/user with no task -> talk.\nWhen torn between the two, choose think.\n\nExamples:\nhey there -> {\"route\":\"talk\",\"reason\":\"greeting\"}\nmorning! -> {\"route\":\"talk\",\"reason\":\"greeting\"}\nhow are you today -> {\"route\":\"talk\",\"reason\":\"small talk\"}\nwhat's your name -> {\"route\":\"talk\",\"reason\":\"small talk about the agent\"}\nthanks, appreciate it -> {\"route\":\"talk\",\"reason\":\"acknowledgement\"}\nread my config file and summarise it -> {\"route\":\"think\",\"reason\":\"needs file tools\"}\nsummarise the last ten emails -> {\"route\":\"think\",\"reason\":\"needs to read emails\"}\nlist the files in my downloads folder -> {\"route\":\"think\",\"reason\":\"needs to list files\"}\nlook up when I last changed my password -> {\"route\":\"think\",\"reason\":\"needs to look up a fact\"}\nwhat did I tell you about my sister last week -> {\"route\":\"think\",\"reason\":\"needs memory\"}\nwhat's the capital of France -> {\"route\":\"think\",\"reason\":\"a factual question to answer\"}",
+            "role": "system"
+          },
+          {
+            "content": "Keep my prior panel",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768
+      },
+      "request_id": "69366-1791740957310632000-9"
+    }
+  },
+  {
+    "seq": 32,
+    "ts": 1791740957314,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": 0,
+      "lane": "talk",
+      "model": "qwen3:4b",
+      "request_id": "69366-1791740957304210000-8",
+      "status": "ok",
+      "total_ms": 4
+    }
+  },
+  {
+    "seq": 33,
+    "ts": 1791740957317,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": null,
+      "lane": "router",
+      "model": "qwen3:0.6b",
+      "request_id": "69366-1791740957310632000-9",
+      "status": "ok",
+      "total_ms": 0
+    }
+  },
+  {
+    "seq": 34,
+    "ts": 1791740957318,
+    "scope_id": "main",
+    "kind": "router.verdict",
+    "payload": {
+      "reason": "fixture",
+      "route": "talk"
+    }
+  },
+  {
+    "seq": 35,
+    "ts": 1791740957326,
+    "scope_id": "main",
+    "kind": "talk.done",
+    "payload": {
+      "ledger_id": 8,
+      "pack_id": 8
+    }
+  },
+  {
+    "seq": 36,
+    "ts": 1791740957349,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "surface",
+      "model": "qwen3:4b",
+      "payload": {
+        "format": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "matrix"
+                  ],
+                  "type": "string"
+                },
+                "source": {
+                  "maxLength": 262144,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "source"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "none"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            }
+          ],
+          "type": "object"
+        },
+        "messages": [
+          {
+            "content": "You generate one compact Matrix interface for the request JSON in this conversation.\nRead request as the task. Prose is the completed answer, not a replacement task.\nPrevious_surface and diagnostics are context for repairs, not requests.\nAn explicit request to show a panel, form, list, progress, row, selection control, stack, table, text surface or toggle requires kind matrix.\nUse kind none for a plain explanation that does not request an interface.\nReturn only one JSON object. A matrix object has kind and source. A none object has only kind.\nMatrix is a declaration language, not JSON, HTML, JavaScript or a function call.\nThe complete source starts with screen { and ends with }. Strings in source use double quotes escaped inside the JSON string.\nUse the following exact syntax examples. Adapt literal labels to the request. Keep host paths and action names exactly as shown.\nPlain explanation:\n{\"kind\":\"none\"}\nPanel with refresh button:\n{\"kind\":\"matrix\",\"source\":\"screen { text \\\"Panel\\\" button \\\"Refresh\\\" -> refresh }\"}\nForm with local-only boolean field (boolean fields use toggle):\n{\"kind\":\"matrix\",\"source\":\"screen { col { toggle \\\"Local only\\\" models.local_only } }\"}\nList of available host items:\n{\"kind\":\"matrix\",\"source\":\"screen { list from host.items { item { text .label } } }\"}\nProgress:\n{\"kind\":\"matrix\",\"source\":\"screen { progress value host.progress }\"}\nTwo labels side by side:\n{\"kind\":\"matrix\",\"source\":\"screen { row { text \\\"First\\\" text \\\"Second\\\" } }\"}\nTalk model selection:\n{\"kind\":\"matrix\",\"source\":\"screen { select \\\"Talk model\\\" models.talk options model_options }\"}\nVertical stack of three labels:\n{\"kind\":\"matrix\",\"source\":\"screen { col { text \\\"First\\\" text \\\"Second\\\" text \\\"Third\\\" } }\"}\nPipeline stage table (columns go directly inside table):\n{\"kind\":\"matrix\",\"source\":\"screen { table from pipeline.stages { column \\\"Stage\\\" .stage column \\\"Calls\\\" .calls } }\"}\nLiteral text surface:\n{\"kind\":\"matrix\",\"source\":\"screen { text \\\"Requested text\\\" }\"}\nLocal-only toggle:\n{\"kind\":\"matrix\",\"source\":\"screen { toggle \\\"Local only\\\" models.local_only }\"}\nHost-owned manifest: fields models.local_only:boolean, models.talk:Model, models.router:Model, models.think:Model.\nValues model_options:list Model, pipeline.stages:list PipelineStage(stage,calls,latency), host.progress:number, host.items:list HostItem(label).\nOnly action refresh exists and takes no arguments. Do not create bindings or actions.\nUse only screen, col, row, text, progress value, toggle, select options, button ->, list from with item, and table from with column.\nDo not add selection, keys, overlays, pending states, failure states or action arguments.\nNow return the decision for request, even when prose is already complete or diagnostics is empty.",
+            "role": "system"
+          },
+          {
+            "content": "{\"request\":\"Keep my prior panel\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"prose\":\"Preservation prose.\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"previous_surface\":\"screen {\\n  text \\\"Recovered panel\\\"\\n  button \\\"Refresh\\\" -> refresh\\n}\\n\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"diagnostics\":\"\"}",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768,
+        "temperature": 0.0,
+        "think": false
+      },
+      "request_id": "69366-1791740957348968000-10"
+    }
+  },
+  {
+    "seq": 37,
+    "ts": 1791740957352,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": null,
+      "lane": "surface",
+      "model": "qwen3:4b",
+      "request_id": "69366-1791740957348968000-10",
+      "status": "ok",
+      "total_ms": 0
+    }
+  },
+  {
+    "seq": 38,
+    "ts": 1791740957372,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "surface",
+      "model": "qwen3:4b",
+      "payload": {
+        "format": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "matrix"
+                  ],
+                  "type": "string"
+                },
+                "source": {
+                  "maxLength": 262144,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "source"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "none"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            }
+          ],
+          "type": "object"
+        },
+        "messages": [
+          {
+            "content": "You generate one compact Matrix interface for the request JSON in this conversation.\nRead request as the task. Prose is the completed answer, not a replacement task.\nPrevious_surface and diagnostics are context for repairs, not requests.\nAn explicit request to show a panel, form, list, progress, row, selection control, stack, table, text surface or toggle requires kind matrix.\nUse kind none for a plain explanation that does not request an interface.\nReturn only one JSON object. A matrix object has kind and source. A none object has only kind.\nMatrix is a declaration language, not JSON, HTML, JavaScript or a function call.\nThe complete source starts with screen { and ends with }. Strings in source use double quotes escaped inside the JSON string.\nUse the following exact syntax examples. Adapt literal labels to the request. Keep host paths and action names exactly as shown.\nPlain explanation:\n{\"kind\":\"none\"}\nPanel with refresh button:\n{\"kind\":\"matrix\",\"source\":\"screen { text \\\"Panel\\\" button \\\"Refresh\\\" -> refresh }\"}\nForm with local-only boolean field (boolean fields use toggle):\n{\"kind\":\"matrix\",\"source\":\"screen { col { toggle \\\"Local only\\\" models.local_only } }\"}\nList of available host items:\n{\"kind\":\"matrix\",\"source\":\"screen { list from host.items { item { text .label } } }\"}\nProgress:\n{\"kind\":\"matrix\",\"source\":\"screen { progress value host.progress }\"}\nTwo labels side by side:\n{\"kind\":\"matrix\",\"source\":\"screen { row { text \\\"First\\\" text \\\"Second\\\" } }\"}\nTalk model selection:\n{\"kind\":\"matrix\",\"source\":\"screen { select \\\"Talk model\\\" models.talk options model_options }\"}\nVertical stack of three labels:\n{\"kind\":\"matrix\",\"source\":\"screen { col { text \\\"First\\\" text \\\"Second\\\" text \\\"Third\\\" } }\"}\nPipeline stage table (columns go directly inside table):\n{\"kind\":\"matrix\",\"source\":\"screen { table from pipeline.stages { column \\\"Stage\\\" .stage column \\\"Calls\\\" .calls } }\"}\nLiteral text surface:\n{\"kind\":\"matrix\",\"source\":\"screen { text \\\"Requested text\\\" }\"}\nLocal-only toggle:\n{\"kind\":\"matrix\",\"source\":\"screen { toggle \\\"Local only\\\" models.local_only }\"}\nHost-owned manifest: fields models.local_only:boolean, models.talk:Model, models.router:Model, models.think:Model.\nValues model_options:list Model, pipeline.stages:list PipelineStage(stage,calls,latency), host.progress:number, host.items:list HostItem(label).\nOnly action refresh exists and takes no arguments. Do not create bindings or actions.\nUse only screen, col, row, text, progress value, toggle, select options, button ->, list from with item, and table from with column.\nDo not add selection, keys, overlays, pending states, failure states or action arguments.\nNow return the decision for request, even when prose is already complete or diagnostics is empty.",
+            "role": "system"
+          },
+          {
+            "content": "{\"request\":\"Keep my prior panel\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"prose\":\"Preservation prose.\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"previous_surface\":\"screen {\\n  text \\\"Recovered panel\\\"\\n  button \\\"Refresh\\\" -> refresh\\n}\\n\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"diagnostics\":\"[{\\\"code\\\":\\\"E_RESOLVE_PATH\\\",\\\"declaration_path\\\":[\\\"screen\\\",\\\"0\\\"],\\\"hint\\\":null,\\\"message\\\":\\\"Unknown Value path\\\",\\\"severity\\\":\\\"error\\\",\\\"span\\\":{\\\"end\\\":29,\\\"start\\\":14}}]\"}",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768,
+        "temperature": 0.0,
+        "think": false
+      },
+      "request_id": "69366-1791740957371612000-11"
+    }
+  },
+  {
+    "seq": 39,
+    "ts": 1791740957374,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": null,
+      "lane": "surface",
+      "model": "qwen3:4b",
+      "request_id": "69366-1791740957371612000-11",
+      "status": "ok",
+      "total_ms": 0
+    }
+  },
+  {
+    "seq": 40,
+    "ts": 1791740957384,
+    "scope_id": "main",
+    "kind": "ui.diagnostic",
+    "payload": {
+      "candidate": "surface-28",
+      "diagnostics": [
+        {
+          "code": "E_RESOLVE_ACTION",
+          "declaration_path": [
+            "screen",
+            "0"
+          ],
+          "hint": null,
+          "message": "Unknown action",
+          "severity": "error",
+          "span": {
+            "end": 45,
+            "start": 27
+          }
+        }
+      ]
+    }
+  },
+  {
+    "seq": 41,
+    "ts": 1791740971286,
+    "scope_id": "main",
+    "kind": "turn.user",
+    "payload": {
+      "text": "Answer with ordinary prose"
+    }
+  },
+  {
+    "seq": 42,
+    "ts": 1791740971289,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "talk",
+      "model": "qwen3:4b",
+      "payload": {
+        "messages": [
+          {
+            "content": "you: Show a success panel\nmote: Success prose.\nyou: Recover a panel\nmote: Recovery prose.\nyou: Keep my prior panel\nmote: Preservation prose.\n",
+            "role": "system"
+          },
+          {
+            "content": "Answer with ordinary prose",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768
+      },
+      "request_id": "69366-1791740971288949000-12"
+    }
+  },
+  {
+    "seq": 43,
+    "ts": 1791740971292,
+    "scope_id": "main",
+    "kind": "talk.delta",
+    "payload": {
+      "text": "Ordinary prose fallback."
+    }
+  },
+  {
+    "seq": 44,
+    "ts": 1791740971295,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "router",
+      "model": "qwen3:0.6b",
+      "payload": {
+        "messages": [
+          {
+            "content": "You are a strict router for a two-lane agent. Output ONLY a JSON object {\"route\": \"think\" | \"talk\", \"reason\": string}. Never answer or do the request yourself.\n\nKey fact: the TALK lane is a tiny model with NO tools and NO memory. It can only make social small talk. It CANNOT read, open, list, search, summarise, compute, recall, look up, draft, or touch any file, note, email, log, or past conversation. The THINK lane has the tools.\n\nDecision rule, in order:\n1. If the message asks to read, open, write, rename, find, search, grep, list, show, summarise, count, compute, explain, fix, debug, refactor, convert, compare, analyse, plan, draft, remember, recall, look up, trace, extract or check ANYTHING -> think.\n2. If it mentions a file, code, logs, notes, emails, a ticket, a document, or the past (\"what did I/you\", \"last week\", \"the decision we made\") -> think.\n3. If it is a factual question that needs an answer -> think.\n4. ONLY if the whole message is a greeting, closing, thanks, acknowledgement, compliment, or pure small talk about the agent/user with no task -> talk.\nWhen torn between the two, choose think.\n\nExamples:\nhey there -> {\"route\":\"talk\",\"reason\":\"greeting\"}\nmorning! -> {\"route\":\"talk\",\"reason\":\"greeting\"}\nhow are you today -> {\"route\":\"talk\",\"reason\":\"small talk\"}\nwhat's your name -> {\"route\":\"talk\",\"reason\":\"small talk about the agent\"}\nthanks, appreciate it -> {\"route\":\"talk\",\"reason\":\"acknowledgement\"}\nread my config file and summarise it -> {\"route\":\"think\",\"reason\":\"needs file tools\"}\nsummarise the last ten emails -> {\"route\":\"think\",\"reason\":\"needs to read emails\"}\nlist the files in my downloads folder -> {\"route\":\"think\",\"reason\":\"needs to list files\"}\nlook up when I last changed my password -> {\"route\":\"think\",\"reason\":\"needs to look up a fact\"}\nwhat did I tell you about my sister last week -> {\"route\":\"think\",\"reason\":\"needs memory\"}\nwhat's the capital of France -> {\"route\":\"think\",\"reason\":\"a factual question to answer\"}",
+            "role": "system"
+          },
+          {
+            "content": "Answer with ordinary prose",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768
+      },
+      "request_id": "69366-1791740971293543000-13"
+    }
+  },
+  {
+    "seq": 45,
+    "ts": 1791740971296,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": 0,
+      "lane": "talk",
+      "model": "qwen3:4b",
+      "request_id": "69366-1791740971288949000-12",
+      "status": "ok",
+      "total_ms": 3
+    }
+  },
+  {
+    "seq": 46,
+    "ts": 1791740971297,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": null,
+      "lane": "router",
+      "model": "qwen3:0.6b",
+      "request_id": "69366-1791740971293543000-13",
+      "status": "ok",
+      "total_ms": 0
+    }
+  },
+  {
+    "seq": 47,
+    "ts": 1791740971304,
+    "scope_id": "main",
+    "kind": "talk.done",
+    "payload": {
+      "ledger_id": 12,
+      "pack_id": 12
+    }
+  },
+  {
+    "seq": 48,
+    "ts": 1791740971309,
+    "scope_id": "main",
+    "kind": "router.verdict",
+    "payload": {
+      "reason": "fixture",
+      "route": "talk"
+    }
+  },
+  {
+    "seq": 49,
+    "ts": 1791740971328,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "surface",
+      "model": "qwen3:4b",
+      "payload": {
+        "format": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "matrix"
+                  ],
+                  "type": "string"
+                },
+                "source": {
+                  "maxLength": 262144,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "source"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "none"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            }
+          ],
+          "type": "object"
+        },
+        "messages": [
+          {
+            "content": "You generate one compact Matrix interface for the request JSON in this conversation.\nRead request as the task. Prose is the completed answer, not a replacement task.\nPrevious_surface and diagnostics are context for repairs, not requests.\nAn explicit request to show a panel, form, list, progress, row, selection control, stack, table, text surface or toggle requires kind matrix.\nUse kind none for a plain explanation that does not request an interface.\nReturn only one JSON object. A matrix object has kind and source. A none object has only kind.\nMatrix is a declaration language, not JSON, HTML, JavaScript or a function call.\nThe complete source starts with screen { and ends with }. Strings in source use double quotes escaped inside the JSON string.\nUse the following exact syntax examples. Adapt literal labels to the request. Keep host paths and action names exactly as shown.\nPlain explanation:\n{\"kind\":\"none\"}\nPanel with refresh button:\n{\"kind\":\"matrix\",\"source\":\"screen { text \\\"Panel\\\" button \\\"Refresh\\\" -> refresh }\"}\nForm with local-only boolean field (boolean fields use toggle):\n{\"kind\":\"matrix\",\"source\":\"screen { col { toggle \\\"Local only\\\" models.local_only } }\"}\nList of available host items:\n{\"kind\":\"matrix\",\"source\":\"screen { list from host.items { item { text .label } } }\"}\nProgress:\n{\"kind\":\"matrix\",\"source\":\"screen { progress value host.progress }\"}\nTwo labels side by side:\n{\"kind\":\"matrix\",\"source\":\"screen { row { text \\\"First\\\" text \\\"Second\\\" } }\"}\nTalk model selection:\n{\"kind\":\"matrix\",\"source\":\"screen { select \\\"Talk model\\\" models.talk options model_options }\"}\nVertical stack of three labels:\n{\"kind\":\"matrix\",\"source\":\"screen { col { text \\\"First\\\" text \\\"Second\\\" text \\\"Third\\\" } }\"}\nPipeline stage table (columns go directly inside table):\n{\"kind\":\"matrix\",\"source\":\"screen { table from pipeline.stages { column \\\"Stage\\\" .stage column \\\"Calls\\\" .calls } }\"}\nLiteral text surface:\n{\"kind\":\"matrix\",\"source\":\"screen { text \\\"Requested text\\\" }\"}\nLocal-only toggle:\n{\"kind\":\"matrix\",\"source\":\"screen { toggle \\\"Local only\\\" models.local_only }\"}\nHost-owned manifest: fields models.local_only:boolean, models.talk:Model, models.router:Model, models.think:Model.\nValues model_options:list Model, pipeline.stages:list PipelineStage(stage,calls,latency), host.progress:number, host.items:list HostItem(label).\nOnly action refresh exists and takes no arguments. Do not create bindings or actions.\nUse only screen, col, row, text, progress value, toggle, select options, button ->, list from with item, and table from with column.\nDo not add selection, keys, overlays, pending states, failure states or action arguments.\nNow return the decision for request, even when prose is already complete or diagnostics is empty.",
+            "role": "system"
+          },
+          {
+            "content": "{\"request\":\"Answer with ordinary prose\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"prose\":\"Ordinary prose fallback.\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"previous_surface\":\"screen {\\n  text \\\"Recovered panel\\\"\\n  button \\\"Refresh\\\" -> refresh\\n}\\n\"}",
+            "role": "user"
+          },
+          {
+            "content": "{\"diagnostics\":\"\"}",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768,
+        "temperature": 0.0,
+        "think": false
+      },
+      "request_id": "69366-1791740971327788000-14"
+    }
+  },
+  {
+    "seq": 50,
+    "ts": 1791740971331,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": null,
+      "lane": "surface",
+      "model": "qwen3:4b",
+      "request_id": "69366-1791740971327788000-14",
+      "status": "ok",
+      "total_ms": 0
+    }
+  }
+]

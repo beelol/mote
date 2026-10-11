@@ -1,0 +1,11 @@
+   Compiling mote-ios v0.0.0 (/Users/bilal/projects/mote/mote-ios)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.27s
+     Running tests/inferred_surface_simulator.rs (target/debug/deps/inferred_surface_simulator-a2ae178f5d6bb7d8)
+
+running 1 test
+test native_inferred_success_retry_preservation_and_prose_fallback has been running for over 60 seconds
+Native inferred success, one retry, stable prior surface, visible terminal diagnostic and prose fallback passed. 14 calls, 14 ledger rows, 14 packs; 3 authenticated typed refusals. Host bb39981f246e887b6d5f7996520c5b27c6bb50cd521f3fa940f4f3fefc44e354
+test native_inferred_success_retry_preservation_and_prose_fallback ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 72.60s
+
