@@ -2080,6 +2080,7 @@ mod approval_dispatch_tests {
         let rows = daemon.store.lock().unwrap().ledger_since(0).unwrap();
         assert_eq!(rows.iter().filter(|row| row.lane == "surface").count(), 1);
         assert_eq!(rows.len(), 3);
+        assert_eq!(daemon.store.lock().unwrap().count_packs().unwrap(), 3);
         let request = server
             .recorded()
             .into_iter()
@@ -2136,6 +2137,60 @@ mod approval_dispatch_tests {
     }
 
     #[test]
+    fn inferred_production_turn_rejects_missing_malformed_and_stale_activation() {
+        for case in [
+            "missing",
+            "malformed",
+            "stale-model",
+            "stale-digest",
+            "stale-corpus",
+            "stale-contract",
+        ] {
+            let server = activated_turn_server();
+            server.queue_chat_chunks("qwen3:4b", vec![json!({
+                "message":{"content":json!({"kind":"matrix","source":"screen { text \"Unexpected\" }"}).to_string()},
+                "done":true
+            }).to_string()]);
+            let (data, _) = dirs(&format!("inferred-production-gate-{case}"));
+            let attestation_path = data.join("surface-activation.json");
+            if case != "missing" {
+                activate_turns(&data);
+                if case == "malformed" {
+                    std::fs::write(&attestation_path, "not json").unwrap();
+                } else {
+                    let mut attestation: Value =
+                        serde_json::from_slice(&std::fs::read(&attestation_path).unwrap()).unwrap();
+                    match case {
+                        "stale-model" => attestation["model"] = json!("qwen3:0.6b"),
+                        "stale-digest" => attestation["model_digest"] = json!("sha256:old"),
+                        "stale-corpus" => attestation["corpus_hash"] = json!("old-corpus"),
+                        "stale-contract" => attestation["compiler_contract_version"] = json!(0),
+                        _ => unreachable!(),
+                    }
+                    std::fs::write(&attestation_path, attestation.to_string()).unwrap();
+                }
+            }
+            let mut daemon = daemon(&data);
+            daemon.client = Ollama::new(server.base_url());
+            daemon.render_matrix("main", "screen { text \"Prior\" }", true).unwrap();
+            let prior = daemon.matrix_surfaces.lock().unwrap().clone();
+            let before = daemon.log.max_seq().unwrap();
+
+            let result = daemon.handle_turn(&json!({"thread":"main","message":"show a dashboard"})).unwrap();
+
+            assert_eq!(result["status"], "done", "{case}");
+            assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), prior, "{case}");
+            let events = daemon.log.recent_since(0, 100).unwrap();
+            assert!(events.iter().any(|event| event.seq > before && event.kind == "talk.delta"), "{case}");
+            assert!(!events.iter().any(|event| event.seq > before && event.kind == "ui.surface"), "{case}");
+            assert_eq!(server.recorded().iter().filter(|request| request.body["format"].get("oneOf").is_some()).count(), 0, "{case}");
+            let store = daemon.store.lock().unwrap();
+            assert_eq!(store.ledger_since(0).unwrap().iter().filter(|row| row.lane == "surface").count(), 0, "{case}");
+            assert_eq!(store.count_packs().unwrap(), 2, "{case}");
+        }
+    }
+
+    #[test]
     fn inferred_incomplete_turn_never_checks_activation_or_calls_surface_model() {
         let server = mote_testkit::ScriptedServer::start().unwrap();
         server.set_chat_status(404);
@@ -2183,6 +2238,7 @@ mod approval_dispatch_tests {
             assert_eq!(new_events.iter().filter(|event| event.kind == "ui.surface").count(), expected_new_surfaces, "{case}");
             assert_eq!(new_events.iter().filter(|event| event.kind == "ui.diagnostic").count(), expected_diagnostics, "{case}");
             assert_eq!(daemon.store.lock().unwrap().ledger_since(0).unwrap().iter().filter(|row| row.lane == "surface").count(), expected_attempts, "{case}");
+            assert_eq!(daemon.store.lock().unwrap().count_packs().unwrap(), 2 + expected_attempts as i64, "{case}");
             assert_eq!(server.recorded().iter().filter(|request| request.body["format"].get("oneOf").is_some()).count(), expected_attempts, "{case}");
             assert!(new_events.iter().any(|event| event.kind == "talk.delta"), "{case}");
             if expected_new_surfaces == 0 {
