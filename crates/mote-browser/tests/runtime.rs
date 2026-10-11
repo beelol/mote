@@ -87,6 +87,85 @@ fn retained_native_request_is_inert_stale_checked_and_consumed_once() {
 }
 
 #[test]
+#[ignore = "requires MOTE_LIVE=1 and pinned MOTE_CHROME"]
+fn both_navigation_events_invalidate_retained_requests() {
+    use mote_browser::{BrowserCommand, BrowserHost, BrowserResult};
+    assert_eq!(std::env::var("MOTE_LIVE").as_deref(), Ok("1"));
+    let fixture = mote_testkit::browser_fixture::BrowserFixture::start().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let browser =
+        BrowserHost::launch(
+            LaunchConfig::new(
+                data.path(),
+                "navigation",
+                Path::new(&std::env::var("MOTE_CHROME").unwrap()),
+            )
+            .unwrap(),
+            BrowserPolicy::new(ApprovedOrigins::new([fixture.base_url()]).unwrap())
+                .with_read_paths(["/navigation-race", "/navigation", "/favicon.ico"]),
+        )
+        .unwrap();
+    let session = browser.session();
+    for same_document in [false, true] {
+        session
+            .command(BrowserCommand::Navigate {
+                url: fixture.url("/navigation-race"),
+            })
+            .unwrap();
+        let BrowserResult::Snapshot(snapshot) = session
+            .command(BrowserCommand::Snapshot {
+                interactive_only: false,
+                token_cap: 2000,
+            })
+            .unwrap()
+        else {
+            panic!("snapshot")
+        };
+        let button = snapshot
+            .nodes
+            .iter()
+            .find(|node| node.role == "button")
+            .unwrap()
+            .reference
+            .clone();
+        let field = snapshot
+            .nodes
+            .iter()
+            .find(|node| node.role == "textbox")
+            .unwrap()
+            .reference
+            .clone();
+        let BrowserResult::CommitRequired { intent } = session
+            .command(BrowserCommand::Prepare { reference: button })
+            .unwrap()
+        else {
+            panic!("retained request")
+        };
+        if same_document {
+            session
+                .command(BrowserCommand::Fill {
+                    reference: field,
+                    value: "navigate".into(),
+                })
+                .unwrap();
+        } else {
+            session
+                .command(BrowserCommand::Navigate {
+                    url: fixture.url("/navigation"),
+                })
+                .unwrap();
+        }
+        let BrowserResult::Pending(pending) = session.command(BrowserCommand::Pending).unwrap()
+        else {
+            panic!("pending requests")
+        };
+        assert!(pending.is_empty(), "same-document={same_document}");
+        assert!(session.command(BrowserCommand::Release { intent }).is_err());
+        assert_eq!(fixture.count("navigation-stale"), 0);
+    }
+}
+
+#[test]
 fn launch_is_headed_private_and_cannot_attach() {
     let config = LaunchConfig::new(
         Path::new("/tmp/mote-data"),

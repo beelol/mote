@@ -178,6 +178,8 @@ fn serve(mut stream: TcpStream, counts: Arc<Mutex<HashMap<String, usize>>>) -> s
         format!("<!doctype html><title>State isolation</title><h1>fresh HTTP state</h1><p>cookie {}</p>", if seeded_cookie { "present" } else { "absent" })
     } else if path == "/same-document" {
         "<!doctype html><title>History</title><label>History<input oninput=\"history.pushState({},'', '/navigation')\"></label>".into()
+    } else if path == "/navigation-race" {
+        "<!doctype html><title>Navigation race</title><form action='/effect/navigation-stale' method='post'><label>History<input name='entry' oninput=\"window.history.pushState({},'', '/navigation')\"></label><button>Submit</button></form>".into()
     } else if path == "/redirect" {
         status = "302 Found";
         extra = "Location: /navigation\r\n".into();

@@ -368,16 +368,12 @@ async fn install_boundary(
                 .expect("request recorded")
                 .response_code = event.response_status_code;
             if effect == BrowserEffect::Commit && event.response_status_code.is_none() {
-                if let Ok(retained) = Retained::capture(&target, &event).await {
+                let generation = request_boundary.lock().unwrap().generation;
+                if let Ok(retained) = Retained::capture(&target, &event, generation).await {
                     let retained_key = retained.fingerprint.clone();
                     let kept = {
                         let mut state = request_boundary.lock().unwrap();
-                        if state.pending.len() < 16 {
-                            state.pending.insert(retained_key.clone(), retained);
-                            true
-                        } else {
-                            false
-                        }
+                        state.retain(retained)
                     };
                     if kept {
                         let state = request_boundary.clone();
