@@ -24,6 +24,8 @@ The body owns the remaining height and supports horizontal nowrap overflow.
 Fill children share remaining main-axis space after intrinsic siblings and standard gaps.
 They split equally unless a control minimum needs a larger allocation.
 Controls keep their minimum hit extents and narrow nowrap layouts overflow without overlap.
+Filled text keeps its measured minimum extent, so narrowing cannot create unmeasured wrapping.
+The exact nested column and nowrap row regression checks clipped text paint against its next button.
 Wrap, nowrap, alignment and between or around distribution are implemented.
 The Vector slider has a 36 point visual region and a 48 point hit region.
 Pointer, arrow, Home, End and AccessKit range input produce bounded local changes.

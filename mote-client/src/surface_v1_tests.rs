@@ -661,6 +661,56 @@ fn finite_extreme_slider_ranges_stay_finite_during_input_and_paint() {
 }
 
 #[test]
+fn filled_text_in_nested_nowrap_row_cannot_paint_over_following_button() {
+    for size in SIZES {
+        let label = "A filled text label that has many words";
+        let surface = screen(vec![col(vec![
+            Node::Row {
+                fill: false,
+                wrapping: Some(Wrapping::Nowrap),
+                alignment: None,
+                distribution: None,
+                children: vec![
+                    text(label, true),
+                    button("This reserved button is very wide", false, false),
+                ],
+            },
+            button("After", false, false),
+        ])]);
+        surface.validate().unwrap();
+        let h = Harness::new(size, surface);
+        let (obs, _, out) = h.frame(vec![]);
+        let painted = |label: &str| {
+            out.shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => Some((
+                        egui::Rect::from_min_size(text.pos, text.galley.size()),
+                        shape.clip_rect,
+                    )),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let (text_paint, text_clip) = painted(label);
+        let (after_paint, after_clip) = painted("After");
+        assert_eq!(text_clip, after_clip);
+        assert!(text_paint.intersects(text_clip));
+        assert!(after_paint.intersects(after_clip));
+        assert!(
+            !text_paint
+                .intersect(text_clip)
+                .intersects(after_paint.intersect(after_clip)),
+            "visible filled text overlaps After: text={text_paint:?}, after={after_paint:?}"
+        );
+        let row = obs.iter().find(|o| o.path == vec![0, 0]).unwrap();
+        let after = obs.iter().find(|o| o.path == vec![0, 1]).unwrap();
+        assert!(text_paint.bottom() <= row.rect.bottom());
+        assert!(row.rect.bottom() + 8.0 <= after.rect.top());
+    }
+}
+
+#[test]
 fn narrow_nowrap_fills_preserve_48_point_hit_extents_without_overlap() {
     let mut a = button("A", false, false);
     let mut b = button("B", false, false);

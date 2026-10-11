@@ -842,7 +842,6 @@ impl Renderer<'_> {
                     .filter(|&slot| {
                         let i = line[slot];
                         let minimum = match children[i] {
-                            Node::Text { .. } => 0.0,
                             Node::Slider { .. } if horizontal => 48.0,
                             _ => sizes[i][axis],
                         };
