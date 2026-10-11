@@ -16,6 +16,7 @@ mod mcp;
 mod model_call;
 mod pipeline;
 mod service;
+mod shutdown;
 mod watchers;
 
 use charter::{Charter, CharterWatcher};
@@ -4430,6 +4431,10 @@ fn config_snapshot(config: &ConfigStore) -> (bool, String) {
 }
 
 fn run() -> Result<(), i32> {
+    let shutdown = shutdown::Shutdown::install().map_err(|error| {
+        eprintln!("moted: cannot install shutdown handlers: {error}");
+        1
+    })?;
     let data = mote_paths::ensure_data_dir().map_err(|e| {
         eprintln!("moted: cannot create data directory: {e}");
         1
@@ -4540,7 +4545,8 @@ fn run() -> Result<(), i32> {
     })?;
 
     eprintln!("moted: listening on {}", socket.display());
-    loop {
-        std::thread::sleep(Duration::from_secs(3600));
+    while !shutdown.requested() {
+        std::thread::sleep(Duration::from_millis(100));
     }
+    Ok(())
 }

@@ -140,3 +140,78 @@ The offline second-instance process fixture explicitly disables Bonjour.
 No Simulator discovery journey ran in this task.
 No physical iPad, signing, App Store Connect, TestFlight or relay work ran.
 HOST-04 remains open until the Simulator verifies service browsing, identity-proved reconnect and the declared local-network purpose text.
+
+## Daemon signal shutdown
+
+Review found that default SIGTERM could bypass the registration owner's destructor.
+A real daemon process test reproduced an exited daemon with a live advertiser child and a retained registration.
+The daemon now installs SIGTERM and SIGINT handlers before it starts resources.
+The signal handler only sets an atomic shutdown flag.
+The main loop returns normally and drops the gateway before the Unix listener.
+The advertiser destructor terminates and reaps `dns-sd`.
+The shutdown guard restores the previous handlers after resources are dropped.
+
+Command:
+
+```text
+cargo test -p moted --test shutdown sigterm_and_sigint -- --nocapture
+```
+
+Red output:
+
+```text
+signal 15 bypassed graceful cleanup: signal: 15 (SIGTERM)
+test sigterm_and_sigint_release_the_unix_listener ... FAILED
+exit 101
+```
+
+Green output:
+
+```text
+signal 15: daemon exited normally and released its Unix listener
+signal 2: daemon exited normally and released its Unix listener
+test sigterm_and_sigint_release_the_unix_listener ... ok
+test result: ok. 1 passed; 0 failed
+exit 0
+```
+
+Command:
+
+```text
+MOTE_LIVE=1 cargo test -p moted --test shutdown live_sigterm -- --ignored --nocapture
+```
+
+Red output:
+
+```text
+Before SIGTERM: daemon 20468 owns live advertiser 21073
+After SIGTERM: status=signal: 15 (SIGTERM), child_exists=true, registration_exists=true
+SIGTERM orphaned advertiser 21073
+test live_sigterm_reaps_advertiser_and_removes_registration ... FAILED
+exit 101
+```
+
+Green command:
+
+```text
+MOTE_LIVE=1 cargo test -p moted --test shutdown -- --include-ignored --nocapture
+```
+
+Green output:
+
+```text
+Before SIGTERM: daemon 14520 owns live advertiser 15035
+After SIGTERM: status=exit status: 0, child_exists=false, registration_exists=false
+test live_sigterm_reaps_advertiser_and_removes_registration ... ok
+signal 15: daemon exited normally and released its Unix listener
+signal 2: daemon exited normally and released its Unix listener
+test sigterm_and_sigint_release_the_unix_listener ... ok
+test result: ok. 2 passed; 0 failed
+exit 0
+```
+
+These checks use the same Mac environment described above.
+The live test discovers the registration before signaling the daemon.
+It checks that the advertiser PID is gone and a fresh browser no longer finds the host afterward.
+The offline signal test keeps discovery disabled.
+The fixtures serialize their fixed gateway listener within the test harness.
