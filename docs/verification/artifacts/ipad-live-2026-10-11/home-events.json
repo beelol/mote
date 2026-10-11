@@ -1,0 +1,232 @@
+[
+  {
+    "seq": 1,
+    "ts": 1791735460863,
+    "scope_id": "main",
+    "kind": "ui.surface",
+    "payload": {
+      "matrix_surface": {
+        "root": {
+          "children": [
+            {
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Home dashboard"
+                }
+              ],
+              "type": "header"
+            },
+            {
+              "children": [
+                {
+                  "field": "models.talk",
+                  "label": "Talk model",
+                  "options": [
+                    "qwen3:4b",
+                    "qwen3:0.6b",
+                    "qwen3-coder:30b-64k"
+                  ],
+                  "type": "select",
+                  "value": "qwen3:4b"
+                }
+              ],
+              "type": "col"
+            }
+          ],
+          "type": "screen"
+        },
+        "version": 1
+      },
+      "surface": {
+        "type": "text",
+        "value": "This Matrix surface requires a newer Mote client."
+      },
+      "surface_id": "matrix"
+    }
+  },
+  {
+    "seq": 2,
+    "ts": 1791735481849,
+    "scope_id": "config",
+    "kind": "config.changed",
+    "payload": {
+      "key": "models.talk",
+      "new": "qwen3:0.6b",
+      "old": "qwen3:4b"
+    }
+  },
+  {
+    "seq": 3,
+    "ts": 1791735481849,
+    "scope_id": "main",
+    "kind": "ui.event",
+    "payload": {
+      "args": {
+        "field": "models.talk",
+        "value": "qwen3:0.6b"
+      },
+      "event": "change"
+    }
+  },
+  {
+    "seq": 4,
+    "ts": 1791735481850,
+    "scope_id": "main",
+    "kind": "ui.surface",
+    "payload": {
+      "matrix_surface": {
+        "root": {
+          "children": [
+            {
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Home dashboard"
+                }
+              ],
+              "type": "header"
+            },
+            {
+              "children": [
+                {
+                  "field": "models.talk",
+                  "label": "Talk model",
+                  "options": [
+                    "qwen3:4b",
+                    "qwen3:0.6b",
+                    "qwen3-coder:30b-64k"
+                  ],
+                  "type": "select",
+                  "value": "qwen3:0.6b"
+                }
+              ],
+              "type": "col"
+            }
+          ],
+          "type": "screen"
+        },
+        "version": 1
+      },
+      "surface": {
+        "type": "text",
+        "value": "This Matrix surface requires a newer Mote client."
+      },
+      "surface_id": "matrix"
+    }
+  },
+  {
+    "seq": 5,
+    "ts": 1791735491348,
+    "scope_id": "main",
+    "kind": "turn.user",
+    "payload": {
+      "text": "hello"
+    }
+  },
+  {
+    "seq": 6,
+    "ts": 1791735491791,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "talk",
+      "model": "qwen3:0.6b",
+      "payload": {
+        "messages": [
+          {
+            "content": "",
+            "role": "system"
+          },
+          {
+            "content": "hello",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768
+      },
+      "request_id": "91630-1791735491791218000-1"
+    }
+  },
+  {
+    "seq": 7,
+    "ts": 1791735491791,
+    "scope_id": "main",
+    "kind": "talk.delta",
+    "payload": {
+      "text": "{\"route\":\"talk\",\"reason\":\"greeting\"}"
+    }
+  },
+  {
+    "seq": 8,
+    "ts": 1791735491792,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": 0,
+      "lane": "talk",
+      "model": "qwen3:0.6b",
+      "request_id": "91630-1791735491791218000-1",
+      "status": "ok",
+      "total_ms": 0
+    }
+  },
+  {
+    "seq": 9,
+    "ts": 1791735491792,
+    "scope_id": "main",
+    "kind": "talk.done",
+    "payload": {
+      "ledger_id": 1,
+      "pack_id": 1
+    }
+  },
+  {
+    "seq": 10,
+    "ts": 1791735491796,
+    "scope_id": "pipeline",
+    "kind": "model.request",
+    "payload": {
+      "lane": "router",
+      "model": "qwen3:0.6b",
+      "payload": {
+        "messages": [
+          {
+            "content": "You are a strict router for a two-lane agent. Output ONLY a JSON object {\"route\": \"think\" | \"talk\", \"reason\": string}. Never answer or do the request yourself.\n\nKey fact: the TALK lane is a tiny model with NO tools and NO memory. It can only make social small talk. It CANNOT read, open, list, search, summarise, compute, recall, look up, draft, or touch any file, note, email, log, or past conversation. The THINK lane has the tools.\n\nDecision rule, in order:\n1. If the message asks to read, open, write, rename, find, search, grep, list, show, summarise, count, compute, explain, fix, debug, refactor, convert, compare, analyse, plan, draft, remember, recall, look up, trace, extract or check ANYTHING -> think.\n2. If it mentions a file, code, logs, notes, emails, a ticket, a document, or the past (\"what did I/you\", \"last week\", \"the decision we made\") -> think.\n3. If it is a factual question that needs an answer -> think.\n4. ONLY if the whole message is a greeting, closing, thanks, acknowledgement, compliment, or pure small talk about the agent/user with no task -> talk.\nWhen torn between the two, choose think.\n\nExamples:\nhey there -> {\"route\":\"talk\",\"reason\":\"greeting\"}\nmorning! -> {\"route\":\"talk\",\"reason\":\"greeting\"}\nhow are you today -> {\"route\":\"talk\",\"reason\":\"small talk\"}\nwhat's your name -> {\"route\":\"talk\",\"reason\":\"small talk about the agent\"}\nthanks, appreciate it -> {\"route\":\"talk\",\"reason\":\"acknowledgement\"}\nread my config file and summarise it -> {\"route\":\"think\",\"reason\":\"needs file tools\"}\nsummarise the last ten emails -> {\"route\":\"think\",\"reason\":\"needs to read emails\"}\nlist the files in my downloads folder -> {\"route\":\"think\",\"reason\":\"needs to list files\"}\nlook up when I last changed my password -> {\"route\":\"think\",\"reason\":\"needs to look up a fact\"}\nwhat did I tell you about my sister last week -> {\"route\":\"think\",\"reason\":\"needs memory\"}\nwhat's the capital of France -> {\"route\":\"think\",\"reason\":\"a factual question to answer\"}",
+            "role": "system"
+          },
+          {
+            "content": "hello",
+            "role": "user"
+          }
+        ],
+        "num_ctx": 32768
+      },
+      "request_id": "91630-1791735491795579000-2"
+    }
+  },
+  {
+    "seq": 11,
+    "ts": 1791735491797,
+    "scope_id": "pipeline",
+    "kind": "model.response",
+    "payload": {
+      "first_token_ms": null,
+      "lane": "router",
+      "model": "qwen3:0.6b",
+      "request_id": "91630-1791735491795579000-2",
+      "status": "ok",
+      "total_ms": 0
+    }
+  },
+  {
+    "seq": 12,
+    "ts": 1791735491797,
+    "scope_id": "main",
+    "kind": "router.verdict",
+    "payload": {
+      "reason": "greeting",
+      "route": "talk"
+    }
+  }
+]

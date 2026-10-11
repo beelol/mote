@@ -1,0 +1,34 @@
+   Compiling mote-host-client v0.0.0 (/Users/bilal/projects/mote/crates/mote-host-client)
+   Compiling mote-client v0.0.0 (/Users/bilal/projects/mote/mote-client)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.65s
+     Running unittests src/lib.rs (target/debug/deps/mote_client-915680cec1828bcc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/mote_client-a47fdf06659c8c12)
+
+running 1 test
+test stream::tests::pinned_shell_stream_projects_live_events_and_preserves_timestamps ... FAILED
+
+failures:
+
+---- stream::tests::pinned_shell_stream_projects_live_events_and_preserves_timestamps stdout ----
+
+thread 'stream::tests::pinned_shell_stream_projects_live_events_and_preserves_timestamps' panicked at mote-client/src/stream.rs:556:13:
+assertion `left == right` failed
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread '<unnamed>' panicked at mote-client/src/stream.rs:537:48:
+called `Result::unwrap()` on an `Err` value: RecvError
+
+
+failures:
+    stream::tests::pinned_shell_stream_projects_live_events_and_preserves_timestamps
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 109 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p mote-client --bin mote-client`

@@ -227,7 +227,7 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     and support device revocation. **Verify:** pass shared Noise vectors, complete one pairing and
     reject expired or reused offers, altered identities, replayed counters, tampered frames and a
     revoked device before any application action runs.
-  - [ ] **HOST-04** Bonjour discovers a local Mote gateway without treating its address as identity,
+  - [x] **HOST-04** Bonjour discovers a local Mote gateway without treating its address as identity,
     and a known host can change addresses only after identity proof. **Verify:** discover `_mote._tcp`
     with only version and fingerprint in TXT on the Mac and Simulator network stack, move the
     loopback endpoint, reconnect to the same identity, reject an impersonator and verify the checked-in
@@ -250,7 +250,7 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     Interactive shell, GPU capture and renderer-cadence evidence are recorded with the explicit
     presentation-timing boundary and acceptance decision in
     [IPAD-02](docs/verification/IPAD-02.md).
-  - [ ] **IPAD-03** The simulator pairs with `moted` on the Mac, streams live chat and committed Matrix
+  - [x] **IPAD-03** The simulator pairs with `moted` on the Mac, streams live chat and committed Matrix
     surfaces, returns typed interactions and reconnects from its cursor. **Verify:** complete a live
     chat and dashboard edit, kill and relaunch the app, observe no duplicate event, then switch between
     two paired fixture hosts without mixed state.

@@ -1,0 +1,48 @@
+[
+  {
+    "seq": 1,
+    "ts": 1791735460864,
+    "scope_id": "main",
+    "kind": "ui.surface",
+    "payload": {
+      "matrix_surface": {
+        "root": {
+          "children": [
+            {
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Office dashboard"
+                }
+              ],
+              "type": "header"
+            },
+            {
+              "children": [
+                {
+                  "field": "models.talk",
+                  "label": "Talk model",
+                  "options": [
+                    "qwen3:4b",
+                    "qwen3:0.6b",
+                    "qwen3-coder:30b-64k"
+                  ],
+                  "type": "select",
+                  "value": "qwen3:4b"
+                }
+              ],
+              "type": "col"
+            }
+          ],
+          "type": "screen"
+        },
+        "version": 1
+      },
+      "surface": {
+        "type": "text",
+        "value": "This Matrix surface requires a newer Mote client."
+      },
+      "surface_id": "matrix"
+    }
+  }
+]

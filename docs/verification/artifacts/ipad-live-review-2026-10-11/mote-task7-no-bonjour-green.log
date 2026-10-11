@@ -1,0 +1,11 @@
+   Compiling moted v0.0.0 (/Users/bilal/projects/mote/moted)
+   Compiling mote-ios v0.0.0 (/Users/bilal/projects/mote/mote-ios)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.08s
+     Running tests/live_loopback.rs (target/debug/deps/live_loopback-cd70ef131ba21a50)
+
+running 2 tests
+test same_address_reconnect_invalidates_the_old_command_session ... ok
+test same_address_events_reconnect_without_bonjour_invalidates_commands ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.12s
+

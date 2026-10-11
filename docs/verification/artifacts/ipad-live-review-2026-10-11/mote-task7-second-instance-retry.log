@@ -1,0 +1,15 @@
+    Blocking waiting for file lock on build directory
+   Compiling mote-ipc v0.0.0 (/Users/bilal/projects/mote/crates/mote-ipc)
+   Compiling mote-host-client v0.0.0 (/Users/bilal/projects/mote/crates/mote-host-client)
+   Compiling mote-gateway v0.0.0 (/Users/bilal/projects/mote/crates/mote-gateway)
+   Compiling mote-client v0.0.0 (/Users/bilal/projects/mote/mote-client)
+   Compiling moted v0.0.0 (/Users/bilal/projects/mote/moted)
+   Compiling mote-testkit v0.0.0 (/Users/bilal/projects/mote/crates/mote-testkit)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.32s
+     Running tests/second_instance.rs (target/debug/deps/second_instance-2995947942b3ec09)
+
+running 1 test
+test second_instance_exits_naming_socket ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.56s
+

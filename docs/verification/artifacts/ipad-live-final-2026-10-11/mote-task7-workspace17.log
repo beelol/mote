@@ -1,0 +1,1035 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.49s
+     Running unittests src/lib.rs (target/debug/deps/matrix_lang-2c5fda5f0752f6c0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/format.rs (target/debug/deps/format-cca8ada89d1294e0)
+
+running 7 tests
+test preserves_exact_number_source_and_uses_json_escaping ... ok
+test canonicalizes_all_argument_shapes ... ok
+test formats_every_positive_fixture_idempotently ... ok
+test round_trips_near_depth_and_node_limits ... ok
+test maximum_size_fragment_formats_to_reparsable_canonical_source ... ok
+test maximum_size_surface_formats_to_reparsable_canonical_source ... ok
+test round_trips_one_thousand_deterministic_bounded_asts ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/lexer.rs (target/debug/deps/lexer-da6531f346d8d7bc)
+
+running 11 tests
+test lexer_accepts_json_numbers_with_exact_spans ... ok
+test lexer_accepts_json_strings_with_byte_spans ... ok
+test lexer_keeps_arrow_and_delimiter_spans ... ok
+test lexer_marks_open_strings_as_incomplete ... ok
+test lexer_keeps_identifier_and_relative_path_spans ... ok
+test lexer_keeps_nonfinite_spellings_as_identifiers ... ok
+test lexer_rejects_comments_and_other_punctuation ... ok
+test lexer_rejects_invalid_json_string_content ... ok
+test lexer_rejects_malformed_json_numbers ... ok
+test lexer_returns_structured_stable_diagnostics ... ok
+test lexer_rejects_source_larger_than_256_kib ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/lower_v0.rs (target/debug/deps/lower_v0-fd87261c3cc8eee8)
+
+running 17 tests
+test enum_option_labels_are_not_silently_lost ... ok
+test literal_markup_is_lowered_without_interpretation_or_hidden_nodes ... ok
+test determinate_unlabeled_progress_uses_the_existing_progress_node ... ok
+test empty_collections_do_not_hide_unsupported_template_semantics ... ok
+test progress_rejects_precision_loss_and_underflow_with_source_location ... ok
+test table_scalars_use_host_formatters_without_source_references ... ok
+test empty_snapshots_keep_table_columns_without_emitting_template_values ... ok
+test action_contracts_resolve_shorthand_and_reject_source_defined_contracts ... ok
+test host_display_formats_and_current_field_values_reach_the_consumer ... ok
+test wrapper_elision_preserves_explicit_columns_and_reading_order ... ok
+test collection_rows_expand_with_nearest_row_values_and_item_wrappers ... ok
+test diagnostic_goldens_cover_every_field_and_keep_json_rejection_behavior ... ok
+test lossless_progress_preserves_the_serialized_consumer_value ... ok
+test ten_documented_design_cases_resolve_with_only_case_six_lowering ... ok
+test nine_fragments_match_canonical_snapshots_and_unchanged_consumer_fixtures ... ok
+test every_unsupported_catalog_element_and_modifier_rejects_with_source_location ... ok
+test compact_json_byte_limit_counts_keys_and_escaped_strings ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/lower_v1.rs (target/debug/deps/lower_v1-0b6cdf434bc15255)
+
+running 5 tests
+test unsupported_catalog_option_labels_and_nonzero_argument_actions_fail_closed ... ok
+test numeric_values_reject_f64_overflow_underflow_and_precision_loss ... ok
+test slider_current_value_must_satisfy_the_frozen_range_and_step ... ok
+test exact_fixture_lowers_with_layout_fill_and_wire_path_controls ... ok
+test gallery_dashboard_matches_trusted_host_lowering ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/parser.rs (target/debug/deps/parser-9ba81940f5f45d59)
+
+running 20 tests
+test declaration_words_are_case_sensitive ... ok
+test accepts_empty_display_text_without_empty_required_labels ... ok
+test rejects_inverted_ranges_above_float_integer_precision ... ok
+test leaves_manifest_and_scope_checks_to_the_resolver ... ok
+test rejects_fractional_text_bounds_below_float_precision ... ok
+test retains_all_fixed_icons_and_identifier_spellings ... ok
+test rejects_negative_text_bounds_below_float_range ... ok
+test rejects_invalid_literal_constraints ... ok
+test unexpected_literals_do_not_enter_diagnostic_declaration_paths ... ok
+test reports_stable_codes_byte_spans_and_declaration_paths ... ok
+test retains_decoded_operands_actions_and_source_spans ... ok
+test accepts_all_nine_v0_fragments ... ok
+test rejects_invalid_nesting ... ok
+test compares_decimal_constraints_without_rounding ... ok
+test accepts_the_full_catalog_and_modifier_order ... ok
+test rejects_unknown_duplicate_and_out_of_order_syntax ... ok
+test forbidden_source_corpus_rejects_at_the_declared_boundary ... ok
+test truncated_input_never_panics ... ok
+test accepts_documented_examples_and_recipes ... ok
+test enforces_depth_and_node_limits_at_the_boundary ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/resolve.rs (target/debug/deps/resolve-38d61e8984ff83c5)
+
+running 51 tests
+test exact_decimal_constraints_survive_resolution_without_float_rounding ... ok
+test empty_collections_still_validate_template_types_and_actions ... ok
+test empty_template_fields_do_not_read_surface_field_edits ... ok
+test column_values_accept_only_scalar_types_and_declared_kinds ... ok
+test aggregate_limit_precedes_retained_property_copy ... ok
+test column_kind_requires_matching_type_and_host_formatter ... ok
+test expanded_declaration_depth_accepts_12_and_rejects_synthetic_13 ... ok
+test empty_nested_template_fields_do_not_read_outer_row_edits ... ok
+test collection_type_replacement_invalidates_selection_and_row_field_identity ... ok
+test independent_collection_keys_do_not_merge_field_identity ... ok
+test keyed_row_field_identity_survives_reordering ... ok
+test keys_require_unique_nonnull_host_strings_or_integers ... ok
+test published_names_are_case_sensitive ... ok
+test field_ownership_is_order_independent_and_namespaced_by_row ... ok
+test manifest_rejects_reserved_roots_unknown_types_and_shadowed_actions ... ok
+test nested_selection_stays_in_its_row_instance ... ok
+test references_contain_validated_values_and_host_display_formats ... ok
+test rejects_invalid_initial_values_and_ambiguous_binding_roots ... ok
+test options_stages_progress_dates_and_patterns_fail_closed ... ok
+test empty_nested_template_fields_charge_only_their_retained_identity_rows ... ok
+test action_targets_count_retained_row_keys_toward_the_byte_limit ... ok
+test aggregate_limit_precedes_retained_formatter_copy ... ok
+test repeated_key_paths_count_toward_the_resolved_byte_limit ... ok
+test repeated_argument_names_count_toward_the_resolved_byte_limit ... ok
+test repeated_field_paths_count_toward_the_resolved_byte_limit ... ok
+test repeated_type_names_count_toward_the_resolved_byte_limit ... ok
+test root_record_projections_preserve_their_declared_formatter ... ok
+test resolves_nested_rows_and_rejects_outer_and_unknown_projections ... ok
+test field_identities_count_retained_row_keys_toward_the_byte_limit ... ok
+test row_field_snapshots_override_only_their_instance ... ok
+test repeated_action_names_are_bounded_before_the_next_name_is_copied ... ok
+test snapshot_validation_precedes_source_resolution ... ok
+test selection_many_has_no_projection_and_validates_snapshot_membership ... ok
+test selection_publishes_in_the_immediate_parent_block_and_disables_missing_one ... ok
+test the_documented_design_case_ten_is_a_scope_rejection ... ok
+test unkeyed_identity_includes_the_node_type ... ok
+test url_values_require_a_valid_host_and_port ... ok
+test validates_manifest_actions_and_all_builtin_contexts ... ok
+test checks_every_display_and_control_contract ... ok
+test aggregate_limit_precedes_retained_literal_copies ... ok
+test aggregate_limit_precedes_retained_literal_list_copy ... ok
+test aggregate_limit_precedes_retained_bound_list_copy ... ok
+test retained_formatter_symbols_count_toward_the_resolved_byte_limit ... ok
+test byte_bound_counts_only_retained_resolved_content ... ok
+test repeated_row_keys_count_toward_the_resolved_byte_limit ... ok
+test aggregate_limit_precedes_retained_string_copies ... ok
+test retained_formatted_bytes_count_exact_escaped_display_and_money_symbol ... ok
+test retained_resolved_bytes_accept_262144_and_reject_262145 ... ok
+test expansion_bounds_reject_before_returning_partial_surfaces ... ok
+test expanded_retained_bytes_accept_262144_and_reject_262145 ... ok
+test expanded_nodes_accept_2000_and_reject_2001 ... ok
+
+test result: ok. 51 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/stream.rs (target/debug/deps/stream-60186cc9981f4268)
+
+running 11 tests
+test trailing_tokens_revoke_a_previously_complete_candidate ... ok
+test rejects_invalid_syntax_without_returning_an_ast ... ok
+test finalize_rejects_incomplete_syntax_and_utf8_with_exact_diagnostics ... ok
+test impossible_negative_text_bound_rejects_at_end_of_buffer ... ok
+test malformed_utf8_rejects_and_split_utf8_remains_incomplete ... ok
+test impossible_negative_numeric_constraints_reject_at_end_of_buffer ... ok
+test rejects_over_limit_before_buffering_it ... ok
+test finalize_preserves_latched_rejection_even_after_more_input ... ok
+test every_utf8_byte_prefix_is_noninteractive_until_it_parses ... ok
+test signed_decimal_ranges_remain_extendible_at_every_byte ... ok
+test documented_candidates_remain_incomplete_at_every_extendible_byte ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
+
+     Running unittests src/lib.rs (target/debug/deps/mote_browser-b6f2b2ee1e48a957)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/runtime.rs (target/debug/deps/runtime-583a312ae7b88d97)
+
+running 9 tests
+test browser_session_never_inherits_profile_cookies_or_workers ... ignored, requires MOTE_LIVE=1 and pinned headed Chrome
+test headed_runtime_reads_fills_and_blocks_effects ... ignored, requires MOTE_CHROME pointing to pinned headed Chrome for Testing
+test host_shutdown_closes_retained_session ... ignored, requires MOTE_LIVE=1 and pinned headed Chrome
+test references_do_not_cross_sessions ... ok
+test references_are_stable_and_navigation_invalidates_them ... ok
+test launch_is_headed_private_and_cannot_attach ... ok
+test origin_and_effect_policy_fail_closed ... ok
+test local_fixture_reports_each_protected_effect ... ok
+test evidence_redacts_credentials_and_form_bodies ... ok
+
+test result: ok. 6 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/main.rs (target/debug/deps/mote_client-0e6ca02c0ad1b3ca)
+
+running 110 tests
+test app::observation::accessibility_tests::accessibility_click_target_opens_the_select_widget ... ok
+test app::observation::accessibility_tests::accessibility_field_keeps_real_focus_and_text_selection_actions ... ok
+test app::observation::matrix_renderer_tests::matrix_observations_retain_only_the_current_mac_frame ... ok
+test app::observation::matrix_renderer_tests::live_matrix_draws_v1_and_sends_one_action_with_contract_context ... ok
+test app::observation::accessibility_tests::accessibility_click_targets_reach_toggle_and_action_widgets ... ok
+test app::observation::tests::interaction_changed_path_discards_field_and_returning_path_is_fresh ... ok
+test app::observation::matrix_renderer_tests::live_contract_transition_discards_v1_edits_confirmation_focus_and_popup ... ok
+test app::observation::tests::interaction_field_survives_same_live_identity_and_host_value_wins ... ok
+test app::observation::tests::interaction_host_toggle_and_select_updates_override_local_changes ... ok
+test app::observation::layout_tests::layout_harness_uses_production_navigation_and_panel_margins ... ok
+test app::observation::tests::interaction_removed_select_closes_popup_before_reinsertion ... ok
+test app::observation::matrix_renderer_tests::live_matrix_body_scroll_keeps_both_anchors_inside_chat_viewport ... ok
+test app::observation::tests::interaction_other_surface_edit_survives_matrix_removal_from_chat ... ok
+test app::observation::tests::interaction_separate_surface_and_reconnect_epoch_do_not_share_edits ... ok
+test app::observation::tests::interaction_removed_toggle_and_action_do_not_pass_focus_to_another_surface ... ok
+test app::observation::tests::interaction_removed_toggle_and_select_discard_local_values ... ok
+test app::observation::tests::interaction_retyped_control_does_not_activate_with_the_old_focus ... ok
+test app::tests::apply_is_withheld_after_edit_then_refresh_until_loading_finishes ... ok
+test app::tests::all_failed_batch_does_not_start_a_snapshot_refresh ... ok
+test app::tests::accepted_surface_records_only_its_first_real_chat_draw ... ok
+test app::tests::apply_queues_only_dirty_typed_values_in_fixed_key_order ... ok
+test app::tests::batch_outcomes_preserve_failures_concurrent_edits_and_error_across_refresh ... ok
+test app::tests::blocked_config_rpc_does_not_block_the_render_thread ... ok
+test app::observation::matrix_renderer_tests::unsupported_matrix_draws_fallback_and_gallery_keeps_both_catalogs ... ok
+test app::tests::blocked_ui_event_work_does_not_block_the_render_thread ... ok
+test app::tests::config_tab_contains_every_section_four_key ... ok
+test app::tests::clean_shutdown_writes_the_opt_in_latency_report ... ok
+test app::observation::layout_tests::layout_chat_composer_and_send_respond_at_center_and_padded_edges ... ok
+test app::observation::tests::interaction_surviving_action_keeps_focus_when_earlier_matrix_is_removed ... ok
+test app::observation::tests::fixture_controls_follow_tab_and_shift_tab_reading_order ... ok
+test app::observation::tests::interaction_removed_or_retyped_field_never_resurrects_edits ... ok
+test app::tests::edit_back_to_old_baseline_during_apply_survives_successful_refresh ... ok
+test app::observation::tests::interaction_surviving_toggle_keeps_focus_when_earlier_matrix_is_removed ... ok
+test app::tests::edit_then_revert_queues_no_configuration_request ... ok
+test app::tests::edit_back_to_submitted_value_during_apply_is_clean_after_success ... ok
+test app::tests::failed_response_does_not_remove_an_already_delivered_message ... ok
+test app::tests::failed_send_is_removed_and_identical_retry_uses_a_new_message_id ... ok
+test app::tests::failed_ui_event_is_visible_and_rolls_back_local_control_state ... ok
+test app::observation::tests::fixture_controls_keyboard_activation_emits_only_permitted_events ... ok
+test app::tests::first_snapshot_merges_events_received_while_it_was_loading ... ok
+test app::observation::tests::populated_pipeline_shell_exposes_every_stage_and_tab_combination ... ok
+test app::tests::benchmark_events_preserve_completed_chat_and_its_cursor ... ok
+test app::observation::layout_tests::layout_adjacent_controls_preserve_hit_separation_and_reading_order ... ok
+test app::tests::installing_a_snapshot_seeds_all_config_edits_and_clears_errors ... ok
+test app::tests::malformed_surface_is_ignored_fail_closed ... ok
+test app::tests::pipeline_snapshot_loading_runs_off_the_rendering_thread ... ok
+test app::tests::refresh_snapshot_cannot_erase_a_newer_live_event ... ok
+test app::tests::preview_action_displays_its_event_without_a_daemon ... ok
+test app::tests::matrix_click_uses_committed_sequence_and_structural_path_in_worker_params ... ok
+test app::tests::live_matrix_slider_reaches_worker_once_with_contract_context_and_rolls_back ... ok
+test app::tests::snapshot_preserves_dirty_config_edits_until_their_request_succeeds ... ok
+test app::tests::streamed_text_after_a_surface_starts_a_visible_message ... ok
+test app::tests::subscribed_main_events_update_the_cached_pipeline_snapshot ... ok
+test app::tests::successful_current_revision_clears_dirty_state_before_refresh ... ok
+test app::tests::cursor_write_failure_keeps_reduced_event_visible_and_halts_later_events ... ok
+test app::tests::talk_events_retain_text_typing_and_delivery_behavior ... ok
+test app::tests::turn_response_marks_a_pending_message_sent_without_downgrading_delivery ... ok
+test app::tests::ui_event_params_include_thread_action_name_and_empty_args ... ok
+test app::tests::ui_event_params_include_typed_field_change_args ... ok
+test app::tests::valid_surface_becomes_a_displayed_typed_surface ... ok
+test app::tests::close_and_reopen_subscribes_from_durable_cursor_and_ignores_stale_replay ... ok
+test app::tests::unsupported_dual_surface_emits_one_v0_event_without_contract_context ... ok
+test app::observation::layout_tests::layout_actual_control_measurements_include_popup_options ... ok
+test cursor::tests::missing_cursor_starts_at_zero_without_a_warning ... ok
+test display_latency::tests::nearest_rank_summary_uses_explicit_twenty_sample_boundaries ... ok
+test display_latency::tests::records_first_draw_once_and_drops_superseded_arrivals ... ok
+test display_latency::tests::report_contains_only_timing_and_sequence_metadata ... ok
+test app::tests::diagnostic_renders_in_chat_with_prior_surface_and_advances_cursor ... ok
+test app::observation::accessibility_tests::accessibility_all_fixtures_and_gallery_match_exact_role_trees ... ok
+test app::tests::cursor_advances_only_after_each_event_is_reduced ... ok
+test fixture::tests::chat_state_fixture_accepts_each_v0_message_state ... ok
+test fixture::tests::chat_state_fixture_rejects_unknown_or_extra_arguments ... ok
+test fixture::tests::fixture_mode_validates_the_existing_tree ... ok
+test fixture::tests::invalid_arguments_fail_with_usage ... ok
+test fixture::tests::malformed_and_missing_files_fail_with_diagnostics ... ok
+test fixture::tests::gallery_mode_opens_without_a_fixture_path ... ok
+test cursor::tests::invalid_or_unreadable_cursor_recovers_without_leaking_contents ... ok
+test app::tests::dual_surface_replaces_once_draws_matrix_and_advances_one_cursor ... ok
+test fixture::tests::no_arguments_keeps_stream_mode ... ok
+test app::observation::layout_tests::layout_fixture_controls_activate_at_center_and_padded_edge ... ok
+test pipeline::tests::malformed_snapshot_is_rejected_instead_of_fabricating_defaults ... ok
+test pipeline::tests::config_edit_values_do_not_quote_strings ... ok
+test pipeline::tests::live_events_merge_newest_first_without_duplicates_and_keep_the_cap ... ok
+test pipeline::tests::typed_snapshot_filters_events_and_requests_by_stage ... ok
+test cursor::tests::rename_failure_preserves_committed_cursor_and_removes_owned_temp ... ok
+test stream::tests::decoded_event_carries_the_clock_offset_before_delivery ... ok
+test stream::tests::malformed_frame_keeps_the_connection_and_committed_surface ... ok
+test stream::tests::delivered_update_wakes_the_renderer_after_queueing ... ok
+test cursor::tests::two_complete_replacements_leave_only_the_committed_cursor ... ok
+test stream::tests::reconnect_backoff_is_capped ... ok
+test stream::tests::reconnects_from_the_last_delivered_cursor_after_disconnect_and_resync ... ok
+test cursor::tests::valid_nonnegative_cursor_is_loaded ... ok
+test stream::tests::stream_timestamps_decoded_events_and_wakes_after_successful_delivery ... ok
+test surface::tests::markup_strings_are_exact_inert_text_shapes_through_the_real_client ... ok
+test tests::chat_state_fixture_is_not_matrix_submission ... ok
+test tests::malformed_matrix_arguments_show_usage ... ok
+test tests::non_matrix_arguments_are_left_for_fixture_loading ... ok
+test stream::tests::pinned_shell_stream_projects_live_events_and_preserves_timestamps ... ok
+test tests::matrix_flag_loads_utf8_source ... ok
+test stream::tests::shell_session_rejects_socket_replacement_between_actions ... ok
+test app::observation::layout_tests::layout_all_ten_fixtures_at_both_golden_viewports ... ok
+test tests::rejected_matrix_submission_still_opens_chat_for_logged_diagnostic ... ok
+test cursor::tests::failed_host_cursor_write_preserves_legacy_and_retries_only_its_host ... ok
+test cursor::tests::desktop_reads_the_daemon_public_key_identity_before_migrating ... ok
+test app::tests::restart_between_status_and_subscription_rechecks_the_watermark ... ok
+test cursor::tests::legacy_cursor_migrates_once_under_the_authenticated_host_and_main_scope ... ok
+test stream::tests::unix_and_fixture_frames_reduce_to_the_same_host_state ... ok
+test app::tests::reconnect_removes_expired_matrix_controls_and_preserves_chat_and_cursor ... ok
+test app::observation::layout_tests::layout_200_list_items_and_500_table_rows_reach_the_final_row ... ok
+test app::observation::tests::every_fixture_frame_split_preserves_committed_display_and_events ... ok
+
+test result: ok. 110 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 44.04s
+
+     Running tests/core_boundary.rs (target/debug/deps/core_boundary-3dc853db0cde3899)
+
+running 2 tests
+test stored_events_reach_the_core_without_changing_the_wire_payload ... ok
+test shared_core_has_only_platform_neutral_dependencies ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+     Running unittests src/lib.rs (target/debug/deps/mote_client_core-895d1765ff4bebd6)
+
+running 78 tests
+test state::tests::optimistic_user_advances_from_sending_to_sent_to_delivered ... ok
+test state::tests::colliding_message_id_with_different_text_stays_distinct ... ok
+test state::tests::message_id_reused_after_delivery_stays_distinct ... ok
+test state::tests::replayed_user_event_delivers_the_optimistic_message_without_a_duplicate ... ok
+test state::tests::chat_state_fixtures_seed_the_requested_reducer_state ... ok
+test state::tests::repeated_delivered_user_text_remains_a_distinct_message ... ok
+test contract::tests::invalid_fallback_rejects_even_a_valid_matrix_surface ... ok
+test state::tests::repeated_surface_identity_replaces_the_existing_dashboard ... ok
+test state::tests::dual_surface_reduces_once_and_both_invalid_preserves_committed_surface ... ok
+test contract::tests::valid_dual_payload_retains_both_independently_valid_contracts ... ok
+test contract::tests::missing_unknown_or_malformed_matrix_surface_uses_valid_fallback ... ok
+test state::tests::diagnostic_replay_is_visible_deduplicated_and_preserves_surface ... ok
+test gallery::tests::gallery_sections_cover_every_surface_variant ... ok
+test gallery::tests::list_gallery_contains_a_reachable_long_scroll_sample ... ok
+test gallery::tests::gallery_pages_cover_required_names_and_validate ... ok
+test surface::tests::toggle_emits_one_typed_change_only_when_its_value_changes ... ok
+test surface::tests::long_action_label_stays_on_one_line_and_clicks_at_padded_edge ... ok
+test surface::tests::long_toggle_label_stays_on_one_line_and_changes_at_padded_edge ... ok
+test surface::tests::actions_return_the_existing_event_string ... ok
+test surface::tests::keyboard_focus_is_red_and_space_activates_the_action ... ok
+test surface::tests::field_edits_survive_the_next_frame ... ok
+test surface::tests::replacement_surface_host_value_overrides_cached_select_edit ... ok
+test surface::tests::select_emits_one_typed_change_only_for_a_different_choice ... ok
+test surface::tests::resolved_progress_and_populated_list_draw_only_resolved_values ... ok
+test surface::tests::rejected_select_change_discards_its_optimistic_value ... ok
+test surface_v1::tests::confirmation_cancel_and_removal_never_emit ... ok
+test surface::tests::controls_reserve_a_48_point_touch_target ... ok
+test surface_v1::tests::column_alignment_and_around_distribution_use_remaining_extent ... ok
+test surface_v1::tests::decimal_step_reaches_validator_aligned_upper_endpoint ... ok
+test surface_v1::tests::disabled_accessibility_has_no_actions_and_changed_confirmation_is_cleared ... ok
+test surface_v1::tests::disabled_button_rejects_keyboard_and_accesskit_clicks ... ok
+test surface::tests::adjacent_popup_choices_keep_independent_48_point_edge_targets ... ok
+test surface_v1::tests::narrow_nowrap_fills_preserve_48_point_hit_extents_without_overlap ... ok
+test surface_v1::tests::moving_a_slider_rejects_dragging_at_its_old_bounds ... ok
+test surface_v1::tests::fixed_range_slider_exposes_a_finite_positive_step_and_named_main ... ok
+test surface_v1::tests::filled_text_in_nested_nowrap_row_cannot_paint_over_following_button ... ok
+test surface_v1::tests::button_intents_keep_actions_and_accent_labels ... ok
+test surface_v1::tests::fill_reserves_trailing_siblings_and_splits_remaining_space ... ok
+test surface_v1::tests::removing_select_closes_its_popup_and_clears_widget_focus ... ok
+test surface_v1::tests::finite_extreme_slider_ranges_stay_finite_during_input_and_paint ... ok
+test surface_v1::tests::slider_accepts_small_step_when_total_step_count_overflows ... ok
+test surface_v1::tests::slider_accesskit_without_focus_and_non_aligned_upper_bound ... ok
+test surface_v1::tests::select_retains_local_value_but_replacement_options_reset_it ... ok
+test theme::tests::vector_applies_fixed_spacing_monospace_and_sharp_strokes ... ok
+test theme::tests::vector_uses_exact_dark_and_light_colors ... ok
+test surface_v1::tests::disabled_buttons_are_inert_and_confirmation_emits_once ... ok
+test surface_v1::tests::slider_host_range_changes_reset_local_value ... ok
+test surface_v1::tests::anchors_own_remaining_body_height_and_stay_fixed_during_scroll ... ok
+test surface_v1::tests::row_wrap_alignment_and_distribution_follow_contract ... ok
+test theme::tests::runtime_selects_vector_for_system_light_and_dark ... ok
+test surface_v1::tests::focus_order_uses_header_body_footer_and_skips_disabled ... ok
+test surface_v1::tests::nowrap_body_can_scroll_horizontally_without_moving_anchors ... ok
+test transition::tests::particle_travel_stays_within_sixteen_points_of_changed_borders ... ok
+test surface_v1::tests::slider_has_range_semantics_36_visual_and_48_hit_region ... ok
+test transition::tests::changed_strokes_materialize_at_0_60_120_ms ... ok
+test transition::tests::legacy_caret_text_and_progress_updates_do_not_materialize ... ok
+test surface_v1::tests::vector_slider_uses_thin_rail_and_accent_outline_in_both_themes ... ok
+test transition::tests::first_replacement_press_and_next_frame_release_emit_once ... ok
+test theme::tests::selected_controls_keep_the_surface_fill_in_both_themes ... ok
+test transition::tests::escape_cancels_replacement_slider_capture_until_a_new_press ... ok
+test transition::tests::unchanged_strokes_do_not_restart ... ok
+test surface_v1::tests::slider_pointer_keys_bounds_and_local_state_reset ... ok
+test surface_v1::tests::toggles_selects_and_plain_buttons_emit_typed_local_events ... ok
+test transition::tests::reduced_motion_swaps_and_pulses ... ok
+test transition::tests::page_switch_installs_new_hit_targets_on_first_frame ... ok
+test transition::tests::particle_work_has_a_fixed_frame_budget ... ok
+test transition::tests::reinserted_control_accepts_a_click_at_its_previous_geometry ... ok
+test transition::tests::escape_with_release_cancels_replacement_slider_click ... ok
+test transition::tests::replacement_slider_release_click_emits_once ... ok
+test transition::tests::unchanged_production_border_survives_a_sibling_replacement ... ok
+test transition::tests::replacement_slider_captures_press_move_release_without_duplicate_changes ... ok
+test transition::tests::particle_frames_are_deterministic ... ok
+test theme::tests::selected_text_ranges_stay_visible_and_readable_in_both_themes ... ok
+test surface::tests::explicit_control_ids_preserve_vector_shapes_and_widget_semantics ... ok
+test transition::tests::replacement_controls_accept_one_click_and_keep_keyboard_and_accessibility_events ... ok
+test transition::tests::moved_button_uses_new_bounds_and_never_fires_at_old_bounds ... ok
+test surface_v1::tests::reordered_anchors_keep_source_paths_and_empty_screens_are_bounded ... ok
+test surface::tests::all_existing_fixtures_draw_without_a_gpu ... ok
+
+test result: ok. 78 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running unittests src/lib.rs (target/debug/deps/mote_context-daee79d44be55c38)
+
+running 12 tests
+test mem::tests::write_stores_embedding_fts_and_vector ... ok
+test tests::ledger_since_is_empty_without_rows ... ok
+test mem::tests::write_makes_no_model_call_and_stores_embedding_realm_source_seq ... ok
+test tool_ledger_tests::tool_accounting_does_not_create_model_calls_or_packs ... ok
+test tests::opening_a_legacy_database_adds_unknown_latency_kind ... ok
+test mem::tests::retrieve_finds_relevant_and_recency_orders ... ok
+test mem::tests::forgetting_omits_from_retrieval ... ok
+test tests::prune_removes_packs_older_than_30_days ... ok
+test tests::ledger_since_filters_cutoff_and_returns_newest_first ... ok
+test tests::three_turns_write_three_packs_and_three_ledger_rows ... ok
+test tests::pack_stays_within_budget ... ok
+test mem::tests::retrieve_p50_under_40ms_on_10k_nodes ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
+
+     Running unittests src/lib.rs (target/debug/deps/mote_eventlog-5f8d3ecad4df2838)
+
+running 10 tests
+test tests::recent_events_are_bounded_newest_first_and_redacted ... ok
+test tests::recent_events_by_kind_are_filtered_before_the_limit ... ok
+test tests::failed_projection_rolls_back_event_and_live_delivery ... ok
+test tests::retention_failure_rolls_back_append_and_broadcast ... ok
+test tests::two_subscribers_at_different_cursors ... ok
+test tests::append_is_strictly_increasing_and_redacts ... ok
+test tests::stalled_subscriber_gets_resync ... ok
+test tests::host_replay_detects_retention_holes_in_every_scope ... ok
+test tests::checked_replay_uses_deleted_sequence_not_sparse_scope_minimum ... ok
+test tests::retention_keeps_5000_behind_one_marker ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.20s
+
+     Running unittests src/lib.rs (target/debug/deps/mote_gateway-67e1d354a41febb4)
+
+running 4 tests
+test net::tests::only_local_ranges_are_allowed ... ok
+test net::tests::the_mac_offers_at_least_loopback ... ok
+test discovery::tests::native_zone_parser_rejects_extra_or_malformed_txt ... ok
+test base32::tests::base32_round_trips_and_matches_rfc_vectors ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bonjour.rs (target/debug/deps/bonjour-89aaed79a6f76c84)
+
+running 9 tests
+test live_mac_stack_discovers_and_removes_loopback_registration ... ignored, requires MOTE_LIVE=1 and the Mac Bonjour stack
+test txt_contains_only_protocol_major_and_public_fingerprint ... ok
+test discovery_disabled_skips_advertising_and_browsing ... ok
+test advertiser_shutdown_releases_registration ... ok
+test incompatible_or_cross_host_candidate_keeps_the_saved_endpoint ... ok
+test fake_browser_hint_connects_only_as_the_pinned_host ... ok
+test gateway_owns_advertisement_and_discovery_disable_preserves_listener ... ok
+test moved_port_is_saved_only_after_pinned_noise_proof ... ok
+test impersonator_cannot_move_known_host ... ok
+
+test result: ok. 8 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/classes.rs (target/debug/deps/classes-3a2ee7eb8ebb6ba9)
+
+running 1 test
+test remote_allowlist_refuses_local_unknown_and_watch_control_calls ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/loopback.rs (target/debug/deps/loopback-9c82d740f8c78d8c)
+
+running 11 tests
+test tampered_encrypted_frame_never_dispatches ... ok
+test remote_outcomes_and_events_redact_secrets_and_local_paths ... ok
+test plaintext_and_raw_mutations_never_dispatch ... ok
+test websocket_http_upgrade_and_binary_noise_frames_authenticate_before_dispatch ... ok
+test authenticated_pair_hello_status_turn_and_subscribe ... ok
+test replayed_request_returns_recorded_outcome ... ok
+test durable_replay_survives_gateway_restart ... ok
+test opaque_request_id_survives_redaction_restart_and_outbox_correlation ... ok
+test expired_reused_wrong_identity_replayed_counter_and_revoked_sessions_never_dispatch ... ok
+test concurrent_slow_turn_retry_is_pending_without_timeout_or_redispatch ... ok
+test interrupted_claim_is_indeterminate_after_restart_and_fences_late_completion ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.27s
+
+     Running tests/noise.rs (target/debug/deps/noise-13c9f93cf209b625)
+
+running 3 tests
+test approved_overseer_vectors_stay_compatible ... ok
+test mote_vectors_bind_the_mote_prologue ... ok
+test production_handshakes_interoperate_with_mote_vector_prologue ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/pairing.rs (target/debug/deps/pairing-e2b6d24ac0570c54)
+
+running 3 tests
+test pairing_code_parser_refuses_malformed_or_unsupported_codes ... ok
+test pairing_pins_identity_and_requires_owner_confirmation ... ok
+test expiry_and_failure_budget_close_the_offer ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/reconnect.rs (target/debug/deps/reconnect-e3a1862e80619849)
+
+running 14 tests
+test incompatible_or_changed_host_never_fails_over ... ok
+test future_surface_snapshot_is_rejected_atomically ... ok
+test snapshot_then_duplicate_and_live_tokens_keep_one_reply ... ok
+test resync_keeps_visible_state_until_snapshot_and_exposes_connection_states ... ok
+test acknowledged_outbox_survives_restart_and_result_without_ack ... ok
+test pending_approvals_and_status_survive_daemon_database_restart ... ok
+test durable_snapshot_survives_restart_and_keeps_last_committed_surface ... ok
+test remote_snapshot_excludes_paths_credentials_and_cookies ... ok
+test interleaved_threads_reconnect_in_one_host_sequence ... ok
+test partial_encrypted_requests_retry_the_same_id_without_duplicate_turns ... ok
+test snapshot_chunks_fit_small_noise_limits_with_escaped_unicode ... ok
+test snapshot_larger_than_noise_limit_completes_call_and_resync ... ok
+test expired_cursor_replaces_all_visible_state_for_one_host ... ok
+test gateway_ack_and_resync_are_authoritative_after_restart ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.53s
+
+     Running tests/security.rs (target/debug/deps/security-603f21c0e52a78ca)
+
+running 13 tests
+test wrong_secret_fails_without_consuming_a_valid_offer ... ok
+test unsafe_or_malformed_persisted_keys_are_refused_without_replacement ... ok
+test identity_is_persistent_private_and_symlink_safe ... ok
+test simultaneous_key_creation_has_one_complete_identity ... ok
+test session_role_errors_poison_transport ... ok
+test decrypted_handshakes_and_frame_envelopes_exclude_credentials ... ok
+test credentials_restore_and_keys_never_enter_frames ... ok
+test wrong_host_and_unknown_client_fail_before_transport ... ok
+test wrong_pinned_static_key_fails_noise_in_both_handshake_patterns ... ok
+test replay_and_revocation_survive_store_restart ... ok
+test encrypted_frames_are_ordered_bound_and_poison_on_error ... ok
+test authenticated_malformed_identity_version_and_counter_fail_closed ... ok
+test large_frames_join_and_reader_size_failures_close_the_session ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+     Running unittests src/lib.rs (target/debug/deps/mote_harness-8049b3172a04f687)
+
+running 5 tests
+test tests::live_think_reads_file_via_file_read ... ok
+test tests::error_event_is_done_not_ok ... ok
+test tests::local_only_refuses_claude_and_codex ... ok
+test tests::parses_four_event_kinds_from_transcript ... ok
+test tests::think_stream_folds_server_events ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/mote_host_client-b2662fdc1c8122f8)
+
+running 1 test
+test directory::local_tests::trusted_local_projection_is_host_scoped_and_never_remote_pairing ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/multi_host.rs (target/debug/deps/multi_host-e27ca8cd80022f86)
+
+running 11 tests
+test interactions_and_subscriptions_cannot_cross_hosts ... ok
+test selection_does_not_route_requests_and_request_ids_are_immutable ... ok
+test standalone_host_deserialization_cannot_bypass_identity_checks ... ok
+test standalone_session_deserialization_cannot_bypass_identity_checks ... ok
+test standalone_outbox_deserialization_cannot_bypass_identity_checks ... ok
+test outbox_preserves_action_order_when_request_ids_sort_differently ... ok
+test unpaired_hosts_and_duplicate_registration_do_not_reset_state ... ok
+test corrupted_directory_identity_and_cursor_are_rejected ... ok
+test colliding_host_ids_are_isolated ... ok
+test foreign_host_reducers_and_actions_fail_without_mutation ... ok
+test directory_roundtrip_preserves_host_state_without_credentials ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/snapshot_chunks.rs (target/debug/deps/snapshot_chunks-4dc80f4daf7ef112)
+
+running 2 tests
+test interrupted_out_of_order_or_changed_snapshot_cannot_replace_visible_state ... ok
+test snapshot_chunks_install_only_after_complete_and_do_not_persist_partial_state ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running unittests src/lib.rs (target/debug/deps/mote_ios-338eb193d333ab59)
+
+running 20 tests
+test probe::tests::duplicate_input_passes_do_not_become_repaint_frames ... ok
+test probe::tests::first_probe_frame_prewarms_capture_without_changing_layout ... ok
+test probe::tests::transition_waits_for_gpu_warmup_completion ... ok
+test probe::tests::captures_are_prearmed_for_real_first_midpoint_and_final_frames ... ok
+test probe::tests::gpu_marker_decodes_literal_pixels_and_rejects_missing_marker ... ok
+test probe::tests::cadence_uses_measured_intervals_not_nominal_refresh_rate ... ok
+test simulator::tests::timing_probe_requires_explicit_nonsecret_opt_in ... ok
+test simulator::tests::explicit_launch_options_choose_page_and_reduced_motion ... ok
+test simulator::tests::missing_values_do_not_swallow_later_recognized_flags ... ok
+test simulator::tests::checked_in_fixture_can_be_selected_without_a_path ... ok
+test simulator::tests::unknown_arguments_and_missing_values_preserve_defaults ... ok
+test simulator::tests::invalid_later_values_do_not_erase_a_valid_page_selection ... ok
+test app::tests::gallery_heading_clears_native_top_safe_area ... ok
+test app::tests::composer_accepts_text_input_without_a_matrix_contract_change ... ok
+test app::tests::shell_exposes_all_eight_gallery_pages ... ok
+test app::tests::live_shell_labels_selected_host_and_rejects_cross_host_updates ... ok
+test app::tests::composer_clears_the_keyboard_in_portrait_and_landscape ... ok
+test app::tests::selecting_pages_installs_touch_sized_controls_on_both_ipad_sizes ... ok
+test app::tests::list_last_action_scrolls_into_the_visible_hit_region ... ok
+test live::recovery_tests::saved_host_recovers_after_unavailable_app_launch ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.36s
+
+     Running tests/live_loopback.rs (target/debug/deps/live_loopback-e56319031c46b75b)
+
+running 4 tests
+test same_address_reconnect_invalidates_the_old_command_session ... ok
+test same_address_events_reconnect_without_bonjour_invalidates_commands ... ok
+test discovered_port_moves_only_after_identity_proof ... ok
+test pairs_real_daemon_and_resumes_without_duplicate_chat ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s
+
+     Running tests/security.rs (target/debug/deps/security-0e4379ed32f4d0c3)
+
+running 2 tests
+test serialized_session_counter_never_restarts_after_relaunch ... ok
+test credentials_cannot_be_restored_under_a_colliding_host_name ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/simulator_live.rs (target/debug/deps/simulator_live-1b8c2c74fa26d655)
+
+running 1 test
+test native_pair_chat_edit_relaunch_discover_and_keychain_delete ... ignored, requires MOTE_LIVE=1 and an installed iPad Simulator app
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/mote_ipc-94c5daa02bdae394)
+
+running 12 tests
+test tests::peer_credential_check ... ok
+test tests::local_event_decoder_keeps_the_legacy_event_dto_behavior ... ok
+test tests::local_envelopes_keep_arbitrary_ids_and_the_unversioned_wire_shape ... ok
+test tests::unary_client_transitions_to_subscription_on_the_same_socket ... ok
+test tests::event_decoder_rejects_eof_before_newline_and_recovers_after_bad_frames ... ok
+test tests::client_transition_cannot_move_to_a_replacement_server ... ok
+test tests::single_subscription_read_reports_a_dropped_connection ... ok
+test tests::local_parser_keeps_missing_fields_extra_keys_and_arbitrary_ids ... ok
+test tests::socket_mode_is_0600_and_second_bind_fails ... ok
+test tests::error_codes_for_bad_requests ... ok
+test tests::subscribe_streams_and_reconnects_without_duplicates ... ok
+test tests::fragmented_event_survives_timeouts_at_every_byte_and_requires_newline ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running unittests src/lib.rs (target/debug/deps/mote_localmodel-ca2f7ddc955b7b62)
+
+running 9 tests
+test tests::live_ensure_approved_models ... ok
+test tests::structured_output_parses_fail_closed ... ok
+test tests::structured_output_sends_format_schema ... ok
+test tests::structured_output_returns_raw_content_with_the_parsed_value ... ok
+test tests::structured_output_preserves_raw_content_when_parsing_fails ... ok
+test tests::chat_sends_keep_alive_and_num_ctx ... ok
+test tests::scripted_chat_queues_are_isolated_by_model_and_keep_default_reply ... ok
+test tests::model_digest_requires_exact_named_nonempty_tag ... ok
+test tests::ensure_missing_memory_gate_and_load_time ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/debug/deps/mote_paths-0cab04c6eff08d83)
+
+running 1 test
+test tests::paths_and_mode ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/mote_protocol-3752a11692cb7d13)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/golden.rs (target/debug/deps/golden-304e031b35394b49)
+
+running 13 tests
+test identities_use_full_sha256_and_request_ids_are_nonempty ... ok
+test cursors_reject_negative_fractional_and_overflow_sequences ... ok
+test unknown_frame_types_and_fields_fail_closed ... ok
+test host_events_reject_unknown_nested_fields_without_changing_legacy_events ... ok
+test snapshots_and_acknowledgements_reject_a_cursor_from_another_host ... ok
+test hello_rejects_unsupported_major_versions_without_downgrading ... ok
+test request_states_are_typed_correlated_and_fail_closed ... ok
+test approvals_reject_untyped_incomplete_and_extra_decisions ... ok
+test client_frames_preserve_the_golden_wire_contract ... ok
+test interactions_reject_missing_or_malformed_contract_fields ... ok
+test approval_decisions_require_a_complete_action_hash_and_expiry_binding ... ok
+test host_frames_preserve_the_golden_wire_contract ... ok
+test pending_approvals_require_a_complete_action_hash_and_expiry_binding ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/mote_redact-a183521632d66115)
+
+running 3 tests
+test tests::redacts_jwt ... ok
+test tests::redacts_github_and_slack_tokens ... ok
+test tests::redacts_common_secrets ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/debug/deps/mote_testkit-ef8b54b7804ab0d2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/mote_ui-7777a9236e61fba9)
+
+running 22 tests
+test v1::tests::catalog_inventory_names_every_frozen_and_unresolved_word ... ok
+test tests::rejects_unknown_type ... ok
+test tests::rejected_tree_becomes_text_node_with_diagnostic ... ok
+test tests::rejects_unknown_key ... ok
+test tests::rejects_257kb ... ok
+test tests::rejects_depth_13 ... ok
+test v1::tests::rejects_unknown_version_type_and_key ... ok
+test tests::abbreviated_property_aliases_are_rejected ... ok
+test v1::tests::fill_is_only_valid_on_direct_row_or_col_children ... ok
+test v1::tests::anchors_are_unique_direct_screen_children ... ok
+test v1::tests::exact_slider_anchor_fill_fixture_round_trips ... ok
+test tests::accepts_all_ten_fixtures ... ok
+test v1::tests::schema_closes_version_and_node_inventory ... ok
+test v1::tests::slider_step_alignment_rejects_half_steps_and_nonfinite_math ... ok
+test tests::generated_schema_properties_match_v0_allowed_keys ... ok
+test v1::tests::dual_envelope_requires_valid_v0_fallback_and_snake_case_v1 ... ok
+test v1::tests::enforces_slider_range_step_and_finite_values ... ok
+test tests::schema_file_matches_generated ... ok
+test v1::tests::schema_is_deterministic_and_matches_the_committed_file ... ok
+test tests::rejects_2001_nodes ... ok
+test tests::fixtures_render_to_matching_golden_pngs ... ok
+test v1::tests::enforces_byte_depth_and_node_limits ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/main.rs (target/debug/deps/moted-c48d5f160a841b0f)
+
+running 162 tests
+test approval_dispatch_tests::failed_inside_file_write_returns_an_internal_error ... ok
+test approval_dispatch_tests::gateway_startup_migrates_the_existing_database_under_real_identity ... ok
+test approval_dispatch_tests::duplicate_completed_answer_cannot_commit_a_second_surface_for_the_turn ... ok
+test approval_dispatch_tests::inferred_host_subset_accepts_controls_data_progress_and_refresh ... ok
+test approval_dispatch_tests::completed_talk_answer_commits_one_inferred_surface_after_prose ... ok
+test approval_dispatch_tests::completed_think_answer_commits_after_think_done ... ok
+test approval_dispatch_tests::approval_card_actions_cannot_cross_threads_or_revive_expired_rows ... ok
+test approval_dispatch_tests::failed_approved_file_write_returns_an_internal_error_without_accepting_event ... ok
+test approval_dispatch_tests::approval_card_actions_execute_or_deny_the_held_write ... ok
+test approval_dispatch_tests::failed_matrix_append_preserves_source_and_committed_contract ... ok
+test approval_dispatch_tests::dual_append_failure_preserves_snapshot_and_both_tables_then_v0_replaces_them ... ok
+test approval_dispatch_tests::concurrent_matrix_renders_keep_retained_source_and_refresh_consistent ... ok
+test approval_dispatch_tests::inferred_none_malformed_and_transport_failures_are_candidate_neutral ... ok
+test approval_dispatch_tests::inferred_surface_retries_one_rejection_and_commits_only_the_valid_candidate ... ok
+test approval_dispatch_tests::inferred_retry_budget_is_three_per_minute_and_resets_for_a_new_surface ... ok
+test approval_dispatch_tests::inferred_retry_budgets_keep_threads_isolated_at_the_same_surface_sequence ... ok
+test approval_dispatch_tests::inferred_surface_second_rejection_emits_one_redacted_diagnostic_and_preserves_state ... ok
+test approval_dispatch_tests::inferred_turn_uses_exact_candidate_id_and_preserves_prose_and_prior_surface ... ok
+test approval_dispatch_tests::every_forbidden_matrix_candidate_preserves_the_committed_surface ... ok
+test approval_dispatch_tests::invalid_matrix_source_returns_diagnostics_without_replacing_the_surface ... ok
+test approval_dispatch_tests::matrix_anchored_fill_uses_exact_inert_fallback ... ok
+test approval_dispatch_tests::matrix_candidate_contract_accepts_all_four_typed_fields_and_expires_old_sequence ... ok
+test approval_dispatch_tests::checked_in_dashboard_commits_and_renders_anchored_v1_controls ... ok
+test approval_dispatch_tests::matrix_candidate_ids_and_threads_are_isolated_and_terminal_ids_can_restart ... ok
+test approval_dispatch_tests::matrix_candidate_invalid_params_do_not_mutate_the_accumulator ... ok
+test approval_dispatch_tests::matrix_diagnostic_event_redacts_candidate_and_diagnostic_fields ... ok
+test approval_dispatch_tests::matrix_diagnostic_events_exclude_malformed_source_literals ... ok
+test approval_dispatch_tests::matrix_first_slice_commits_one_dual_event_with_independent_paths ... ok
+test approval_dispatch_tests::matrix_candidate_rejections_preserve_exact_prior_surface_source_and_refresh ... ok
+test approval_dispatch_tests::matrix_refresh_requires_exposure_and_legacy_events_require_a_trusted_card ... ok
+test approval_dispatch_tests::matrix_render_compiles_the_daemon_manifest_and_commits_the_surface ... ok
+test approval_dispatch_tests::matrix_literal_strings_reach_the_renderer_as_inert_text ... ok
+test approval_dispatch_tests::matrix_retention_failure_preserves_display_contract_and_source ... ok
+test approval_dispatch_tests::none_and_incomplete_answers_never_change_the_surface ... ok
+test approval_dispatch_tests::matrix_limits_preserve_the_surface_and_refresh_the_prior_source ... ok
+test approval_dispatch_tests::matrix_terminal_rejections_emit_one_diagnostic_and_preserve_dashboard ... ok
+test approval_dispatch_tests::pending_file_write_emits_an_inline_approval_card ... ok
+test approval_dispatch_tests::pipeline_snapshot_rpc_is_read_only_and_returns_all_config_keys ... ok
+test approval_dispatch_tests::committed_matrix_rejects_forged_events_without_side_effects ... ok
+test approval_dispatch_tests::rejected_host_snapshot_and_unsupported_bindings_preserve_committed_state ... ok
+test approval_dispatch_tests::rejected_versioned_events_have_no_observable_side_effects ... ok
+test approval_dispatch_tests::restarted_daemon_rejects_prior_matrix_controls_until_a_fresh_commit ... ok
+test approval_dispatch_tests::retargeted_pending_symlink_returns_an_internal_error_without_accepting_event ... ok
+test approval_dispatch_tests::paired_hosts_with_colliding_ids_keep_state_and_actions_isolated ... ok
+test approval_dispatch_tests::forbidden_semantics_corpus_preserves_surface_source_contract_and_refresh ... ok
+test approval_dispatch_tests::typed_change_rejects_fields_outside_the_host_manifest ... ok
+test approval_dispatch_tests::typed_change_updates_config_and_recompiles_the_retained_source ... ok
+test approval_dispatch_tests::runtime_keyboard_edits_and_activations_keep_models_and_history_host_owned ... ok
+test approval_dispatch_tests::unsupported_inferred_semantics_reject_before_commitment ... ok
+test approval_dispatch_tests::versioned_host_controls_store_only_event_body_and_refresh_once ... ok
+test approvals::tests::canonical_hash_is_independent_of_object_order_and_binds_all_metadata ... ok
+test approval_dispatch_tests::validated_host_snapshot_refreshes_progress_and_list_once_without_model_traffic ... ok
+test approvals::tests::card_effect_is_derived_from_exact_intent ... ok
+test approvals::tests::deny_expiry_and_duplicate_decisions_are_inert ... ok
+test approvals::tests::display_and_database_contain_no_executable_intent ... ok
+test approvals::tests::executor_failure_is_terminal_and_not_retried ... ok
+test approvals::tests::mismatched_deny_never_changes_pending_state ... ok
+test approvals::tests::mismatched_host_thread_action_page_and_expiry_cannot_claim ... ok
+test approvals::tests::concurrent_claim_has_one_winner ... ok
+test bench::tests::compiler_benchmark_budget_only_passes_on_named_target_hardware ... ok
+test approval_dispatch_tests::inferred_incomplete_turn_never_checks_activation_or_calls_surface_model ... ok
+test bench::tests::compiler_benchmark_refuses_debug_builds ... ok
+test bench::tests::compiler_benchmark_uses_nearest_rank_p95 ... ok
+test bench::tests::live_surface_table_diagnostic ... ignored, requires MOTE_LIVE=1 and isolated MOTE_HOME for a ledgered live diagnostic
+test bench::tests::production_activation_requires_available_first_attempt_rate_at_least_ninety_five_percent ... ok
+test approval_dispatch_tests::production_turn_keeps_automatic_surface_inference_disabled_before_the_live_gate ... ok
+test bench::tests::surface_corpus_is_fixed_and_represents_every_v0_category ... ok
+test bench::tests::surface_metrics_count_each_validation_boundary_and_retry_outcome ... ok
+test approval_dispatch_tests::inferred_finalization_releases_the_context_store_lock ... ok
+test approval_dispatch_tests::paired_turn_uses_approved_local_models_ledger_and_redacted_events_once ... ok
+test bench::tests::surface_rejection_keeps_redacted_source_for_compiler_diagnosis ... ok
+test approvals::tests::one_effect_survives_repeated_decisions_and_restart_after_claim ... ok
+test approval_dispatch_tests::completed_think_flow_adds_exactly_one_think_and_surface_ledger_row ... ok
+test bench::tests::surface_prompt_examples_compile_with_the_real_host_contract ... ok
+test bench::tests::surface_table_example_lowers_a_compact_two_column_host_table ... ok
+test charter::tests::first_start_creates_files_with_front_matter ... ok
+test approval_dispatch_tests::inferred_production_turn_commits_one_surface_after_completed_prose ... ok
+test approval_dispatch_tests::completed_talk_flow_keeps_event_order_ledger_counts_and_redacted_surface_request ... ok
+test bench::tests::compiler_benchmark_fixture_is_fixed_and_exercises_v1_bindings ... ok
+test approval_dispatch_tests::inferred_production_turn_keeps_prose_and_prior_surface_on_transport_failure ... ok
+test embed::tests::live_potion_embedder_dim ... ok
+test approval_dispatch_tests::inferred_attempts_each_own_accounting_and_never_store_rejected_source_secrets ... ok
+test inferred_ui::tests::retry_budget_expires_attempts_at_the_rolling_minute_boundary ... ok
+test charter::tests::unlisted_tool_is_refused_and_logged ... ok
+test config::tests::set_records_change_and_revert_restores ... ok
+test config::tests::unknown_key_and_wrong_type_are_rejected ... ok
+test gate::tests::oversized_model_is_refused_naming_memory_and_size ... ok
+test inferred_ui::tests::surface_decision_rejects_malformed_and_duplicate_envelopes ... ok
+test approval_dispatch_tests::talk_benchmark_uses_live_subscribers_and_records_every_sample ... ok
+test config::tests::first_start_writes_defaults_matching_the_rfc_block ... ok
+test bench::tests::surface_benchmark_uses_the_ledgered_model_boundary_for_every_attempt ... ok
+test lanes::tests::live_router_macro_f1 ... ok
+test bench::tests::surface_metrics_never_silently_omit_a_corpus_case - should panic ... ok
+test lanes::tests::record_turn_gives_the_next_turn_continuity ... ok
+test inferred_ui::tests::surface_call_redacts_outbound_pack_and_events_before_use ... ok
+test inferred_ui::tests::surface_call_uses_fixed_local_options_and_strict_schema ... ok
+test lanes::tests::full_turn_records_talk_and_router_calls_once ... ok
+test inferred_ui::tests::surface_pack_accounts_for_exact_escaped_message_contents ... ok
+test inferred_ui::tests::surface_call_records_one_pack_row_and_event_pair_on_success_and_failure ... ok
+test lanes::tests::router_fail_closed_on_six_malformed_verdicts ... ok
+test approval_dispatch_tests::loopback_acceptance::paired_loopback_chat_surface_interaction_and_approval_journey ... ok
+test matrix::contract_tests::contract_tables_require_exact_context_and_compiled_control_types ... ok
+test bench::tests::three_benches_each_write_one_line ... ok
+test matrix::contract_tests::slider_admission_preserves_exact_signed_unsigned_and_float_values ... ok
+test matrix::contract_tests::slider_admission_handles_extreme_scales_and_non_aligned_maxima ... ok
+test matrix::contract_tests::slider_admission_rejects_integer_rounding_across_range_and_step_boundaries ... ok
+test matrix::contract_tests::slider_dual_surface_and_decimal_admission_follow_frozen_validator ... ok
+test bench::tests::surface_report_records_only_complete_exact_digest_evidence ... ok
+test lanes::tests::think_model_boundary_uses_the_harness_first_token_duration ... ok
+test lanes::tests::talk_pack_has_five_parts_in_order_within_budget ... ok
+test lanes::tests::think_model_boundary_correlates_timing_and_records_failures_once ... ok
+test mcp::tests::unknown_tool_is_an_error ... ok
+test lanes::tests::emit_think_writes_events_and_one_ledger_row ... ok
+test service::tests::plist_has_label_keepalive_and_log_paths ... ok
+test service::tests::uninstall_preserves_plist_when_launchctl_cannot_start ... ok
+test service::tests::uninstall_preserves_plist_when_launchctl_reports_no_stderr ... ok
+test service::tests::uninstall_preserves_plist_when_launchctl_reports_stderr ... ok
+test service::tests::uninstall_removes_plist_after_launchctl_succeeds ... ok
+test mcp::tests::think_turn_calls_memory_search_through_mcp ... ok
+test surface_activation::tests::inferred_activation_is_disabled_without_a_valid_current_attestation ... ok
+test pipeline::tests::empty_snapshot_keeps_the_complete_config_and_no_invented_rows ... ok
+test pipeline::tests::numbers_exclude_non_comparable_latency_but_keep_call_totals ... ok
+test pipeline::tests::numbers_exclude_rows_older_than_the_declared_hour_window ... ok
+test surface_tests::invalid_surface_fails_closed_to_a_diagnostic_text_node ... ok
+test lanes::tests::requests_store_redacted_payloads_no_secrets ... ok
+test pipeline::tests::requests_include_retained_calls_older_than_the_numbers_window ... ok
+test surface_tests::committing_a_surface_emits_it_on_the_requested_thread ... ok
+test surface_tests::valid_surface_is_preserved ... ok
+test pipeline::tests::populated_snapshot_is_bounded_redacted_and_aggregates_last_hour ... ok
+test watchers::tests::action_hash_covers_canonical_exact_intent ... ok
+test surface_activation::tests::inferred_activation_revocation_reports_directory_sync_failure ... ok
+test surface_activation::tests::inferred_activation_accepts_only_the_exact_live_identity_and_passing_score ... ok
+test surface_activation::tests::inferred_activation_persists_a_passing_gate_and_revokes_a_failed_gate ... ok
+test lanes::tests::talk_emits_deltas_and_done_with_ledger_id ... ok
+test watchers::tests::failed_direct_inside_write_returns_an_error_without_an_approval ... ok
+test watchers::tests::failed_approved_outside_write_stays_pending_and_can_be_denied ... ok
+test lanes::tests::talk_unavailable_when_model_cannot_load ... ok
+test watchers::tests::file_write_outside_data_dir_needs_approval ... ok
+test lanes::tests::think_verdict_makes_talk_finish_and_hand_off ... ok
+test watchers::tests::malformed_pending_payload_stays_pending_and_can_be_denied ... ok
+test approval_dispatch_tests::inferred_production_turn_retries_once_and_preserves_prior_surface_on_rejection ... ok
+test watchers::tests::legacy_migration_preserves_decisions_and_binds_only_local_host ... ok
+test watchers::tests::missing_inside_target_created_after_validation_is_not_truncated ... ok
+test watchers::tests::nonexistent_child_below_symlinked_outside_parent_is_held_for_approval ... ok
+test watchers::tests::nonexistent_traversal_target_is_held_for_approval ... ok
+test watchers::tests::parent_swap_after_validation_cannot_redirect_an_inside_write ... ok
+test watchers::tests::pending_symlink_retarget_cannot_change_the_approved_destination ... ok
+test watchers::tests::parent_swap_after_validation_keeps_approved_write_pending ... ok
+test watchers::tests::remote_approval_expires_and_exact_content_changes_digest ... ok
+test watchers::tests::remote_approval_binds_exact_intent_device_host_thread_and_expiry ... ok
+test watchers::tests::target_hardlink_swap_after_validation_keeps_approval_pending ... ok
+test watchers::tests::schedule_fires_at_cron_time ... ok
+test watchers::tests::target_swap_after_validation_cannot_replace_an_inside_file ... ok
+test watchers::tests::unresolved_existing_symlink_target_fails_closed ... ok
+test watchers::tests::restarted_pending_intent_is_visible_but_cannot_execute ... ok
+test approval_dispatch_tests::inferred_production_turn_rejects_missing_malformed_and_stale_activation ... ok
+test turn_event_tests::ordinary_turn_emits_one_redacted_user_event_before_lane_events ... ok
+test charter::tests::editing_charter_emits_changed_and_updates_prose ... ok
+test approval_dispatch_tests::loopback_acceptance::paired_loopback_suspend_reconnect_and_retention_resync ... ok
+test approval_dispatch_tests::matrix_candidate_prefixes_preserve_real_client_display_and_event_contracts ... ok
+test inferred_ui::tests::surface_call_sends_only_the_redacted_text_accounted_by_its_pack ... ok
+test approval_dispatch_tests::matrix_candidate_every_positive_fixture_byte_split_defers_commit_until_finish ... ok
+
+test result: ok. 161 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 12.92s
+
+     Running tests/live_loopback.rs (target/debug/deps/live_loopback-4ca512c6dbc43a46)
+
+running 1 test
+test external_test_pairs_real_daemon_and_receives_chat_and_matrix ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+     Running tests/local_only.rs (target/debug/deps/local_only-67a8c0e0df3ac593)
+
+running 1 test
+test refuses_subscription_think_harness_at_startup ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.76s
+
+     Running tests/second_instance.rs (target/debug/deps/second_instance-6cc360beed2525a7)
+
+running 1 test
+test second_instance_exits_naming_socket ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+
+     Running tests/shutdown.rs (target/debug/deps/shutdown-e404c1ab06dc8ba9)
+
+running 2 tests
+test live_sigterm_reaps_advertiser_and_removes_registration ... ignored, requires MOTE_LIVE=1 and the Mac Bonjour stack
+test sigterm_and_sigint_release_the_unix_listener ... ok
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.52s
+
+   Doc-tests matrix_lang
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mote_browser
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mote_client_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mote_context
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mote_eventlog
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mote_gateway
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mote_harness
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mote_host_client
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mote_ios
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mote_ipc
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mote_localmodel
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mote_paths
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mote_protocol
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mote_redact
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mote_testkit
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mote_ui
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

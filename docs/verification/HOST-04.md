@@ -2,9 +2,8 @@
 
 Date: 2026-10-11.
 
-Status: partial.
-The README checkbox remains open.
-UI plan Task 7 must still drive discovery from the iPad Simulator and verify the checked-in local-network purpose text.
+Status: verified after independent recovery review and final native rerun.
+The host-side evidence below and the Simulator followup cover the full README Verify clause.
 The physical privacy prompt belongs to IPAD-06.
 
 ## Environment
@@ -137,9 +136,9 @@ The offline second-instance process fixture explicitly disables Bonjour.
 
 ## Remaining evidence
 
-No Simulator discovery journey ran in this task.
+No Simulator discovery journey ran in the original host-side phase.
 No physical iPad, signing, App Store Connect, TestFlight or relay work ran.
-HOST-04 remains open until the Simulator verifies service browsing, identity-proved reconnect and the declared local-network purpose text.
+At the end of the original host-side phase, HOST-04 remained open for Simulator evidence.
 
 ## Daemon signal shutdown
 
@@ -231,5 +230,111 @@ Its result was 580 passed, no failures and two ignored live Bonjour checks.
 
 Discovery is disabled in this reusable acceptance harness.
 This run adds authenticated endpoint movement evidence, not Simulator network-stack evidence.
-HOST-04 remains open until Simulator discovery and local-network purpose text are verified.
+At the end of the loopback-only followup, HOST-04 still required Simulator evidence.
 No physical-device privacy prompt or IPAD criterion is closed here.
+
+## Native Simulator followup, 2026-10-11
+
+The environment, commands, exact outputs and inspected screenshots are in [IPAD-03](IPAD-03.md).
+The successful native run uses Xcode 27.0 and an iPad Pro 11-inch (M5) on iOS 27.0.
+The app browses through native DNSServiceBrowse, DNSServiceResolve and DNSServiceGetAddrInfo.
+It does not run the Mac dns-sd browser subprocess inside the app.
+The bounded browse runs off the render thread on the Simulator local-only interface.
+Both genuine services and the impersonator resolve to IPv4 loopback.
+Each TXT record contains exactly `protocol_major=1` and the public-key fingerprint.
+The [native network report](artifacts/ipad-live-2026-10-11/live-network.json) records these resolved endpoints and both TXT fields.
+
+Home's identity is `ac92420fa323d2ea83ac86d1750a4237aa34f36a38c27809c99d998a61721a65`.
+Its initial endpoint is `127.0.0.1:61551`.
+The harness releases the old advertisement, moves the real gateway to `127.0.0.1:61630` and advertises the new port.
+The native browser rediscovers the new port.
+The pinned Noise handshake succeeds before the app updates its durable endpoint.
+The report records accepted identity proof with prior `127.0.0.1:61551` and current `127.0.0.1:61630`.
+The native app relaunches and reconnects using the same Keychain identity at saved cursor 12.
+The screenshot and durable state retain the same Home chat and committed dashboard.
+
+The impersonator is at `127.0.0.1:61553`.
+It advertises Home's genuine fingerprint but has its own host key.
+Its handshake is rejected before any application action.
+Both rejection records preserve the prior genuine endpoint.
+An Office record is also refused as a candidate for Home.
+The command connection observes the authenticated endpoint move through the shared host endpoint.
+The real-daemon regression test verifies that a command after rediscovery reaches the moved genuine host.
+
+The checked-in Info.plist declares `NSBonjourServices` as `_mote._tcp`.
+Its `NSLocalNetworkUsageDescription` is:
+
+```text
+Mote discovers and connects to your paired Mote hosts on the local network.
+```
+
+This verifies the purpose text and native Simulator network stack.
+It does not claim a physical-device privacy prompt.
+That prompt remains IPAD-06 evidence.
+Simulator-only local ad-hoc entitlement stamping supports actual Keychain access without a team, certificate or provisioning profile.
+Physical and distribution signing settings are unchanged.
+Workspace tests and strict clippy pass as recorded in IPAD-03.
+
+The Mac native-stack check was also repeated after the Simulator integration.
+Command: `MOTE_LIVE=1 cargo test -p mote-gateway --test bonjour live_mac_stack -- --ignored --nocapture`.
+Output:
+
+```text
+Mac Bonjour discovered 127.0.0.1:64040 with TXT ["protocol_major=1", "fingerprint=fd0452dbfbdba96c89eef621dfa126fb29b186d6b6030399702c89e7c80aecc8"]
+Mac Bonjour removed the registration after advertiser shutdown
+test live_mac_stack_discovers_and_removes_loopback_registration ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored
+exit 0
+```
+
+## Recovery review follow-up
+
+Date: 2026-10-11, 09:55 to 09:56 PDT.
+The reviewed source was rebuilt and rerun on the same native iPad Simulator environment.
+Command: `MOTE_LIVE=1 MOTE_SIMULATOR_ID=43F2F6ED-5C86-4121-B03F-40FE38891C4E MOTE_ARTIFACTS=/private/tmp/mote-task7-live-attempt9 cargo test -p mote-ios --test simulator_live -- --ignored --nocapture`.
+Output: 1 passed, 0 failed, 69.80 seconds, exit 0, native `TEST SUCCEEDED`.
+Home moved from `127.0.0.1:57459` to `127.0.0.1:58022` only after pinned Noise proof.
+The forged-fingerprint service at `127.0.0.1:57461` was rejected without replacing the endpoint.
+The app resumed Home at cursor 12 without duplicate chat while Office remained isolated at cursor 1.
+Actual Simulator Keychain restoration and deletion passed again.
+The same-address restart regression now invalidates retained command sessions before a new action.
+The saved-host unavailable-at-launch regression now recovers without restarting the worker or replaying actions.
+The Mac shell socket-replacement regression rejects the new identity before an action can execute.
+Its real stream retains arrival timestamp and replay watermark while reducing through an ephemeral host-bound directory.
+Fresh full workspace tests and strict clippy both exited 0.
+Exact commands, environment, outputs and seven screenshots are recorded in [IPAD-03](IPAD-03.md#recovery-review-verification).
+Public proof logs are in [review artifacts](artifacts/ipad-live-review-2026-10-11/).
+The independent recovery review approved all three findings without new breakage.
+
+## Final reviewed-source discovery check
+
+Date: 2026-10-11, 10:22 to 10:23 PDT.
+Source HEAD: `6131d0c`, with Task 7 recovery tip `8003027`.
+Environment: the same macOS 26.6.2, Xcode 27.0 and iPad Pro 11-inch iOS 27.0 Simulator listed in IPAD-03.
+Command: `MOTE_LIVE=1 MOTE_SIMULATOR_ID=43F2F6ED-5C86-4121-B03F-40FE38891C4E MOTE_ARTIFACTS=/private/tmp/mote-task7-live-attempt10 cargo test -p mote-ios --test simulator_live -- --ignored --nocapture`.
+Output: 1 passed, 0 failed, 80.71 seconds, exit 0, native `TEST SUCCEEDED`.
+The native browser resolves only loopback endpoints and the two required TXT fields.
+Home is `952ccc20a0c663433b2fec355fe7e2bd357c646650f24e0ed05cdb719e9b19ea`.
+It moves from `127.0.0.1:62723` to `127.0.0.1:62792` only after pinned Noise proof.
+The forged-fingerprint service at `127.0.0.1:62725` is rejected without changing Home's endpoint.
+The [final network report](artifacts/ipad-live-final-2026-10-11/live-network.json) records discovery, identity proof and Keychain restoration.
+The app relaunches with Home cursor 12 and switches to isolated Office cursor 1.
+The purpose text remains exactly the checked-in text above.
+
+The Mac native stack is also repeated on final source:
+
+```text
+MOTE_LIVE=1 cargo test -p mote-gateway --test bonjour live_mac_stack -- --ignored --nocapture
+Mac Bonjour discovered 127.0.0.1:62823 with TXT ["protocol_major=1", "fingerprint=94a24f6fb0797aee033f3bc15524f50ac92120ea37c01de5f491eb87e0dce6b8"]
+Mac Bonjour removed the registration after advertiser shutdown
+test result: ok. 1 passed; 0 failed; 0 ignored; finished in 3.53s
+exit 0
+```
+
+The full dated native output and seven inspected screenshots are in [IPAD-03](IPAD-03.md#final-reviewed-source-verification).
+The exact Mac log is in [final artifacts](artifacts/ipad-live-final-2026-10-11/mote-task7-bonjour-final.log).
+The README checkbox is closed by the evidence commit.
+No physical-device privacy prompt, signing or sleep and wake claim is made.
+The final pre-commit workspace17 gate exits 0 with 667 passed, 7 ignored and 60 suites.
+Strict clippy20 exits 0 in 0.25 seconds.
+Both exact logs are included in the final artifact directory.

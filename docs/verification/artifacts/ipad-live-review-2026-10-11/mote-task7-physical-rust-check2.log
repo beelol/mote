@@ -1,0 +1,5 @@
+    Checking mote-ipc v0.0.0 (/Users/bilal/projects/mote/crates/mote-ipc)
+    Checking mote-host-client v0.0.0 (/Users/bilal/projects/mote/crates/mote-host-client)
+    Checking mote-gateway v0.0.0 (/Users/bilal/projects/mote/crates/mote-gateway)
+    Checking mote-ios v0.0.0 (/Users/bilal/projects/mote/mote-ios)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.96s

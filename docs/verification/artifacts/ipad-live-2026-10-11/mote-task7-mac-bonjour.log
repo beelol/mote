@@ -1,0 +1,16 @@
+    Blocking waiting for file lock on build directory
+   Compiling mote-protocol v0.0.0 (/Users/bilal/projects/mote/crates/mote-protocol)
+   Compiling mote-eventlog v0.0.0 (/Users/bilal/projects/mote/crates/mote-eventlog)
+   Compiling mote-host-client v0.0.0 (/Users/bilal/projects/mote/crates/mote-host-client)
+   Compiling mote-ipc v0.0.0 (/Users/bilal/projects/mote/crates/mote-ipc)
+   Compiling mote-gateway v0.0.0 (/Users/bilal/projects/mote/crates/mote-gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 17.70s
+     Running tests/bonjour.rs (target/debug/deps/bonjour-0370b21cb00834e4)
+
+running 1 test
+Mac Bonjour discovered 127.0.0.1:64040 with TXT ["protocol_major=1", "fingerprint=fd0452dbfbdba96c89eef621dfa126fb29b186d6b6030399702c89e7c80aecc8"]
+Mac Bonjour removed the registration after advertiser shutdown
+test live_mac_stack_discovers_and_removes_loopback_registration ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 3.10s
+

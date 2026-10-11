@@ -1,0 +1,22 @@
+   Compiling mote-ios v0.0.0 (/Users/bilal/projects/mote/mote-ios)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.48s
+     Running unittests src/lib.rs (target/debug/deps/mote_ios-5ea0771d5de9edf5)
+
+running 1 test
+test live::recovery_tests::saved_host_recovers_after_unavailable_app_launch ... FAILED
+
+failures:
+
+---- live::recovery_tests::saved_host_recovers_after_unavailable_app_launch stdout ----
+
+thread 'live::recovery_tests::saved_host_recovers_after_unavailable_app_launch' panicked at mote-ios/src/live.rs:1074:72:
+called `Result::unwrap()` on an `Err` value: Disconnected
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    live::recovery_tests::saved_host_recovers_after_unavailable_app_launch
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 19 filtered out; finished in 1.05s
+
+error: test failed, to rerun pass `-p mote-ios --lib`

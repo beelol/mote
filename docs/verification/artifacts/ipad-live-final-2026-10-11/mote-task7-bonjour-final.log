@@ -1,0 +1,13 @@
+   Compiling mote-ipc v0.0.0 (/Users/bilal/projects/mote/crates/mote-ipc)
+   Compiling mote-host-client v0.0.0 (/Users/bilal/projects/mote/crates/mote-host-client)
+   Compiling mote-gateway v0.0.0 (/Users/bilal/projects/mote/crates/mote-gateway)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.56s
+     Running tests/bonjour.rs (target/debug/deps/bonjour-0370b21cb00834e4)
+
+running 1 test
+Mac Bonjour discovered 127.0.0.1:62823 with TXT ["protocol_major=1", "fingerprint=94a24f6fb0797aee033f3bc15524f50ac92120ea37c01de5f491eb87e0dce6b8"]
+Mac Bonjour removed the registration after advertiser shutdown
+test live_mac_stack_discovers_and_removes_loopback_registration ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 3.53s
+
