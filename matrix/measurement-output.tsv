@@ -22,10 +22,10 @@ v0_fixture	matrix_bytes	matrix_tokens	compact_json_bytes	json_tokens
 09_action	28	7	53	13
 v0_total	383	118	758	227
 host_and_transport	encoding	bytes	tokens
-dashboard_source	matrix_source	433	100
-dashboard_consumer_json	compact_consumer_json	664	227
+dashboard_source	matrix_source	463	110
+dashboard_consumer_json	compact_consumer_json	935	299
 host_manifest	canonical_measurement_json	1367	374
 binding_snapshot	canonical_measurement_json	313	114
-matrix_render_request	ipc_json_line	536	131
+matrix_render_request	ipc_json_line	572	145
 matrix_render_response	ipc_json_line	43	15
-ui_surface_event	ipc_json_line	774	258
+ui_surface_event	ipc_json_line	1138	349

@@ -90,11 +90,16 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
   and [UI-45](docs/verification/UI-45.md).
   [UI-35](docs/verification/UI-35.md) has passing production and client rendering tests.
   Its native screenshot remains blocked by the locked desktop.
+  The checked-in dashboard activates the first versioned consumer slice with anchored header,
+  scrolling body, footer and direct-child fill. Its dual payload and contract 1 control paths are
+  verified in [V0-45](docs/verification/V0-45.md).
 - [ ] **Matrix host and runtime** Implement UI-13 through UI-31, UI-33 through UI-44 and UI-46
   through UI-48 after the toolchain, including a versioned full-catalog consumer contract.
   **Verify:** complete every criterion's full Verify clause in `docs/backlog.md`; do not let unavailable
   hardware block independent code and headless evidence. [catalog](matrix/catalog.md)
   [runtime](matrix/runtime.md)
+  [Consumer contract 1](matrix/consumer-contract-v1.md) is verified for the first frozen slice.
+  The later catalog, native Mac accessibility capture, Pi and iPad checks remain open.
   Complete validated streaming, inert candidates and stable committed layout are verified in
   [UI-31](docs/verification/UI-31.md), [UI-33](docs/verification/UI-33.md) and
   [UI-34](docs/verification/UI-34.md).

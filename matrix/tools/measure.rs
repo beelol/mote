@@ -217,12 +217,13 @@ fn measure_host_and_transport(tokenizer: &tiktoken_rs::CoreBPE) -> Result<(), Bo
     )
     .map_err(|errors| std::io::Error::other(format!("host bindings: {errors:?}")))?;
     let source = fs::read_to_string("matrix/examples/mote-dashboard.matrix")?;
-    let surface = matrix::compile(&source, &bindings)
+    let compiled = matrix::compile_contract(&source, &bindings)
         .map_err(|errors| format!("dashboard compile failed: {errors:?}"))?;
-    let node = mote_ui::validate(&serde_json::to_vec(&surface)?)
+    let (payload, _) = compiled.prepare(&bindings.manifest)?;
+    let surface = &payload["matrix_surface"];
+    mote_ui::v1::validate_envelope(&serde_json::to_vec(&payload)?)
         .map_err(|error| format!("dashboard validation failed: {}", error.0))?;
-    let surface = serde_json::to_value(node)?;
-    let mut event = log.append("main", "ui.surface", &matrix::surface_payload(&surface))?;
+    let mut event = log.append("main", "ui.surface", &payload)?;
     event.ts = 0;
     if event.seq != 1 {
         return Err("dashboard measurement expects the first committed event".into());

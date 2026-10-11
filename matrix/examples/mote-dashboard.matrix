@@ -1,18 +1,20 @@
 screen {
-  col {
-    text "Agent dashboard"
-    toggle "Local only" models.local_only
-    select "Talk model" models.talk options model_options
-    select "Router model" models.router options model_options
-    select "Think model" models.think options model_options
-    list from pipeline.stages {
-      item {
-        row {
-          text .stage
-          text .latency
-        }
-      }
+  header {
+    row {
+      text "Agent dashboard" fill
+      button "Refresh" -> refresh
     }
-    button "Refresh" -> refresh
+  }
+  col {
+    col fill {
+      toggle "Local only" models.local_only
+      select "Talk model" models.talk options model_options
+      select "Router model" models.router options model_options
+      select "Think model" models.think options model_options
+    }
+    text "Changes apply on the next turn."
+  }
+  footer {
+    text "Local model settings"
   }
 }

@@ -449,11 +449,13 @@ pub fn host_bindings(
     Ok(HostBindings { manifest, snapshot })
 }
 
+#[allow(dead_code)]
 pub fn compile(source: &str, bindings: &HostBindings) -> Result<Value, Vec<Diagnostic>> {
     let parsed = parse_surface(source)?;
     compile_surface(&parsed, bindings)
 }
 
+#[allow(dead_code)]
 pub fn compile_surface(
     parsed: &Surface,
     bindings: &HostBindings,

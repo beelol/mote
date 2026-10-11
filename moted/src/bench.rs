@@ -4,7 +4,7 @@
 //! `<data dir>/bench.jsonl`. See docs/rfcs/v0.md section 17.
 
 use crate::{inferred_ui, lanes, matrix, pipeline};
-use matrix_lang::{lower_v0, parse_surface, resolve};
+use matrix_lang::{lower_v0, lower_v1, parse_surface, resolve};
 use mote_context::{hash_text, ContextStore};
 use mote_eventlog::EventLog;
 use mote_localmodel::Ollama;
@@ -194,8 +194,9 @@ pub struct CompilerReport {
     parse_p95_ms: f64,
     resolve_check_p95_ns: u64,
     resolve_check_p95_ms: f64,
-    lower_v0_p95_ns: u64,
-    lower_v0_p95_ms: f64,
+    consumer_contract: u32,
+    lower_v1_p95_ns: u64,
+    lower_v1_p95_ms: f64,
     end_to_end_p95_ns: u64,
     end_to_end_p95_ms: f64,
     budget: CompilerBudget,
@@ -264,7 +265,7 @@ fn compiler_pass(fixture: &CompilerFixture, bindings: &matrix::HostBindings) -> 
         std::hint::black_box(&bindings.snapshot),
     )
     .map_err(|errors| matrix::diagnostics(&errors).to_string())?;
-    let lowered = lower_v0(std::hint::black_box(&resolved))
+    let lowered = lower_v1(std::hint::black_box(&resolved))
         .map_err(|errors| matrix::diagnostics(&errors).to_string())?;
     std::hint::black_box(lowered);
     Ok(())
@@ -281,7 +282,7 @@ pub fn run_compiler(data_dir: &Path) -> Result<CompilerReport, String> {
     for _ in 0..COMPILER_WARMUPS {
         compiler_pass(&fixture, &bindings)?;
         std::hint::black_box(
-            matrix::compile(
+            matrix::compile_contract(
                 std::hint::black_box(fixture.source),
                 std::hint::black_box(&bindings),
             )
@@ -318,14 +319,14 @@ pub fn run_compiler(data_dir: &Path) -> Result<CompilerReport, String> {
 
         let start = Instant::now();
         std::hint::black_box(
-            lower_v0(std::hint::black_box(&resolved))
+            lower_v1(std::hint::black_box(&resolved))
                 .map_err(|errors| matrix::diagnostics(&errors).to_string())?,
         );
         lower_samples.push(elapsed_ns(start));
 
         let start = Instant::now();
         std::hint::black_box(
-            matrix::compile(
+            matrix::compile_contract(
                 std::hint::black_box(fixture.source),
                 std::hint::black_box(&bindings),
             )
@@ -336,7 +337,7 @@ pub fn run_compiler(data_dir: &Path) -> Result<CompilerReport, String> {
 
     let parse_p95_ns = nearest_rank(&parse_samples, 95);
     let resolve_check_p95_ns = nearest_rank(&resolve_samples, 95);
-    let lower_v0_p95_ns = nearest_rank(&lower_samples, 95);
+    let lower_v1_p95_ns = nearest_rank(&lower_samples, 95);
     let end_to_end_p95_ns = nearest_rank(&end_to_end_samples, 95);
     let hardware = hardware_name();
     let report = CompilerReport {
@@ -358,8 +359,9 @@ pub fn run_compiler(data_dir: &Path) -> Result<CompilerReport, String> {
         parse_p95_ms: parse_p95_ns as f64 / 1_000_000.0,
         resolve_check_p95_ns,
         resolve_check_p95_ms: resolve_check_p95_ns as f64 / 1_000_000.0,
-        lower_v0_p95_ns,
-        lower_v0_p95_ms: lower_v0_p95_ns as f64 / 1_000_000.0,
+        consumer_contract: 1,
+        lower_v1_p95_ns,
+        lower_v1_p95_ms: lower_v1_p95_ns as f64 / 1_000_000.0,
         end_to_end_p95_ns,
         end_to_end_p95_ms: end_to_end_p95_ns as f64 / 1_000_000.0,
         budget: compiler_budget(
@@ -1025,17 +1027,10 @@ mod tests {
     use mote_testkit::ScriptedServer;
 
     #[test]
-    fn compiler_benchmark_fixture_is_fixed_and_exercises_v0_bindings() {
+    fn compiler_benchmark_fixture_is_fixed_and_exercises_v1_bindings() {
         let fixture = compiler_fixture().unwrap();
-
-        assert_eq!(
-            fixture.source_hash,
-            "358e1bbbdb30b38a134a6b43152b3b90bddc463ac493920eadcbee8b44f10ea3"
-        );
-        assert_eq!(
-            fixture.combined_hash,
-            "0cacb63fcbfda9cf8f199ccf26516f1e89c505fd8ba435b21109c121ae5305ee"
-        );
+        assert_eq!(fixture.source_hash, "6b35bde2eb18417d9b147ce0dd01fa27c0da7cd8372491829c321003ddde8293");
+        assert_eq!(fixture.combined_hash, "d4cdd34802ef22315a3b47e516f8d8eb3de8533ea0cbf0da5c471543073df86f");
         assert_eq!(fixture.config.len(), 9);
         assert_eq!(fixture.pipeline.numbers.len(), 5);
 
@@ -1047,10 +1042,14 @@ mod tests {
         );
         assert_eq!(bindings.snapshot.values["host.progress"], json!(0.5));
         let resolved = resolve(&parsed, &bindings.manifest, &bindings.snapshot).unwrap();
-        let lowered = lower_v0(&resolved).unwrap();
-        let encoded = serde_json::to_value(lowered).unwrap();
-        mote_ui::validate(&serde_json::to_vec(&encoded).unwrap()).unwrap();
-        let text = encoded.to_string();
+        let lowered = matrix_lang::lower_v1(&resolved).unwrap();
+        assert_eq!(lowered.surface.version, 1);
+        lowered.surface.validate().unwrap();
+        compiler_pass(&fixture, &bindings).unwrap();
+        let compiled = matrix::compile_contract(fixture.source, &bindings).unwrap();
+        let (payload, _) = compiled.prepare(&bindings.manifest).unwrap();
+        mote_ui::v1::validate_envelope(&serde_json::to_vec(&payload).unwrap()).unwrap();
+        let text = payload["matrix_surface"].to_string();
 
         assert!(text.contains("talk"));
         assert!(text.contains("router"));

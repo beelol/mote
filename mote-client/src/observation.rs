@@ -105,6 +105,11 @@ impl Default for ObservationHarness {
 }
 
 impl ObservationHarness {
+    #[cfg(feature = "test-observation")]
+    pub fn set_viewport(&mut self, width: f32, height: f32) {
+        self.viewport = egui::vec2(width, height);
+    }
+
     pub fn legacy() -> Self {
         Self { legacy: true, ..Self::default() }
     }

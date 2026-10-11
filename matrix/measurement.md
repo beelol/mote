@@ -99,21 +99,22 @@ The remaining defaults are `budgets.talk_first_token=300`, `budgets.router=150`,
 `budgets.think_first_token=3000`, `packs.talk=600` and `packs.think=8000`.
 Pipeline numbers, events and requests are empty.
 The generated time is zero.
-The dashboard therefore has an empty stages list.
+The dashboard uses the first frozen versioned consumer slice.
 Its three selects have the three approved model options.
 Its toggle is true and its action is `refresh`.
-The production compiler lowers the dashboard to the v0 consumer tree.
-The production validator validates that tree before measurement.
+The production compiler prepares one dual payload with the exact inert v0 fallback and contract 1.
+The strict versioned envelope validator validates both representations before measurement.
+The consumer JSON row measures the complete `matrix_surface` object.
 
 | Row | Encoding | Bytes | Tokens |
 |---|---|---|---|
-| `dashboard_source` | Matrix source | 433 | 100 |
-| `dashboard_consumer_json` | Compact consumer JSON | 664 | 227 |
-| `host_manifest` | Canonical measurement JSON | 1097 | 306 |
-| `binding_snapshot` | Canonical measurement JSON | 277 | 103 |
-| `matrix_render_request` | IPC JSON line | 536 | 131 |
+| `dashboard_source` | Matrix source | 463 | 110 |
+| `dashboard_consumer_json` | Compact consumer JSON | 935 | 299 |
+| `host_manifest` | Canonical measurement JSON | 1367 | 374 |
+| `binding_snapshot` | Canonical measurement JSON | 313 | 114 |
+| `matrix_render_request` | IPC JSON line | 572 | 145 |
 | `matrix_render_response` | IPC JSON line | 43 | 15 |
-| `ui_surface_event` | IPC JSON line | 774 | 258 |
+| `ui_surface_event` | IPC JSON line | 1138 | 349 |
 
 The manifest and snapshot are in-memory Rust structures without a production JSON serializer.
 Their rows are deterministic measurement encodings.
@@ -143,7 +144,7 @@ Request id is `1` and thread is `main`.
 The request is `{"id":1,"method":"matrix.render","params":{"source":"...","thread":"main"}}`.
 The source string is JSON escaped inside this request.
 The reply is `{"id":1,"result":{"ok":true,"valid":true}}`.
-The event is `{"event":{"kind":"ui.surface","payload":{"surface":...,"surface_id":"matrix"},"scope_id":"main","seq":1,"ts":0}}`.
+The event is `{"event":{"kind":"ui.surface","payload":{"matrix_surface":...,"surface":...,"surface_id":"matrix"},"scope_id":"main","seq":1,"ts":0}}`.
 The event payload passes through the production redacting event log before measurement.
 Its first stored sequence is `1`.
 Its timestamp is normalized to `0` for reproducibility.
@@ -154,8 +155,8 @@ The unary reply carries only the success and validity result.
 The subscribed event carries the compiled tree and surface identity.
 The host manifest and binding snapshot remain inside the daemon during this render.
 The consumer JSON row is already contained in the event row and must not be added again.
-One render request, reply and subscribed event total 1353 bytes for these sample values.
-Their separately counted tokens sum to 404.
+One render request, reply and subscribed event total 1753 bytes for these sample values.
+Their separately counted tokens sum to 509.
 This sum is not a model prompt count or the tokenization of concatenated frames.
 Subscriptions, later refreshes, config events, socket overhead and database storage are excluded.
 Populated pipeline rows and real timestamps change the event cost.
@@ -163,7 +164,7 @@ The source savings above do not establish total transport savings.
 
 Two checked runs produced byte-identical complete TSV output on 2026-10-10.
 `cmp` exited zero.
-Both SHA-256 hashes were `16235ce2bf2d52764cc7630606dfe1fcb41505b8deaffe09654fa5469799840c`.
+The current SHA-256 is recorded in [UI-04](../docs/verification/UI-04.md).
 The complete output is committed in [measurement-output.tsv](measurement-output.tsv).
 The acceptance evidence is [UI-04](../docs/verification/UI-04.md).
 

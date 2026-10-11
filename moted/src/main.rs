@@ -1063,6 +1063,115 @@ mod approval_dispatch_tests {
     use config::AllowAll;
 
     #[test]
+    fn checked_in_dashboard_commits_and_renders_anchored_v1_controls() {
+        let (data, _) = dirs("checked-dashboard-v1");
+        let daemon = daemon(&data);
+        let source = include_str!("../../matrix/examples/mote-dashboard.matrix");
+        assert_eq!(daemon.render_matrix("main", source, true).unwrap()["valid"], true);
+        assert_eq!(daemon.log.max_seq().unwrap(), 1);
+        let event = daemon.log.get(1).unwrap().unwrap();
+        let envelope = mote_ui::v1::validate_envelope(&serde_json::to_vec(&event.payload).unwrap()).unwrap();
+        assert_eq!(event.payload["surface"], json!({"type":"text","value":"This Matrix surface requires a newer Mote client."}));
+        assert_eq!(envelope.matrix_surface.version, 1);
+        let children = &event.payload["matrix_surface"]["root"]["children"];
+        assert_eq!(children[0]["type"], "header");
+        assert_eq!(children[1]["type"], "col");
+        assert_eq!(children[2]["type"], "footer");
+        assert_eq!(children[0]["children"][0]["children"][0]["fill"], true);
+        fn inventory(node: &Value, kinds: &mut Vec<String>) {
+            kinds.push(node["type"].as_str().unwrap().into());
+            if let Some(children) = node["children"].as_array() {
+                for child in children { inventory(child, kinds); }
+            }
+        }
+        let mut kinds = Vec::new();
+        inventory(&event.payload["matrix_surface"]["root"], &mut kinds);
+        assert_eq!(children[1]["children"][0]["fill"], true);
+        assert_eq!(kinds, ["screen", "header", "row", "text", "button", "col", "col", "toggle", "select", "select", "select", "text", "footer", "text"]);
+        let (_, bindings) = daemon.compile_matrix_with_host(source, &matrix::HostSnapshot::default()).unwrap();
+        assert!(bindings.manifest.fields.values().all(|field| field.binding.ty != matrix_lang::Type::Number && field.binding.ty != matrix_lang::Type::Integer));
+        let mut legacy = mote_client::ObservationHarness::legacy();
+        legacy.event(&event);
+        assert_eq!(legacy.surface().unwrap().1, mote_ui::validate(&serde_json::to_vec(&event.payload["surface"]).unwrap()).unwrap());
+        let mut client = mote_client::ObservationHarness::default();
+        client.event(&event);
+        client.frame(vec![]);
+        let (_, output) = client.frame_output(vec![]);
+        let labels: Vec<_> = output.shapes.iter().filter_map(|shape| match &shape.shape {
+            mote_client::PaintedShape::Text(text) => Some(text.galley.text()),
+            _ => None,
+        }).collect();
+        for label in ["Agent dashboard", "[x] Local only", "Refresh", "Local model settings"] {
+            assert!(labels.contains(&label), "missing {label}: {labels:?}");
+        }
+        assert!(!labels.contains(&"This Matrix surface requires a newer Mote client."));
+        for width in [400.0, 1200.0] {
+            let mut client = mote_client::ObservationHarness::default();
+            client.set_viewport(width, 800.0);
+            client.event(&event);
+            client.frame(vec![]);
+            let (_, output) = client.frame_output(vec![]);
+            let nodes = &output.platform_output.accesskit_update.unwrap().nodes;
+            let bounds = |label| nodes.iter().find(|(_, node)| node.label() == Some(label)).unwrap().1.bounds().unwrap();
+            let header = bounds("Agent dashboard");
+            let refresh = bounds("Refresh");
+            let body = bounds("Local only");
+            let footer = bounds("Local model settings");
+            assert!(header.y1 <= body.y0 && body.y1 <= footer.y0);
+            assert!(refresh.x1 <= f64::from(width) && footer.y1 <= 800.0);
+            let notice = bounds("Changes apply on the next turn.");
+            let mut unfilled = event.clone();
+            unfilled.payload["matrix_surface"]["root"]["children"][1]["children"][0].as_object_mut().unwrap().remove("fill");
+            let mut comparison = mote_client::ObservationHarness::default();
+            comparison.set_viewport(width, 800.0);
+            comparison.event(&unfilled);
+            comparison.frame(vec![]);
+            let output = comparison.frame_output(vec![]).1;
+            let unfilled_notice = output.platform_output.accesskit_update.unwrap().nodes.into_iter().find(|(_, node)| node.label() == Some("Changes apply on the next turn.")).unwrap().1.bounds().unwrap();
+            assert!(notice.y0 - unfilled_notice.y0 > 100.0, "body fill must consume remaining height at width {width}");
+        }
+        for (label, path, event_name, args, option) in [
+            ("Refresh", vec![0,0,1], "refresh", json!({}), None),
+            ("[x] Local only", vec![1,0,0], "change", json!({"field":"models.local_only","value":false}), None),
+            ("Talk model: qwen3:4b", vec![1,0,1], "change", json!({"field":"models.talk","value":"qwen3:0.6b"}), Some("qwen3:0.6b")),
+            ("Router model: qwen3:0.6b", vec![1,0,2], "change", json!({"field":"models.router","value":"qwen3:4b"}), Some("qwen3:4b")),
+            ("Think model: qwen3-coder:30b-64k", vec![1,0,3], "change", json!({"field":"models.think","value":"qwen3:4b"}), Some("qwen3:4b")),
+        ] {
+            let mut client = mote_client::ObservationHarness::default();
+            client.set_viewport(1200.0, 800.0);
+            client.event(&event);
+            client.frame(vec![]);
+            let click_label = |client: &mut mote_client::ObservationHarness, label: &str| {
+                client.frame(vec![]);
+                let (_, output) = client.frame_output(vec![]);
+                let mut pos = output.shapes.iter().find_map(|shape| match &shape.shape {
+                    mote_client::PaintedShape::Text(text) if text.galley.text() == label => Some(text.pos + text.galley.rect.center().to_vec2()),
+                    _ => None,
+                }).unwrap_or_else(|| panic!("missing control {label} after {option:?}: {:?}", output.shapes.iter().filter_map(|shape| match &shape.shape { mote_client::PaintedShape::Text(text) => Some(text.galley.text()), _ => None }).collect::<Vec<_>>()));
+                let control_label = label.split(": ").next().unwrap().trim_start_matches("[x] ");
+                if let Some(bounds) = output.platform_output.accesskit_update.as_ref().unwrap().nodes.iter().find(|(_, node)| node.label() == Some(control_label)).and_then(|(_, node)| node.bounds()) {
+                    pos.x = ((bounds.x0 + bounds.x1) / 2.0) as f32;
+                    pos.y = ((bounds.y0 + bounds.y1) / 2.0) as f32;
+                }
+                client.click(pos);
+            };
+            click_label(&mut client, label);
+            if let Some(option) = option { click_label(&mut client, option); }
+            let params = json!({"thread":"main","surface_seq":1,"surface_contract":1,"node_path":path,"event":event_name,"args":args});
+            assert_eq!(client.queued(), [params.clone()]);
+            let committed = daemon.matrix_surfaces.lock().unwrap()["main"].clone();
+            assert!(committed.accepts(&params, event_name, &args));
+            let mut legacy_params = params.clone();
+            legacy_params.as_object_mut().unwrap().remove("surface_contract");
+            assert!(!committed.accepts(&legacy_params, event_name, &args));
+            let mut stale = params; stale["surface_seq"] = json!(0);
+            assert!(!committed.accepts(&stale, event_name, &args));
+        }
+        assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), 0);
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
     fn matrix_first_slice_commits_one_dual_event_with_independent_paths() {
         let (data, _) = dirs("dual-contract");
         let daemon = daemon(&data);
