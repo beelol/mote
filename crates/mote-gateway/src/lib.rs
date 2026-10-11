@@ -4,6 +4,11 @@ pub mod devices;
 pub mod net;
 pub mod noise;
 pub mod pairing;
+pub mod server;
+pub mod client;
+
+pub use client::GatewayClient;
+pub use server::GatewayServer;
 
 pub use devices::DeviceStore;
 pub use noise::NoiseSession;

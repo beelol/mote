@@ -8,6 +8,7 @@ mod charter;
 mod config;
 mod embed;
 mod gate;
+mod gateway;
 mod inferred_ui;
 mod lanes;
 mod matrix;
@@ -28,7 +29,7 @@ use mote_context::ContextStore;
 use mote_harness::OpenCodeServer;
 use mote_localmodel::Ollama;
 use mote_eventlog::{EventLog, Subscription};
-use mote_ipc::{codes, Dispatch, RpcError, Server};
+use mote_ipc::{codes, Actor, Dispatch, RpcError, Server};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -97,6 +98,8 @@ fn now_ms() -> i64 {
 }
 
 struct Daemon {
+    host_id: mote_protocol::HostId,
+    gateway: Mutex<Option<std::sync::Weak<mote_gateway::GatewayServer>>>,
     log: EventLog,
     config: Mutex<ConfigStore>,
     character: Arc<Mutex<Charter>>,
@@ -720,8 +723,13 @@ fn commit_surface(log: &EventLog, thread: &str, surface: &Value) -> Result<Value
 }
 
 impl Dispatch for Daemon {
+    fn call_with_context(&self, actor: &Actor, method: &str, params: Value) -> Result<Value, RpcError> {
+        gateway::dispatch(self, actor, method, params)
+    }
     fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
         match method {
+            "hello" => Ok(json!({"host_id":self.host_id,"protocol_major":mote_protocol::PROTOCOL_MAJOR})),
+            "gateway.pair" | "gateway.pending" | "gateway.confirm" | "gateway.revoke" => gateway::local_control(self, method, params),
             "ping" => Ok(json!({ "ok": true })),
             "status" => {
                 let uptime = self.started.elapsed().as_secs();
@@ -1072,6 +1080,167 @@ mod approval_dispatch_tests {
     use config::AllowAll;
 
     #[test]
+    fn gateway_startup_migrates_the_existing_database_under_real_identity() {
+        use std::os::unix::fs::PermissionsExt;
+        let (data, _) = dirs("gateway-existing-db");
+        std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let path = data.join("mote.db");
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch("CREATE TABLE retained(value TEXT); INSERT INTO retained VALUES('existing');").unwrap();
+        drop(conn);
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let identity = gateway::prepare_identity(&data).unwrap();
+        assert_eq!(identity.host_id(), mote_gateway::HostIdentity::load_or_create(&data).unwrap().host_id());
+        let gateway = mote_gateway::GatewayServer::bind_loopback({ let mut config = mote_gateway::GatewayConfig::new(&data); config.bind = "127.0.0.1:0".parse().unwrap(); config }, Arc::new(daemon(&data))).unwrap();
+        assert_eq!(gateway.host_id(), identity.host_id());
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(rusqlite::Connection::open(&path).unwrap().query_row("SELECT value FROM retained", [], |r| r.get::<_,String>(0)).unwrap(), "existing");
+    }
+
+    fn paired_fixture(name: &str) -> (Arc<Daemon>, Arc<mote_gateway::GatewayServer>, Server, mote_gateway::GatewayConfig, PathBuf) {
+        paired_fixture_with_client(name, None)
+    }
+
+    fn paired_fixture_with_client(name: &str, client: Option<Ollama>) -> (Arc<Daemon>, Arc<mote_gateway::GatewayServer>, Server, mote_gateway::GatewayConfig, PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let (data, outside) = dirs(name);
+        std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut daemon = daemon(&data);
+        if let Some(client) = client { daemon.client = client; }
+        daemon.host_id = mote_gateway::HostIdentity::load_or_create(&data).unwrap().host_id().clone();
+        let daemon = Arc::new(daemon);
+        let socket = PathBuf::from("/tmp").join(format!("mote-owner-{name}-{}-{}.sock", std::process::id(), now_ms()));
+        let local = Server::bind(&socket, daemon.clone()).unwrap();
+        let mut config = mote_gateway::GatewayConfig::new(data);
+        config.bind = "127.0.0.1:0".parse().unwrap();
+        let gateway = gateway::bind(daemon.clone(), config.clone()).unwrap();
+        (daemon, gateway, local, config, outside)
+    }
+
+    fn paired_client(gateway: &mote_gateway::GatewayServer, local: &Server, config: &mote_gateway::GatewayConfig) -> (mote_gateway::GatewayClient, mote_gateway::ClientCredential) {
+        let mut owner = mote_ipc::Client::connect(local.path()).unwrap();
+        let code = owner.call("gateway.pair", json!({})).unwrap().unwrap()["code"].as_str().unwrap().to_string();
+        let credential = mote_gateway::ClientCredential::from_pairing_code(config, &code).unwrap();
+        let client = std::thread::scope(|scope| {
+            let client = scope.spawn(|| mote_gateway::GatewayClient::pair(gateway.local_addr(), config, &credential, "Fixture iPad", 1));
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            loop {
+                let devices = owner.call("gateway.pending", json!({})).unwrap().unwrap();
+                if let Some(id) = devices["devices"][0]["client_id"].as_str() {
+                    owner.call("gateway.confirm", json!({"client_id":id,"approved":true})).unwrap().unwrap();
+                    break;
+                }
+                assert!(std::time::Instant::now() < deadline);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            client.join().unwrap().unwrap()
+        });
+        (client, credential)
+    }
+
+    fn remote_call(client: &mut mote_gateway::GatewayClient, id: &str, method: &str, params: Value) -> mote_protocol::HostFrame {
+        client.exchange(&mote_protocol::ClientFrame::Call { request_id: mote_protocol::RequestId::new(id).unwrap(), method: method.into(), params }).unwrap()
+    }
+
+    fn remote_snapshot(client: &mut mote_gateway::GatewayClient) -> mote_protocol::HostSnapshot {
+        let mote_protocol::HostFrame::Result { result, .. } = remote_call(client, "snapshot", "snapshot", json!({})) else { panic!("snapshot result"); };
+        serde_json::from_value(result).unwrap()
+    }
+
+    #[test]
+    fn paired_turn_uses_approved_local_models_ledger_and_redacted_events_once() {
+        use mote_protocol::HostFrame;
+        let models = mote_testkit::ScriptedServer::start().unwrap();
+        models.set_chat_chunks(vec![json!({"message":{"role":"assistant","content":"{\"route\":\"talk\",\"reason\":\"greeting\"}"},"done":true}).to_string()]);
+        let (daemon, gateway, local, config, _) = paired_fixture_with_client("paired-turn", Some(Ollama::new(models.base_url())));
+        let (mut client, _) = paired_client(&gateway, &local, &config);
+        let secret = "sk-abcdefghijklmnopqrstuvwxyz";
+        let params = json!({"thread":"main","message":format!("hello {secret}")});
+        let outcome = remote_call(&mut client, "turn-once", "turn", params.clone());
+        assert!(matches!(&outcome, HostFrame::Result { result, .. } if result["status"] == "done"));
+        assert_eq!(remote_call(&mut client, "turn-once", "turn", params), outcome);
+        assert_eq!(daemon.store.lock().unwrap().count_ledger().unwrap(), 2);
+        assert_eq!(daemon.log.recent_kind_since("turn.user", 0, 100).unwrap().len(), 1);
+        assert!(!serde_json::to_string(&daemon.log.recent_since(0, 100).unwrap()).unwrap().contains(secret));
+        let requests = models.recorded();
+        let calls: Vec<_> = requests.iter().filter(|r| r.path == "/api/chat").collect();
+        assert_eq!(calls.len(), 2);
+        for call in calls {
+            let body = &call.body;
+            assert!(matches!(body["model"].as_str(), Some("qwen3:4b" | "qwen3:0.6b")));
+            assert_eq!(body["options"]["num_ctx"], 32768);
+            assert!(!call.body.to_string().contains(secret));
+        }
+    }
+
+    #[test]
+    fn paired_hosts_with_colliding_ids_keep_state_and_actions_isolated() {
+        use mote_host_client::{HostDirectory, PairedHost};
+        use mote_protocol::{ApprovalDecision, ApprovalVerdict, ClientFrame, HostFrame, RequestId, TypedInteraction, VersionRange};
+        let (home, home_gateway, home_local, home_config, home_outside) = paired_fixture("paired-home");
+        let (office, office_gateway, office_local, office_config, office_outside) = paired_fixture("paired-office");
+        let (mut home_client, home_credential) = paired_client(&home_gateway, &home_local, &home_config);
+        let (mut office_client, office_credential) = paired_client(&office_gateway, &office_local, &office_config);
+        let mut directory = HostDirectory::default();
+        let mut snapshots = Vec::new();
+        for (daemon, gateway, client, outside, label) in [(&home, &home_gateway, &mut home_client, &home_outside, "Home"), (&office, &office_gateway, &mut office_client, &office_outside, "Office")] {
+            let target = outside.join("held.txt");
+            assert_eq!(daemon.call("file.write", json!({"thread":"main","path":target,"content":label})).unwrap()["id"], 1);
+            daemon.call("matrix.render", json!({"thread":"main","source":format!("screen {{ text \"{label}\" button \"Refresh\" -> refresh }}")})).unwrap();
+            daemon.log.append("main", "turn.user", &json!({"text":label})).unwrap();
+            let snapshot = remote_snapshot(client);
+            assert_eq!(snapshot.threads[0].messages[0].text, label);
+            assert!(!serde_json::to_string(&snapshot).unwrap().contains(outside.to_str().unwrap()));
+            directory.register(PairedHost::new(*gateway.public_key(), label, None, VersionRange::current()).unwrap()).unwrap();
+            directory.install_snapshot(gateway.host_id(), snapshot.clone()).unwrap();
+            directory.select_thread(gateway.host_id(), Some(format!("{label}-selection"))).unwrap();
+            snapshots.push(snapshot);
+            assert!(!target.exists());
+        }
+        assert_ne!(home_credential.private_key_for_secure_storage(), office_credential.private_key_for_secure_storage());
+        assert_eq!(snapshots[0].pending_approvals[0].approval_id, snapshots[1].pending_approvals[0].approval_id);
+        assert_eq!(snapshots[0].surfaces[0].surface_seq, snapshots[1].surfaces[0].surface_seq);
+        for _ in 0..5 {
+            for (gateway, snapshot, label) in [(&home_gateway, &snapshots[0], "Home"), (&office_gateway, &snapshots[1], "Office")] {
+                directory.select_host(gateway.host_id()).unwrap();
+                let state = directory.state(gateway.host_id()).unwrap();
+                assert_eq!(state.cursor(), &snapshot.cursor);
+                assert_eq!(state.selected_thread(), Some(format!("{label}-selection").as_str()));
+                assert_eq!(state.threads()["main"].messages[0].text, label);
+                assert_eq!(state.surfaces()["main"][&2], snapshot.surfaces[0]);
+                assert_eq!(state.pending_approvals()[&RequestId::new("1").unwrap()], snapshot.pending_approvals[0]);
+            }
+        }
+        let approval = &snapshots[0].pending_approvals[0];
+        let decision = ApprovalDecision { host_id: home.host_id.clone(), thread: "main".into(), approval_id: approval.approval_id.clone(), action_hash: approval.action_hash.clone(), expires_at: approval.expires_at, decision: ApprovalVerdict::Approve };
+        let (mut unbound_client, _) = paired_client(&home_gateway, &home_local, &home_config);
+        assert!(matches!(unbound_client.exchange(&ClientFrame::ApprovalDecision { request_id: RequestId::new("unbound").unwrap(), decision: decision.clone() }).unwrap(), HostFrame::Error { .. }));
+        assert!(!home_outside.join("held.txt").exists());
+        let mut cross = decision.clone();
+        cross.host_id = office.host_id.clone();
+        assert!(matches!(office_client.exchange(&ClientFrame::ApprovalDecision { request_id: RequestId::new("cross").unwrap(), decision: cross }).unwrap(), HostFrame::Error { .. }));
+        assert!(!home_outside.join("held.txt").exists());
+        assert!(!office_outside.join("held.txt").exists());
+        let interaction = TypedInteraction { host_id: home.host_id.clone(), thread: "main".into(), surface_seq: 2, surface_contract: 1, node_path: vec![1], event: "refresh".into(), args: serde_json::Map::new() };
+        assert!(matches!(home_client.exchange(&ClientFrame::Interaction { request_id: RequestId::new("refresh").unwrap(), interaction }).unwrap(), HostFrame::Result { .. }));
+        assert_eq!(office.log.max_seq().unwrap(), 3);
+        let frame = ClientFrame::ApprovalDecision { request_id: RequestId::new("approve-once").unwrap(), decision };
+        let outcome = home_client.exchange(&frame).unwrap();
+        assert!(matches!(outcome, HostFrame::Result { .. }));
+        assert_eq!(std::fs::read_to_string(home_outside.join("held.txt")).unwrap(), "Home");
+        assert!(!office_outside.join("held.txt").exists());
+        let before = home.log.max_seq().unwrap();
+        assert_eq!(home_client.exchange(&frame).unwrap(), outcome);
+        assert_eq!(home.log.max_seq().unwrap(), before);
+        let wrong_device = mote_gateway::GatewayClient::connect(office_gateway.local_addr(), &home_config, &home_credential, 2);
+        assert!(wrong_device.is_err());
+        assert!(matches!(remote_call(&mut office_client, "raw-approve", "approve", json!({"id":1})), HostFrame::Error { .. }));
+        assert!(!office_outside.join("held.txt").exists());
+        assert_eq!(home.store.lock().unwrap().count_ledger().unwrap(), 0);
+        assert_eq!(office.store.lock().unwrap().count_ledger().unwrap(), 0);
+    }
+
+    #[test]
     fn checked_in_dashboard_commits_and_renders_anchored_v1_controls() {
         let (data, _) = dirs("checked-dashboard-v1");
         let daemon = daemon(&data);
@@ -1363,6 +1532,8 @@ mod approval_dispatch_tests {
         )
         .unwrap();
         Daemon {
+            host_id: mote_protocol::HostId::from_public_key(&[7;32]),
+            gateway: Mutex::new(None),
             log,
             config: Mutex::new(config),
             character: Arc::new(Mutex::new(Charter {
@@ -4031,6 +4202,8 @@ mod turn_event_tests {
         )
         .unwrap();
         let daemon = Arc::new(Daemon {
+            host_id: mote_protocol::HostId::from_public_key(&[7;32]),
+            gateway: Mutex::new(None),
             log: log.clone(),
             config: Mutex::new(config),
             character: Arc::new(Mutex::new(Charter {
@@ -4262,6 +4435,11 @@ fn run() -> Result<(), i32> {
         1
     })?;
 
+    let identity = gateway::prepare_identity(&data).map_err(|e| {
+        eprintln!("moted: cannot prepare host identity: {e}");
+        1
+    })?;
+
     let log = EventLog::open(&mote_paths::db_path()).map_err(|e| {
         eprintln!("moted: cannot open event log: {e}");
         1
@@ -4318,6 +4496,8 @@ fn run() -> Result<(), i32> {
 
     let socket = mote_paths::socket_path();
     let daemon = Arc::new(Daemon {
+        host_id: identity.host_id().clone(),
+        gateway: Mutex::new(None),
         log,
         config: Mutex::new(config),
         character,
@@ -4345,13 +4525,17 @@ fn run() -> Result<(), i32> {
             let _ = w.expire_due(now_ms());
         });
     }
-    let _server = match Server::bind(&socket, daemon) {
+    let _server = match Server::bind(&socket, daemon.clone()) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("moted: {e}");
             return Err(1);
         }
     };
+    let _gateway = gateway::bind(daemon, mote_gateway::GatewayConfig::new(data)).map_err(|e| {
+        eprintln!("moted: cannot bind loopback gateway: {e}");
+        1
+    })?;
 
     eprintln!("moted: listening on {}", socket.display());
     loop {

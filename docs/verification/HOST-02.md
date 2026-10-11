@@ -1,8 +1,6 @@
-# HOST-02 partial verification
+# HOST-02 verification
 
 Date: 2026-10-11.
-
-Status: Partial. HOST-02 remains open in the README.
 
 Criterion: Every host has a stable cryptographic identity, and the client keeps credentials,
 cursor, thread, surface and approval state isolated per host.
@@ -10,129 +8,84 @@ cursor, thread, surface and approval state isolated per host.
 Verify: Pair two fixture hosts with colliding thread and approval IDs, switch repeatedly and
 prove no state or action crosses.
 
-This evidence covers the client directory and state boundary from host plan Task 2.
-It does not cover authenticated pairing or dispatch to two fixture gateways.
-Task 4 must provide that pairing evidence before the criterion can be checked.
-
 ## Environment
 
-- Owner's Mac, macOS 26.6.2, build 25G83, arm64.
-- Rust 1.89.0 and Cargo 1.89.0. Rust 2021 workspace.
-- Base commit: `8b9335573c19cccdc45e575abcddde13eac95c74`.
-- Implementation commit: the commit introducing this evidence, `feat(client): isolate state by host`.
-- `MOTE_LIVE` unset. Fixtures use two public keys, `[1; 32]` and `[2; 32]`.
-- Host IDs use the full SHA-256 digest of each fixture public key.
-- No reserved local identity or desktop cursor migration is introduced.
-- No model calls, model pulls, subscription logins or external service changes were performed.
+macOS 26.6.2, build 25G83, Darwin 25.6.0, arm64.
+Rust 1.89.0 and Cargo 1.89.0.
+Rust 2021 workspace.
+Base commit: `05c4e6e` on local `main`.
+Implementation: the commit introducing this evidence, `feat(gateway): serve paired clients on loopback`.
+All network endpoints are loopback fixtures.
+No model pulls, subscription logins, LAN listeners or external service changes were performed.
 
-## Covered behavior
+## Authenticated two-host journey
 
-`mote-host-client` defines a serializable host directory and immutable session views.
-Each descriptor pins the public key and its derived host ID.
-Each session owns its cursor, selected thread, chat snapshot, surface history, pending approvals,
-connection state and outbox.
-Every reducer and outbox operation receives an explicit host ID.
-Host selection is display state and never chooses the destination of an action implicitly.
+`paired_hosts_with_colliding_ids_keep_state_and_actions_isolated` starts two real daemon fixtures.
+Each host generates and persists its own 0600 identity key under a 0700 directory.
+Each host binds an encrypted gateway to `127.0.0.1:0`.
+The same-user Unix owner opens an offer, reads the pending device identity and confirms it.
+Each client completes Noise IKpsk1 pairing and pins that host's public key.
 
-The credential store interface loads, saves and deletes opaque credentials by host ID.
-The directory cannot hold a credential store or a credential value.
-Tests use a separate in-memory credential fixture.
-This verifies the separation of interfaces and does not verify a native keychain backend.
+The hosts intentionally share thread `main`, approval ID `1`, surface sequence `2`, cursor `3`,
+snapshot request ID and subsequent action request IDs.
+Their file contents, Matrix surfaces, chat messages, credentials and host identities differ.
+Five repeated switches assert the selected host's cursor, selected thread, chat, surface and
+pending approval remain intact in the shared host directory.
+The eleven existing `mote-host-client` tests also cover foreign event, cursor, snapshot,
+interaction and approval rejection, outbox isolation and independent credential lookup.
 
-The isolation fixture uses identical thread, message, event sequence, surface sequence,
-approval and outgoing request IDs for two hosts.
-Five repeated switches retain the appropriate host's content and selection.
-Event progress and acknowledgements affect one host only.
-Foreign snapshots, events, interactions, approvals and subscription cursors are rejected.
-Directory restoration rejects mismatched pinned keys, cursor ownership and nested state ownership.
-The public descriptor, session and outbox deserializers enforce the same invariants independently.
-The outbox preserves enqueue order and rejects changed content under an existing request ID.
+An office decision carrying home's action digest fails after its host field is changed to office.
+A second authenticated home device without the issued approval capability also fails.
+Home's typed refresh advances only home's event history.
+Home's typed approval writes only home's held file.
+Replaying that request returns the recorded outcome without another write or event.
+Office's held file remains absent.
+Home's credential cannot authenticate against office.
+Both hosts keep zero ledger rows during this interaction and approval journey.
 
-## TDD evidence
+## Desktop cursor migration
 
-The initial test was written before the package existed:
+`desktop_reads_the_daemon_public_key_identity_before_migrating` reads Unix `hello` using an
+actual generated host identity and migrates the legacy cursor into that identity's `main` scope.
+A durable migration claim records the host before the scoped cursor write.
+The scoped write uses a synced temporary file and atomic rename.
+The original `client_cursor` remains intact.
+A failed write retries only its recorded host.
+A second host and a second scope start at zero.
+An existing scoped cursor is preserved.
 
-```text
-$ cargo test -p mote-host-client --test multi_host
-error: package ID specification `mote-host-client` did not match any packages
-exit status: 101
-```
-
-After the first implementation, all seven initial isolation tests passed.
-Self-review added four failing tests before strengthening the implementation:
-
-```text
-$ cargo test -p mote-host-client --test multi_host
-test standalone_host_deserialization_cannot_bypass_identity_checks ... FAILED
-test standalone_outbox_deserialization_cannot_bypass_identity_checks ... FAILED
-test standalone_session_deserialization_cannot_bypass_identity_checks ... FAILED
-test outbox_preserves_action_order_when_request_ids_sort_differently ... FAILED
-assertion left: ["status", "turn"]
-assertion right: ["turn", "status"]
-test result: FAILED. 7 passed; 4 failed
-exit status: 101
-```
-
-Checked standalone deserializers and an ordered outbox resolved those failures:
+## Commands and output
 
 ```text
-$ cargo test -p mote-host-client
-test result: ok. 11 passed; 0 failed; 0 ignored
+$ cargo test -p moted paired_hosts_with_colliding_ids
+test paired_hosts_with_colliding_ids_keep_state_and_actions_isolated ... ok
+test result: ok. 1 passed; 0 failed
 exit status: 0
 
-$ cargo test -p mote-client cursor::
-test result: ok. 5 passed; 0 failed; 0 ignored; 156 filtered out
+$ cargo test -p mote-client cursor::tests
+test result: ok. 8 passed; 0 failed
 exit status: 0
-```
 
-## Workspace verification
-
-The first workspace test run used the filesystem sandbox.
-Four existing desktop tests failed because Unix socket binding returned
-`PermissionDenied: Operation not permitted`:
-
-- `app::tests::close_and_reopen_subscribes_from_durable_cursor_and_ignores_stale_replay`.
-- `app::tests::reconnect_removes_expired_matrix_controls_and_preserves_chat_and_cursor`.
-- `app::tests::restart_between_status_and_subscription_rechecks_the_watermark`.
-- `tests::rejected_matrix_submission_still_opens_chat_for_logged_diagnostic`.
-
-That run ended with 157 desktop tests passed and four failed, exit status 101.
-HOST-01 records the same local socket restriction.
-The required workspace command was rerun with approved local socket access.
-
-```text
 $ cargo test --workspace
-test result: ok. 161 passed; 0 failed; finished in 47.84s
-test result: ok. 11 passed; 0 failed; finished in 0.00s
-test result: ok. 12 passed; 0 failed; finished in 0.13s
-test result: ok. 129 passed; 0 failed; finished in 13.82s
-All 37 unit, integration and documentation suites passed.
-Total: 504 passed; 0 failed.
+All 44 unit, integration and documentation suites passed.
+Total: 544 passed; 0 failed.
 exit status: 0
 
 $ cargo clippy --workspace -- -D warnings
-    Checking mote-host-client v0.0.0
-    Checking mote-client v0.0.0
-    Checking moted v0.0.0
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.76s
-exit status: 0
-
-$ cargo fmt -p mote-host-client -- --check
-exit status: 0
-
-$ git diff --check
+Finished dev profile with no warnings.
 exit status: 0
 ```
 
-The existing workspace test warning reports unused `ObservationHarness::set_viewport` and
-`ObservationHarness::legacy` methods.
+Socket-dependent commands used approved local socket access.
+The workspace suite includes all eleven `mote-host-client` tests.
+The workspace test command reports an existing unused `ObservationHarness::set_viewport`
+and `ObservationHarness::legacy` warning.
 Their source is unchanged.
 
-## Remaining verification
+## Limits
 
-The directory receives descriptors from a completed pairing boundary.
-This task does not implement that boundary.
-The gateway task must pair two authenticated fixture hosts and prove routed actions remain isolated.
-The desktop cursor stays unchanged until the daemon exposes its real public-key-derived identity.
-Recovery dispatch, native credential storage and atomic on-disk outbox writes are later integration work.
-HOST-02 remains open.
+This is authenticated fixture evidence for HOST-02.
+It does not claim an iPad Simulator journey or a native credential-store backend.
+The desktop queries the host identity at startup.
+If the host is unavailable then, cursor persistence stays disabled for that window.
+Recovery integration belongs to the next host task.

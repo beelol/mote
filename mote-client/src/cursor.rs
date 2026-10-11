@@ -17,6 +17,55 @@ pub fn path() -> PathBuf {
     mote_paths::data_dir().join("client_cursor")
 }
 
+pub fn host_path(data_dir: &Path, host: &mote_protocol::HostId, scope: &str) -> PathBuf {
+    let scope: String = scope.as_bytes().iter().map(|byte| format!("{byte:02x}")).collect();
+    data_dir.join("hosts").join(host.as_str()).join("cursors").join(scope)
+}
+
+pub fn migrate_legacy(data_dir: &Path, host: &mote_protocol::HostId) -> io::Result<LoadedCursor> {
+    let target = host_path(data_dir, host, "main");
+    if target.is_file() { return Ok(load(&target)); }
+    let record = data_dir.join("client_cursor.migration");
+    let (owner, legacy_seq) = if record.exists() {
+        let value: serde_json::Value = serde_json::from_slice(&std::fs::read(&record)?).map_err(io::Error::other)?;
+        let owner: mote_protocol::HostId = serde_json::from_value(value["host_id"].clone()).map_err(io::Error::other)?;
+        let seq = value["seq"].as_i64().filter(|seq| *seq >= 0).ok_or_else(|| io::Error::other("invalid cursor migration"))?;
+        (owner, seq)
+    } else {
+        let loaded = load(&data_dir.join("client_cursor"));
+        if loaded.warning.is_some() { return Ok(loaded); }
+        let bytes = serde_json::to_vec(&serde_json::json!({"host_id":host,"seq":loaded.seq})).map_err(io::Error::other)?;
+        let (temporary, mut file) = create_temp(data_dir, record.file_name())?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        drop(file);
+        let claim = std::fs::hard_link(&temporary, &record);
+        std::fs::remove_file(&temporary)?;
+        match claim {
+            Ok(()) => File::open(data_dir)?.sync_all()?,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return migrate_legacy(data_dir, host),
+            Err(error) => return Err(error),
+        }
+        (host.clone(), loaded.seq)
+    };
+    if owner != *host { return Ok(load(&target)); }
+    std::fs::create_dir_all(target.parent().unwrap())?;
+    store(&target, legacy_seq)?;
+    Ok(load(&target))
+}
+
+pub fn local_host_cursor(socket: &Path) -> io::Result<(PathBuf, LoadedCursor)> {
+    local_host_path_in(socket, &mote_paths::data_dir())
+}
+
+fn local_host_path_in(socket: &Path, data_dir: &Path) -> io::Result<(PathBuf, LoadedCursor)> {
+    let mut client = mote_ipc::Client::connect(socket)?;
+    let hello = client.call("hello", serde_json::json!({}))?.map_err(|error| io::Error::other(error.message))?;
+    let host: mote_protocol::HostId = serde_json::from_value(hello["host_id"].clone()).map_err(io::Error::other)?;
+    let loaded = migrate_legacy(data_dir, &host)?;
+    Ok((host_path(data_dir, &host, "main"), loaded))
+}
+
 pub fn load(path: &Path) -> LoadedCursor {
     match std::fs::read_to_string(path) {
         Ok(contents) => match contents.trim().parse::<i64>() {
@@ -97,6 +146,59 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn desktop_reads_the_daemon_public_key_identity_before_migrating() {
+        struct IdentityDispatch(mote_protocol::HostId);
+        impl mote_ipc::Dispatch for IdentityDispatch {
+            fn call(&self, method: &str, _: serde_json::Value) -> Result<serde_json::Value, mote_ipc::RpcError> {
+                assert_eq!(method, "hello");
+                Ok(serde_json::json!({"host_id":self.0,"protocol_major":1}))
+            }
+        }
+        let dir = TestDir::new("real-host");
+        let data = dir.0.join("host");
+        let identity = mote_gateway::HostIdentity::load_or_create(&data).unwrap();
+        store(&data.join("client_cursor"), 88).unwrap();
+        let socket = PathBuf::from("/tmp").join(format!("mote-cursor-identity-{}.sock", std::process::id()));
+        let server = mote_ipc::Server::bind(&socket, std::sync::Arc::new(IdentityDispatch(identity.host_id().clone()))).unwrap();
+        let (target, loaded) = local_host_path_in(server.path(), &data).unwrap();
+        assert_eq!(loaded.seq, 88);
+        assert_eq!(target, host_path(&data, identity.host_id(), "main"));
+        assert_eq!(load(&target).seq, 88);
+        assert_eq!(load(&data.join("client_cursor")).seq, 88);
+    }
+
+    #[test]
+    fn legacy_cursor_migrates_once_under_the_authenticated_host_and_main_scope() {
+        let dir = TestDir::new("host-migration");
+        store(&dir.cursor(), 42).unwrap();
+        let home = mote_protocol::HostId::from_public_key(&[1;32]);
+        let office = mote_protocol::HostId::from_public_key(&[2;32]);
+        assert_eq!(migrate_legacy(&dir.0, &home).unwrap().seq, 42);
+        let home_path = host_path(&dir.0, &home, "main");
+        assert_eq!(load(&home_path).seq, 42);
+        store(&home_path, 43).unwrap();
+        assert_eq!(migrate_legacy(&dir.0, &home).unwrap().seq, 43);
+        assert_eq!(migrate_legacy(&dir.0, &office).unwrap().seq, 0);
+        assert_eq!(load(&host_path(&dir.0, &home, "other")).seq, 0);
+        assert_eq!(load(&dir.cursor()).seq, 42);
+    }
+
+    #[test]
+    fn failed_host_cursor_write_preserves_legacy_and_retries_only_its_host() {
+        let dir = TestDir::new("host-migration-failure");
+        store(&dir.cursor(), 17).unwrap();
+        let home = mote_protocol::HostId::from_public_key(&[1;32]);
+        let office = mote_protocol::HostId::from_public_key(&[2;32]);
+        let target = host_path(&dir.0, &home, "main");
+        std::fs::create_dir_all(&target).unwrap();
+        assert!(migrate_legacy(&dir.0, &home).is_err());
+        assert_eq!(load(&dir.cursor()).seq, 17);
+        assert_eq!(migrate_legacy(&dir.0, &office).unwrap().seq, 0);
+        std::fs::remove_dir(&target).unwrap();
+        assert_eq!(migrate_legacy(&dir.0, &home).unwrap().seq, 17);
+    }
 
     struct TestDir(PathBuf);
 

@@ -226,6 +226,10 @@ pub struct MoteApp {
 }
 
 impl MoteApp {
+    pub fn set_cursor_path(&mut self, path: Option<PathBuf>) {
+        self.cursor_path = path;
+    }
+
     pub fn new(
         cc: &eframe::CreationContext<'_>,
         socket: PathBuf,

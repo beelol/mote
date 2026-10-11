@@ -19,6 +19,9 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::{collections::HashMap, sync::Mutex};
+use mote_protocol::{ActionDigest, ApprovalDecision, ApprovalVerdict, HostId, PendingApproval, RequestId};
+use sha2::{Digest, Sha256};
 
 /// Approvals expire after 24 hours.
 pub const APPROVAL_TTL_MS: i64 = 24 * 60 * 60 * 1000;
@@ -96,6 +99,7 @@ enum TargetExpectation {
 
 pub struct Watchers {
     conn: Connection,
+    intents: Mutex<HashMap<i64, FileWritePayload>>,
 }
 
 fn to_dt(ms: i64) -> chrono::DateTime<Utc> {
@@ -113,7 +117,21 @@ impl Watchers {
                  payload TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
                  expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL);",
         )?;
-        Ok(Self { conn })
+        let columns: Vec<String> = conn.prepare("PRAGMA table_info(approvals)")?.query_map([], |row| row.get(1))?.collect::<Result<_, _>>()?;
+        if !columns.iter().any(|column| column == "action_hash") {
+            conn.execute_batch("ALTER TABLE approvals ADD COLUMN action_hash TEXT;
+                CREATE TABLE IF NOT EXISTS approval_devices(host_id TEXT NOT NULL, device_id TEXT NOT NULL, approval_id INTEGER NOT NULL, action_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(host_id,device_id,approval_id));")?;
+        }
+        conn.execute_batch("CREATE TABLE IF NOT EXISTS approval_devices(host_id TEXT NOT NULL, device_id TEXT NOT NULL, approval_id INTEGER NOT NULL, action_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(host_id,device_id,approval_id));")?;
+        let legacy: Vec<(i64, String)> = conn.prepare("SELECT id,payload FROM approvals WHERE action_hash IS NULL")?.query_map([], |row| Ok((row.get(0)?,row.get(1)?)))?.collect::<Result<_,_>>()?;
+        for (id, payload) in legacy {
+            if let Ok(intent) = serde_json::from_str::<FileWritePayload>(&payload) {
+                let digest = intent_digest(&intent).map_err(|_| rusqlite::Error::InvalidQuery)?;
+                let display = display_payload(&intent);
+                conn.execute("UPDATE approvals SET payload=?2,action_hash=?3 WHERE id=?1", rusqlite::params![id, display.to_string(), digest.as_str()])?;
+            }
+        }
+        Ok(Self { conn, intents: Mutex::new(HashMap::new()) })
     }
 
     #[cfg(test)]
@@ -211,18 +229,22 @@ impl Watchers {
             write_resolved(&resolved, content, before_target_open)?;
             return Ok(WriteDecision::Executed);
         }
-        let payload = serde_json::to_string(&FileWritePayload {
+        let intent = FileWritePayload {
             path: path.to_path_buf(),
             resolved_path: resolved.path,
             expectation: resolved.expectation,
             content: content.to_string(),
-        })?;
+        };
+        let hash = intent_digest(&intent)?;
+        let payload = display_payload(&intent).to_string();
         self.conn.execute(
-            "INSERT INTO approvals(thread_id, kind, payload, status, expires_at, created_at)
-             VALUES(?1, 'file_write', ?2, 'pending', ?3, ?4)",
-            rusqlite::params![thread_id, payload, now + APPROVAL_TTL_MS, now],
+            "INSERT INTO approvals(thread_id, kind, payload, status, expires_at, created_at, action_hash)
+             VALUES(?1, 'file_write', ?2, 'pending', ?3, ?4, ?5)",
+            rusqlite::params![thread_id, payload, now + APPROVAL_TTL_MS, now, hash.as_str()],
         )?;
-        Ok(WriteDecision::Pending(self.conn.last_insert_rowid()))
+        let id = self.conn.last_insert_rowid();
+        self.intents.lock().unwrap().insert(id, intent);
+        Ok(WriteDecision::Pending(id))
     }
 
     pub fn status(&self, id: i64) -> rusqlite::Result<String> {
@@ -275,7 +297,14 @@ impl Watchers {
             Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(false),
             Err(error) => return Err(error.into()),
         };
-        let write: FileWritePayload = serde_json::from_str(&payload)?;
+        let _: serde_json::Value = serde_json::from_str(&payload)?;
+        let intents = self.intents.lock().unwrap();
+        let write = intents.get(&id).ok_or_else(|| std::io::Error::other("exact approval intent unavailable after restart"))?;
+        let digest = intent_digest(write)?;
+        let stored_hash: Option<String> = self.conn.query_row("SELECT action_hash FROM approvals WHERE id=?1", [id], |row| row.get(0))?;
+        if stored_hash.as_deref() != Some(digest.as_str()) {
+            return Err(std::io::Error::other("approval intent changed").into());
+        }
         let resolved = resolve_write_target(&write.path)?;
         if resolved.path != write.resolved_path || resolved.expectation != write.expectation {
             return Err(std::io::Error::new(
@@ -324,7 +353,7 @@ impl Watchers {
         let payload: String =
             self.conn.query_row("SELECT payload FROM approvals WHERE id=?1", [id], |r| r.get(0))?;
         let v: serde_json::Value = serde_json::from_str(&payload).unwrap_or(serde_json::Value::Null);
-        let path = v["resolved_path"].as_str().or_else(|| v["path"].as_str()).unwrap_or("");
+        let path = v["filename"].as_str().unwrap_or("file");
         Ok(json!({
             "type": "stack",
             "children": [
@@ -349,6 +378,43 @@ impl Watchers {
         }
     }
 
+    pub fn remote_approvals(&self, host: &HostId, device: &str, now: i64) -> Result<Vec<PendingApproval>, ApprovalError> {
+        self.expire_due(now)?;
+        let mut stmt = self.conn.prepare("SELECT id,thread_id,kind,payload,action_hash,expires_at FROM approvals WHERE status='pending' AND action_hash IS NOT NULL ORDER BY id")?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_,i64>(0)?, r.get::<_,String>(1)?, r.get::<_,String>(2)?, r.get::<_,String>(3)?, r.get::<_,String>(4)?, r.get::<_,i64>(5)?)))?;
+        let mut result = Vec::new();
+        for row in rows {
+            let (id, thread, kind, payload, hash, expires_at) = row?;
+            let payload: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&payload)?;
+            let action_hash = ActionDigest::new(hash).map_err(|_| std::io::Error::other("invalid action hash"))?;
+            self.conn.execute("INSERT OR IGNORE INTO approval_devices(host_id,device_id,approval_id,action_hash,expires_at) VALUES(?1,?2,?3,?4,?5)", rusqlite::params![host.as_str(), device, id, action_hash.as_str(), expires_at])?;
+            result.push(PendingApproval { approval_id: RequestId::new(id.to_string()).expect("positive database ID"), thread, kind, payload, action_hash, expires_at });
+        }
+        Ok(result)
+    }
+
+    pub fn remote_decide(&self, host: &HostId, device: &str, decision: &ApprovalDecision, now: i64) -> Result<bool, ApprovalError> {
+        if decision.host_id != *host { return Ok(false); }
+        let Ok(id) = decision.approval_id.as_str().parse::<i64>() else { return Ok(false); };
+        let matches: bool = self.conn.query_row("SELECT EXISTS(SELECT 1 FROM approvals a JOIN approval_devices d ON d.approval_id=a.id WHERE a.id=?1 AND a.thread_id=?2 AND a.status='pending' AND a.action_hash=?3 AND a.expires_at=?4 AND a.expires_at>=?5 AND d.host_id=?6 AND d.device_id=?7 AND d.action_hash=a.action_hash AND d.expires_at=a.expires_at)", rusqlite::params![id, decision.thread, decision.action_hash.as_str(), decision.expires_at, now, host.as_str(), device], |row| row.get(0))?;
+        if !matches { self.expire_due(now)?; return Ok(false); }
+        match decision.decision {
+            ApprovalVerdict::Approve => self.approve_for_thread(id, &decision.thread, now),
+            ApprovalVerdict::Deny => Ok(self.deny_for_thread(id, &decision.thread, now)?),
+        }
+    }
+
+}
+
+fn intent_digest(intent: &FileWritePayload) -> Result<ActionDigest, serde_json::Error> {
+    let canonical = serde_json::to_value(intent)?;
+    Ok(ActionDigest::new(format!("{:x}", Sha256::digest(serde_json::to_vec(&canonical)?))).expect("SHA-256 digest"))
+}
+
+fn display_payload(intent: &FileWritePayload) -> serde_json::Value {
+    let filename = intent.resolved_path.file_name().unwrap_or_default().to_string_lossy();
+    let display = json!({"filename":filename,"bytes":intent.content.len()});
+    serde_json::from_str(&mote_redact::redact(&display.to_string())).expect("redacted JSON")
 }
 
 fn resolve_write_target(path: &Path) -> std::io::Result<ResolvedWriteTarget> {
@@ -550,6 +616,90 @@ fn c_string(value: &std::ffi::OsStr) -> std::io::Result<CString> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn action_hash_covers_canonical_exact_intent() {
+        let intent = FileWritePayload { path: "/selected".into(), resolved_path: "/resolved".into(), expectation: TargetExpectation::Missing, content: "secret".into() };
+        assert_eq!(intent_digest(&intent).unwrap().as_str(), "e11c1aa5f1bfb0f02d6fe781cb5366229208a1a971db55f0c0dd6a8666c82e1c");
+    }
+
+    #[test]
+    fn restarted_pending_intent_is_visible_but_cannot_execute() {
+        let root = temp_root("intent-restart");
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let target = root.join("held.txt");
+        let path = data.join("mote.db");
+        let host = HostId::from_public_key(&[4;32]);
+        let w = Watchers::open(Connection::open(&path).unwrap()).unwrap();
+        let WriteDecision::Pending(id) = w.request_file_write(&data, "main", &target, "private exact intent", 1000).unwrap() else { panic!("pending"); };
+        let approval = w.remote_approvals(&host, "device", 1001).unwrap().remove(0);
+        drop(w);
+        let w = Watchers::open(Connection::open(&path).unwrap()).unwrap();
+        assert_eq!(w.remote_approvals(&host, "device", 1002).unwrap(), vec![approval.clone()]);
+        let mut decision = ApprovalDecision { host_id: host.clone(), thread: "main".into(), approval_id: approval.approval_id, action_hash: approval.action_hash, expires_at: approval.expires_at, decision: ApprovalVerdict::Approve };
+        assert!(w.remote_decide(&host, "device", &decision, 1003).is_err());
+        assert!(!target.exists());
+        assert_eq!(w.status(id).unwrap(), "pending");
+        decision.decision = ApprovalVerdict::Deny;
+        assert!(w.remote_decide(&host, "device", &decision, 1004).unwrap());
+        assert_eq!(w.status(id).unwrap(), "denied");
+        drop(w);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn remote_approval_binds_exact_intent_device_host_thread_and_expiry() {
+        use mote_protocol::{ApprovalDecision, ApprovalVerdict, HostId};
+        let root = temp_root("remote-binding");
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let target = root.join("held.txt");
+        let w = Watchers::open_in_memory().unwrap();
+        let WriteDecision::Pending(id) = w.request_file_write(&data, "main", &target, "sk-private-secret", 1000).unwrap() else { panic!("pending"); };
+        let host = HostId::from_public_key(&[1;32]);
+        let other = HostId::from_public_key(&[2;32]);
+        let pending = w.remote_approvals(&host, "device", 1001).unwrap().remove(0);
+        let decision = ApprovalDecision { host_id: host.clone(), thread: "main".into(), approval_id: pending.approval_id, action_hash: pending.action_hash, expires_at: pending.expires_at, decision: ApprovalVerdict::Approve };
+        for altered in 0..5 {
+            let mut bad = decision.clone();
+            match altered {
+                0 => bad.host_id = other.clone(),
+                1 => bad.thread = "other".into(),
+                2 => bad.action_hash = mote_protocol::ActionDigest::new("0".repeat(64)).unwrap(),
+                3 => bad.expires_at += 1,
+                _ => bad.approval_id = mote_protocol::RequestId::new("999").unwrap(),
+            }
+            assert!(!w.remote_decide(&host, "device", &bad, 1002).unwrap());
+            assert!(!target.exists());
+        }
+        assert!(!w.remote_decide(&host, "unbound-device", &decision, 1002).unwrap());
+        let payload: String = w.conn.query_row("SELECT payload FROM approvals WHERE id=?1", [id], |r| r.get(0)).unwrap();
+        assert!(!payload.contains("sk-private-secret"));
+        assert!(!payload.contains(root.to_str().unwrap()));
+        assert!(w.remote_decide(&host, "device", &decision, 1002).unwrap());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "sk-private-secret");
+        assert!(!w.remote_decide(&host, "device", &decision, 1003).unwrap());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn remote_approval_expires_and_exact_content_changes_digest() {
+        let root = temp_root("remote-expiry");
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let w = Watchers::open_in_memory().unwrap();
+        let host = mote_protocol::HostId::from_public_key(&[3;32]);
+        w.request_file_write(&data, "main", &root.join("one.txt"), "one", 1000).unwrap();
+        w.request_file_write(&data, "main", &root.join("one.txt"), "two", 1000).unwrap();
+        let pending = w.remote_approvals(&host, "device", 1001).unwrap();
+        assert_ne!(pending[0].action_hash, pending[1].action_hash);
+        let first = &pending[0];
+        let decision = mote_protocol::ApprovalDecision { host_id: host.clone(), thread: "main".into(), approval_id: first.approval_id.clone(), action_hash: first.action_hash.clone(), expires_at: first.expires_at, decision: mote_protocol::ApprovalVerdict::Approve };
+        assert!(!w.remote_decide(&host, "device", &decision, first.expires_at + 1).unwrap());
+        assert!(!root.join("one.txt").exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
     use std::time::Duration;
 
     fn temp_root(name: &str) -> std::path::PathBuf {
@@ -953,8 +1103,9 @@ mod tests {
             panic!("outside target must be pending");
         };
         let card = w.approval_card(id).unwrap().to_string();
-        assert!(card.contains(first.to_str().unwrap()));
-        assert!(!card.contains(link.to_str().unwrap()));
+        assert!(card.contains("first.txt"));
+        assert!(!card.contains("selected.txt"));
+        assert!(!card.contains(outside.to_str().unwrap()));
         std::fs::remove_file(&link).unwrap();
         symlink(&second, &link).unwrap();
 

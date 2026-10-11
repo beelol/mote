@@ -14,6 +14,9 @@ mote-context.workspace = true
 mote-harness.workspace = true
 mote-ui.workspace = true
 mote-redact.workspace = true
+mote-gateway.workspace = true
+mote-protocol.workspace = true
+sha2.workspace = true
 matrix-lang = { path = "../crates/matrix-lang" }
 serde_json.workspace = true
 serde.workspace = true
@@ -26,5 +29,6 @@ libc.workspace = true
 model2vec-rs = "0.3"
 
 [dev-dependencies]
+mote-host-client.workspace = true
 mote-testkit.workspace = true
 mote-client = { path = "../mote-client", features = ["test-observation"] }

@@ -14,6 +14,7 @@ test-observation = []
 
 [dependencies]
 mote-host-client.workspace = true
+mote-protocol.workspace = true
 mote-ipc.workspace = true
 mote-ui.workspace = true
 mote-eventlog.workspace = true
@@ -25,4 +26,5 @@ serde_json.workspace = true
 accesskit.workspace = true
 
 [dev-dependencies]
+mote-gateway.workspace = true
 accesskit_consumer.workspace = true

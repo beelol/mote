@@ -16,6 +16,9 @@ serde_json.workspace = true
 rusqlite.workspace = true
 libc.workspace = true
 mote-protocol.workspace = true
+mote-ipc.workspace = true
+mote-eventlog.workspace = true
+mote-redact.workspace = true
 
 [dev-dependencies]
 tempfile = "3"

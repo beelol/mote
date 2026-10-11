@@ -75,7 +75,8 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             let clock = display_latency::InstantClock::shared();
             let live_mode = fixture.is_none() && chat_state_fixture.is_none();
-            let loaded_cursor = live_mode.then(|| cursor::load(&cursor::path()));
+            let host_cursor = live_mode.then(|| cursor::local_host_cursor(&socket).ok()).flatten();
+            let (cursor_path, loaded_cursor) = host_cursor.map_or((None, None), |(path, loaded)| (Some(path), Some(loaded)));
             let cursor_seq = loaded_cursor.as_ref().map_or(0, |loaded| loaded.seq);
             let cursor_warning = loaded_cursor.and_then(|loaded| loaded.warning);
             if live_mode {
@@ -113,7 +114,7 @@ fn main() -> eframe::Result<()> {
                     }
                 });
             }
-            Ok(Box::new(app::MoteApp::new(
+            let mut app = app::MoteApp::new(
                 cc,
                 socket,
                 rx,
@@ -121,7 +122,9 @@ fn main() -> eframe::Result<()> {
                 chat_state_fixture,
                 clock,
                 cursor_warning,
-            )))
+            );
+            app.set_cursor_path(cursor_path);
+            Ok(Box::new(app))
         }),
     )
 }

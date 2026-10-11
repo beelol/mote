@@ -219,10 +219,10 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     committed Matrix surfaces, typed interactions, approvals, cursors and structured errors while
     the existing Unix transport keeps passing its contract. **Verify:** protocol golden tests and
     the existing Unix reconnect suite pass with no wire-type dependency on a socket implementation.
-  - [ ] **HOST-02** Every host has a stable cryptographic identity, and the client keeps credentials,
+  - [x] **HOST-02** Every host has a stable cryptographic identity, and the client keeps credentials,
     cursor, thread, surface and approval state isolated per host. **Verify:** pair two fixture hosts
     with colliding thread and approval IDs, switch repeatedly and prove no state or action crosses.
-  - [ ] **HOST-03** Owner-present pairing uses the `MOTE1` offer and `mote-gateway-v1` Noise
+  - [x] **HOST-03** Owner-present pairing uses the `MOTE1` offer and `mote-gateway-v1` Noise
     protocol to mutually authenticate an iPad and host, encrypt ordered frames, pin both identities
     and support device revocation. **Verify:** pass shared Noise vectors, complete one pairing and
     reject expired or reused offers, altered identities, replayed counters, tampered frames and a

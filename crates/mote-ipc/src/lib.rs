@@ -7,7 +7,7 @@
 //! the same live socket fails naming the path.
 
 use mote_eventlog::{Event, Subscription};
-use mote_protocol::{envelope, Event as ProtocolEvent};
+use mote_protocol::{envelope, Event as ProtocolEvent, HostId};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::fd::{AsRawFd, RawFd};
@@ -49,8 +49,20 @@ impl RpcError {
 }
 
 /// The daemon's method table. Implementors answer unary calls and may offer event streams.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Actor {
+    Local,
+    PairedDevice { host_id: HostId, device_id: String },
+}
+
 pub trait Dispatch: Send + Sync + 'static {
     fn call(&self, method: &str, params: Value) -> Result<Value, RpcError>;
+    fn call_with_context(&self, actor: &Actor, method: &str, params: Value) -> Result<Value, RpcError> {
+        if matches!(actor, Actor::PairedDevice { .. }) && !matches!(method, "hello" | "ping" | "status" | "turn" | "snapshot") {
+            return Err(RpcError::new("unauthorized", "method is local-only"));
+        }
+        self.call(method, params)
+    }
     fn subscribe(&self, _scope_id: &str, _cursor: i64) -> Option<Subscription> {
         None
     }
@@ -214,7 +226,7 @@ fn handle_connection<D: Dispatch>(stream: UnixStream, dispatch: Arc<D>) {
             break;
         }
 
-        let reply = match dispatch.call(&method, params) {
+        let reply = match dispatch.call_with_context(&Actor::Local, &method, params) {
             Ok(result) => success_envelope(id, result),
             Err(e) => {
                 // An unknown method surfaces as invalid_request; the handler chooses otherwise.
