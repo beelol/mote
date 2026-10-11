@@ -5,9 +5,15 @@
 //! Loading the agent is a system change; the owner runs `moted install`. The daemon never loads
 //! it on its own.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 pub const LABEL: &str = "com.mote.moted";
+
+struct CommandResult {
+    success: bool,
+    stderr: Vec<u8>,
+}
 
 /// Path of the LaunchAgent plist.
 pub fn plist_path() -> PathBuf {
@@ -73,17 +79,52 @@ pub fn install() -> Result<(), String> {
 /// Unload and remove the agent.
 pub fn uninstall() -> Result<(), String> {
     let plist = plist_path();
-    let _ = std::process::Command::new("launchctl").args(["unload", "-w"]).arg(&plist).output();
-    if plist.exists() {
-        std::fs::remove_file(&plist).map_err(|e| e.to_string())?;
-    }
+    uninstall_with(&plist, |program, args| {
+        let output = std::process::Command::new(program).args(args).output()?;
+        Ok(CommandResult {
+            success: output.status.success(),
+            stderr: output.stderr,
+        })
+    })?;
     println!("removed {LABEL}");
+    Ok(())
+}
+
+fn uninstall_with<F>(plist: &Path, run: F) -> Result<(), String>
+where
+    F: FnOnce(&str, &[&OsStr]) -> std::io::Result<CommandResult>,
+{
+    let args = [OsStr::new("unload"), OsStr::new("-w"), plist.as_os_str()];
+    let result = run("launchctl", &args)
+        .map_err(|error| format!("could not run launchctl unload: {error}"))?;
+    if !result.success {
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        let detail = stderr.trim();
+        return if detail.is_empty() {
+            Err("launchctl unload failed without an error message".to_string())
+        } else {
+            Err(format!("launchctl unload failed: {detail}"))
+        };
+    }
+    if plist.exists() {
+        std::fs::remove_file(plist).map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn plist_fixture(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "mote-service-{name}-{}-{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("unnamed")
+        ));
+        std::fs::write(&path, "recovery state").unwrap();
+        path
+    }
 
     #[test]
     fn plist_has_label_keepalive_and_log_paths() {
@@ -94,5 +135,104 @@ mod tests {
         assert!(p.contains("/data/mote/moted.out.log"));
         assert!(p.contains("/data/mote/moted.err.log"));
         assert!(p.contains("<key>RunAtLoad</key>"));
+    }
+
+    #[test]
+    fn uninstall_preserves_plist_when_launchctl_reports_stderr() {
+        let plist = plist_fixture("nonzero-stderr");
+
+        let error = uninstall_with(&plist, |program, args| {
+            assert_eq!(program, "launchctl");
+            assert_eq!(
+                args,
+                [OsStr::new("unload"), OsStr::new("-w"), plist.as_os_str()]
+            );
+            Ok(CommandResult {
+                success: false,
+                stderr: b"service is busy\n".to_vec(),
+            })
+        })
+        .unwrap_err();
+
+        assert!(plist.exists());
+        assert!(error.contains("service is busy"));
+        std::fs::remove_file(plist).unwrap();
+    }
+
+    #[test]
+    fn uninstall_preserves_plist_when_launchctl_reports_no_stderr() {
+        let plist = plist_fixture("nonzero-empty");
+
+        let error = uninstall_with(&plist, |program, args| {
+            assert_eq!(program, "launchctl");
+            assert_eq!(
+                args,
+                [OsStr::new("unload"), OsStr::new("-w"), plist.as_os_str()]
+            );
+            Ok(CommandResult {
+                success: false,
+                stderr: Vec::new(),
+            })
+        })
+        .unwrap_err();
+
+        assert!(plist.exists());
+        assert!(!error.trim().is_empty());
+        std::fs::remove_file(plist).unwrap();
+    }
+
+    #[test]
+    fn uninstall_preserves_plist_when_launchctl_cannot_start() {
+        let plist = plist_fixture("spawn-error");
+
+        let error = uninstall_with(&plist, |program, args| {
+            assert_eq!(program, "launchctl");
+            assert_eq!(
+                args,
+                [OsStr::new("unload"), OsStr::new("-w"), plist.as_os_str()]
+            );
+            Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "launchctl missing",
+            ))
+        })
+        .unwrap_err();
+
+        assert!(plist.exists());
+        assert!(error.contains("launchctl missing"));
+        std::fs::remove_file(plist).unwrap();
+    }
+
+    #[test]
+    fn uninstall_removes_plist_after_launchctl_succeeds() {
+        let plist = plist_fixture("success");
+
+        uninstall_with(&plist, |program, args| {
+            assert_eq!(program, "launchctl");
+            assert_eq!(
+                args,
+                [OsStr::new("unload"), OsStr::new("-w"), plist.as_os_str()]
+            );
+            Ok(CommandResult {
+                success: true,
+                stderr: Vec::new(),
+            })
+        })
+        .unwrap();
+
+        assert!(!plist.exists());
+
+        uninstall_with(&plist, |program, args| {
+            assert_eq!(program, "launchctl");
+            assert_eq!(
+                args,
+                [OsStr::new("unload"), OsStr::new("-w"), plist.as_os_str()]
+            );
+            Ok(CommandResult {
+                success: true,
+                stderr: Vec::new(),
+            })
+        })
+        .unwrap();
     }
 }
