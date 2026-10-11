@@ -16,7 +16,9 @@ The approved design is `docs/superpowers/specs/2026-10-11-ipad-host.md`. The imp
 are `docs/superpowers/plans/2026-10-11-ipad-simulator-host.md`,
 `docs/superpowers/plans/2026-10-11-ipad-simulator-ui.md` and
 `docs/superpowers/plans/2026-10-11-ipad-agent-browser.md`. The owner requested small verified
-Conventional Commits on `main` and pushes to configured `origin`.
+Conventional Commits on `main` and pushes to configured `origin`. A current safety review rejected
+new pushes to `https://github.com/beelol/mote.git` pending explicit destination approval from the
+owner. Do not route around that rejection. Continue local verified commits and await approval.
 
 ## Delivered and verified
 
@@ -48,19 +50,32 @@ with exit 0. The gallery, test hardening and timing-probe commits through `b17b9
 
 ## Current work and next action
 
-`main` and `origin/main` contain the timing probe through `b17b9f9`. This handoff, the IPAD-02
-acceptance decision and README checkbox are the only intended tracked work in progress. The UI
+`main` and `origin/main` contain IPAD-02 acceptance commit `33e52a6`. The UI
 plan ledger is `.superpowers/sdd/2026-10-11-ipad-simulator-ui/progress.md`.
 
-Run `git diff --check`, workspace tests and strict clippy before committing the IPAD-02 acceptance
-decision and this handoff, then push. Dispatch a fresh UI implementation subagent for Task 7 in
-`docs/superpowers/plans/2026-10-11-ipad-simulator-ui.md`. Task 7 must connect the Simulator to
+Task 7 is assigned to fresh UI subagent `ipad_live_host_impl` from pushed `33e52a6`.
+Its report target is `.superpowers/sdd/2026-10-11-ipad-simulator-ui/task-7-report.md`.
+The controller owns this handoff and the implementer must not push. Task 7 must connect the Simulator to
 the authenticated localhost gateway, pair with host identity proof, persist credentials in the
 Simulator Keychain, discover Bonjour, stream live chat and Matrix events, return typed controls,
 resume from cursor after relaunch and isolate two hosts with colliding IDs. It can close HOST-04
 and IPAD-03 only with their full live Verify clauses and evidence. Review every subagent result,
 independently verify, commit and push. After Task 7, follow the inferred UI and contained browser
 plan for IPAD-04 and IPAD-05.
+The Task 7 agent created its own active goal. It found that existing `HostTransport` has no
+response channel and is adding a neutral command/update worker and `HostDirectory` reducer before
+the iPad network adapter, Keychain and native DNS-SD browser. Initial tests target real daemon
+loopback and Mac Unix reducer parity. No live pairing or checked Task 7 AC is claimed yet.
+
+An independent agent owns Task 1 of the inferred-UI and browser plan. It is adding the dormant
+production inference call site and fail-closed activation attestation in `moted` and
+`mote-testkit`. It does not own iPad transport files, `Cargo.lock`, this handoff or pushes.
+IPAD-04 remains open until the live model gate and Simulator states pass.
+The Task 1 foundation and production rejection tests were committed locally as `70e213a` and
+`60a154f` after workspace tests and clippy passed. Independent review found the blocking test
+gap fixed. A first isolated live 200-prompt run of approved `qwen3:4b`
+scored 20 first-try valid decisions out of 200, with 200 ledger rows and 200 packs. The model
+selected no surface for all requested surfaces. No activation record was written.
 
 ## Limits
 
