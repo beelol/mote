@@ -47,8 +47,15 @@ review passed after the fix. The driver reran workspace tests and strict clippy 
 HOST-04 stays open until the Simulator discovers the service and verifies purpose text in UI plan
 Task 7.
 
-The next action is host plan Task 6, authoritative resync and visible connection states. The host plan
-ledger is `.superpowers/sdd/2026-10-11-ipad-simulator-host/progress.md`. The UI plan ledger is
+Host plan Task 6 was pushed in `ea25228` and review fix `54c2870`. It adds durable authoritative
+snapshots, checked replay, explicit connection states and a per-host acknowledged outbox. The review
+found and fixed interleaved-thread loss under a shared cursor and oversized snapshot transport
+failure. Host events now replay in global order. Large snapshots use bounded chunks installed
+atomically after identity and cursor checks. Scoped re-review found no remaining blocking issue.
+The driver independently reran workspace tests and strict clippy with exit 0. HOST-05 remains open
+for literal Mac sleep and wake. Next is host plan Task 7, the reusable paired loopback acceptance
+harness. The host plan ledger is
+`.superpowers/sdd/2026-10-11-ipad-simulator-host/progress.md`. The UI plan ledger is
 `.superpowers/sdd/2026-10-11-ipad-simulator-ui/progress.md`. The UI subagent has not yet been
 dispatched because the reviewed host foundation interfaces are still being completed.
 The literal Mac sleep and wake run in HOST-05 is unsafe unattended without a configured wake
