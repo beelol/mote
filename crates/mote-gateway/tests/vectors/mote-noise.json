@@ -1,0 +1,108 @@
+{
+  "chunk": 65000,
+  "spec": "Mote gateway protocol 1",
+  "vectors": [
+    {
+      "handshake_hash": "e80d815087fbc5006e5264c71b62407876554878ad53871bef1ce939ee9dc969",
+      "initiator_ephemeral_private": "11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3ea",
+      "initiator_ephemeral_public": "e52b940ad182cfed595624daaaa892f68f14d52c49ae9016b6ab870e080e8300",
+      "initiator_static_private": "0a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3",
+      "initiator_static_public": "07a58e47362800f467b4429278d6ab788faacb916a9019e4775fba1cc89a651f",
+      "message1": "e52b940ad182cfed595624daaaa892f68f14d52c49ae9016b6ab870e080e83008f0d5bb6826bae0ecbadbfe7db8a392e2bbe0ba051c409e9ff442c3c5009a4520ac9e600197ed07ce1051d56bb4de55f682427bfe1591dea1c7b3e9a8d0abd71e091280d48571ab6243fe10014831b13c7b9dc71c5d8d4040a130f0742f26f8bee93b858d0bc122208b69b55ded4929ce8e1d47d7c069b56fc23e9ed0b45a316bba906e682913650edeeb91f7b60e3218b2ba510a870f8db43174494a1fcd8d9cf599b0287478a24d06d874dfe96d227242c0da37af8430fa08290b62354a5c56bcae6c0f9a1df669afcc1eb632de5bb010549e26e7c3e3feeb28086eb216cd12ec507bcf112f6d0aa26315f22ddb9000985613fd61d2c92126c5920dca04bc77a11d9ddaba5f978d1d8258801fa7118ae9320af09987342584e65",
+      "message2": "e57c695eb2c613c1be54eb615343e82b6a954f88409aa3ad1fa739d0041f1a269e3ef61a26d22d5fb0a560b3d266e37833d367fd7db664940bc94e2dc550e95aa80a5d1587289699fd7352221f06daef28ba7e3783e1a0f51fda03a0cf3ef6974af7e89afdbe87d4156c34ccf6add21dde77fe816a84531c3e8660f499f03c1a5b18aff182b677a863c09baf70af4f6f3c5ef80ae3c9224d4fbce9ff9502fb6930e7e6b74269332ca3c0edf0bed7339e2590eed4f8ec318d4d3a087bcc44b401f97879fa496816355cd573c1dec92e9cc98ac831863fcc059932015a57dd6fcc",
+      "name": "session",
+      "pairing_secret": null,
+      "pattern": "Noise_IK_25519_ChaChaPoly_SHA256",
+      "payload1": "{\"client_id\":\"0817a1407934749e99c1ca41adb6c413263359739e700b5293e0fc1491df8b9c\",\"counter\":1790000000000,\"host_id\":\"937b1de964b2e131c5680ac45ae0104bd59cfc9c1ed424998fc9f48da0e9af45\",\"name\":\"Test iPad\",\"protocol_major\":1}",
+      "payload2": "{\"client_id\":\"0817a1407934749e99c1ca41adb6c413263359739e700b5293e0fc1491df8b9c\",\"host_id\":\"937b1de964b2e131c5680ac45ae0104bd59cfc9c1ed424998fc9f48da0e9af45\",\"protocol_major\":1}",
+      "prologue": "mote-gateway-v1",
+      "psk": null,
+      "responder_ephemeral_private": "1f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8",
+      "responder_ephemeral_public": "e57c695eb2c613c1be54eb615343e82b6a954f88409aa3ad1fa739d0041f1a26",
+      "responder_fingerprint": "937b1de964b2e131",
+      "responder_static_private": "181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1",
+      "responder_static_public": "74fcd426a206adc7e952e343cbf25787e2d3057a1af3d2ff4690ae4285959108",
+      "transport": [
+        {
+          "frames": [
+            "958d79557e99276a02110cd271b3d50e47203b6655285ea560b78137b747a9b879867ed14ff92b5203679f6be6971d5ad8b46c528a392be4ccd5f4527be97382bb69be4c7dd3"
+          ],
+          "from": "device",
+          "plaintext": "{\"id\":1,\"method\":\"hello\",\"params\":{\"client\":\"phone\"}}"
+        },
+        {
+          "frames": [
+            "d710e619e2f7ad2b2afe83bef91640de2aed0aeb70e41b7f8e7f15b7791d3fe70db711963834d9d63dc44132e01481709e"
+          ],
+          "from": "gateway",
+          "plaintext": "{\"id\":1,\"result\":{\"protocol\":1}}"
+        },
+        {
+          "frames": [
+            "319915077b7cb864316b62038f07ccc3655608cfc63ea93f7f1cca5d83e24385817caac801b987d540cce670f913f69ed0055afc0df2"
+          ],
+          "from": "device",
+          "plaintext": "{\"id\":2,\"method\":\"state\",\"params\":{}}"
+        },
+        {
+          "frames": [
+            "7590981c8700fcc05f9bb6340ccb76d07eb55611738f3803b8a64b76aeb7ed7e74a315e17e57facd14584dfc7afd414d1daf25b5d174"
+          ],
+          "from": "gateway",
+          "plaintext": "{\"method\":\"event\",\"params\":{\"seq\":1}}"
+        }
+      ]
+    },
+    {
+      "handshake_hash": "aaef544a4096953ff3267e498505287baf5d91292b9086b6a7b465f9588e3723",
+      "initiator_ephemeral_private": "11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3ea",
+      "initiator_ephemeral_public": "e52b940ad182cfed595624daaaa892f68f14d52c49ae9016b6ab870e080e8300",
+      "initiator_static_private": "0a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3",
+      "initiator_static_public": "07a58e47362800f467b4429278d6ab788faacb916a9019e4775fba1cc89a651f",
+      "message1": "e52b940ad182cfed595624daaaa892f68f14d52c49ae9016b6ab870e080e8300b9cbf60e24643603b17d5ee63dcaa5698f5c57e85c38a0c11c7c8ffd8f760e34833e8a66d9f8cf32b11a70f2790c5ad153b516c74baf2c3e853f7b46bdcaa5d095d7cdd71cd797ac760cee5f96bb04e33e8d644b2ef68979d0c30b9a27a7c9e78f77c2f8e21dbaef245581cb7b048132dcb936df5fe5bcb3215d3943eb3c86af11f10a9e3102d83cb7b4f17ffdb920ab3bc2e2349c9a14073e68ba0344928a70cf177fa61252214aa31a1495847646a12c1c760941af8424fab2102664f25cfa2df25ba360e8dd9d335bc3c9234bc5169dc967375a90aea107e4f334cf40d93fdc7a91de52d5e5b7843fef3c886ebb4b95ec3b3a8b069c1dc9f48188bd1ae18f9d6b7d80b608ab81c4801c56b6306f1caec8fbeb656835d7c27187",
+      "message2": "e57c695eb2c613c1be54eb615343e82b6a954f88409aa3ad1fa739d0041f1a263da76981445a88e3f75b87b55617bc343cc8dd2b90f1341cad1be9f39e93e1c1c1022aeb4990409c155442cc4dc8e9cbc893f075596ef356608c42a6e52ac535e9f1213408862d22b2eb9247213b1cf3e99dacd4001386b5b3ba8e0fa35865909196e803a6ffedd3c128defdc00fb0805fdb10138763412d023e8d7be18a3bc6a5e59e09184708caa638679186ca0a9e99aea58bcb50b44f59edf62fef255c59b8d9f24e0e2e7ceb9d1e056ce446aba2c8d5dd59d0228ac659c02e7597e46a6b",
+      "name": "pairing",
+      "pairing_secret": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+      "pattern": "Noise_IKpsk1_25519_ChaChaPoly_SHA256",
+      "payload1": "{\"client_id\":\"0817a1407934749e99c1ca41adb6c413263359739e700b5293e0fc1491df8b9c\",\"counter\":1790000000000,\"host_id\":\"937b1de964b2e131c5680ac45ae0104bd59cfc9c1ed424998fc9f48da0e9af45\",\"name\":\"Test iPad\",\"protocol_major\":1}",
+      "payload2": "{\"client_id\":\"0817a1407934749e99c1ca41adb6c413263359739e700b5293e0fc1491df8b9c\",\"host_id\":\"937b1de964b2e131c5680ac45ae0104bd59cfc9c1ed424998fc9f48da0e9af45\",\"protocol_major\":1}",
+      "prologue": "mote-gateway-v1",
+      "psk": "503563c1bda45327ff4617750a06bd8143fcd4e7929934b7cf1e826c1ba60c90",
+      "responder_ephemeral_private": "1f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8",
+      "responder_ephemeral_public": "e57c695eb2c613c1be54eb615343e82b6a954f88409aa3ad1fa739d0041f1a26",
+      "responder_fingerprint": "937b1de964b2e131",
+      "responder_static_private": "181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1",
+      "responder_static_public": "74fcd426a206adc7e952e343cbf25787e2d3057a1af3d2ff4690ae4285959108",
+      "transport": [
+        {
+          "frames": [
+            "068997f317cc45cb169c88b9429648639507d1180337da6883cefb106fea1a4bad6e918258c0189a8af27abdbb96862179642b56021221779b1c3933796b6f70237a70141b8a"
+          ],
+          "from": "device",
+          "plaintext": "{\"id\":1,\"method\":\"hello\",\"params\":{\"client\":\"phone\"}}"
+        },
+        {
+          "frames": [
+            "96892be40f0f191c1277ec832d680b776c3661a382491112cdb28b7a9413598c8a4ec440238fbfd7a8d3fe83425f391b30"
+          ],
+          "from": "gateway",
+          "plaintext": "{\"id\":1,\"result\":{\"protocol\":1}}"
+        },
+        {
+          "frames": [
+            "b23a9af3983bfc5bb83a7fe02a596db0728c010c5dbbc0b819ca169d669985ced97937316c2ca4a908320d7a89a2e7202081084d6162"
+          ],
+          "from": "device",
+          "plaintext": "{\"id\":2,\"method\":\"state\",\"params\":{}}"
+        },
+        {
+          "frames": [
+            "fb5cdd95307bdbaae29e6d07fce0a83ce00ac25f347fcbcb82dc731a05e108283b00519a25b50e46d7b482d63dbfc1910e182d3a6375"
+          ],
+          "from": "gateway",
+          "plaintext": "{\"method\":\"event\",\"params\":{\"seq\":1}}"
+        }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,7 @@ members = [
     "crates/mote-paths",
     "crates/mote-eventlog",
     "crates/mote-protocol",
+    "crates/mote-gateway",
     "crates/mote-host-client",
     "crates/mote-ipc",
     "crates/mote-localmodel",
@@ -28,6 +29,7 @@ mote-redact = { path = "crates/mote-redact" }
 mote-paths = { path = "crates/mote-paths" }
 mote-eventlog = { path = "crates/mote-eventlog" }
 mote-protocol = { path = "crates/mote-protocol" }
+mote-gateway = { path = "crates/mote-gateway" }
 mote-host-client = { path = "crates/mote-host-client" }
 mote-ipc = { path = "crates/mote-ipc" }
 mote-localmodel = { path = "crates/mote-localmodel" }
