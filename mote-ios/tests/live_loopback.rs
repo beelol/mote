@@ -253,9 +253,24 @@ fn discovered_port_moves_only_after_identity_proof() {
 
 #[test]
 fn same_address_reconnect_invalidates_the_old_command_session() {
+    same_address_command_after_reconnect(true);
+}
+
+#[test]
+fn same_address_events_reconnect_without_bonjour_invalidates_commands() {
+    same_address_command_after_reconnect(false);
+}
+
+fn same_address_command_after_reconnect(through_bonjour: bool) {
     use mote_gateway::{discovery::DiscoveryRecord, GatewayServer};
     struct Forward<D: Dispatch>(mote_testkit::gateway::LoopbackHost<D>);
     impl<D: Dispatch> Dispatch for Forward<D> {
+        fn call_with_context(&self, actor: &mote_ipc::Actor, method: &str, params: serde_json::Value) -> Result<serde_json::Value, mote_ipc::RpcError> {
+            self.0.daemon().call_with_context(actor, method, params)
+        }
+        fn subscribe_host(&self, cursor: i64) -> Option<mote_eventlog::Replay> {
+            self.0.daemon().subscribe_host(cursor)
+        }
         fn call(
             &self,
             method: &str,
@@ -290,12 +305,18 @@ fn same_address_reconnect_invalidates_the_old_command_session() {
     let public = *host.public_key();
     let mut config = GatewayConfig::new(host.root().join("data"));
     config.bind = endpoint;
+    host.daemon().call("matrix.render", json!({"thread":"main","source":"screen { text \"Reconnect event\" }"})).unwrap();
     host.suspend();
     let restarted = GatewayServer::bind_loopback(config, Arc::new(Forward(host))).unwrap();
     assert_eq!(restarted.local_addr(), endpoint);
-    events
-        .rediscover(&DiscoveryRecord::new(endpoint, 1, &public).unwrap())
-        .unwrap();
+    let _stream = if through_bonjour {
+        events.rediscover(&DiscoveryRecord::new(endpoint, 1, &public).unwrap()).unwrap();
+        None
+    } else {
+        let mut stream = events.reconnect_events(&mote_protocol::Cursor::new(id.clone(), 0).unwrap()).unwrap();
+        assert!(matches!(stream.receive().unwrap(), HostFrame::Event { host_id, event } if host_id == id && event.seq == 1));
+        Some(stream)
+    };
     let response = commands
         .request(HostCommand {
             host_id: id,

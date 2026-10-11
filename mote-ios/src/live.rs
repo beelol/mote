@@ -225,6 +225,12 @@ impl<S: CredentialStore<Credential = StoredCredential>> NetworkHost<S> {
             connection: network.connection,
         })
     }
+
+    pub fn reconnect_events(&self, cursor: &Cursor) -> Result<NetworkStream> {
+        let stream = self.subscribe(cursor)?;
+        self.generation.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        Ok(stream)
+    }
 }
 
 fn ensure_ack(
@@ -935,7 +941,7 @@ fn attach_host<S: CredentialStore<Credential = StoredCredential> + Send + 'stati
                         }
                     }
                 }
-                if let Ok(reconnected) = event_network.subscribe(&cursor) {
+                if let Ok(reconnected) = event_network.reconnect_events(&cursor) {
                     stream = reconnected;
                     updates.send(HostUpdate::Connection {
                         host_id: id.clone(),
