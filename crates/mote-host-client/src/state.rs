@@ -6,6 +6,31 @@ use mote_protocol::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalStatus {
+    Pending,
+    Approved,
+    Denied,
+    Expired,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalState {
+    pub approval: PendingApproval,
+    pub status: ApprovalStatus,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ApprovalEnvelope {
+    host_id: HostId,
+    approval: PendingApproval,
+    status: ApprovalStatus,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct HostSessionState {
     cursor: Cursor,
@@ -13,6 +38,7 @@ pub struct HostSessionState {
     threads: BTreeMap<String, ThreadSnapshot>,
     surfaces: BTreeMap<String, BTreeMap<i64, CommittedSurface>>,
     pending_approvals: BTreeMap<RequestId, PendingApproval>,
+    approval_states: BTreeMap<RequestId, ApprovalState>,
     outbox: Outbox,
     #[serde(skip)]
     connection: ConnectionState,
@@ -28,6 +54,8 @@ struct SessionFields {
     threads: BTreeMap<String, ThreadSnapshot>,
     surfaces: BTreeMap<String, BTreeMap<i64, CommittedSurface>>,
     pending_approvals: BTreeMap<RequestId, PendingApproval>,
+    #[serde(default)]
+    approval_states: BTreeMap<RequestId, ApprovalState>,
     outbox: Outbox,
     #[serde(skip)]
     connection: ConnectionState,
@@ -37,7 +65,16 @@ struct SessionFields {
 
 impl<'de> Deserialize<'de> for HostSessionState {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let state = SessionFields::deserialize(deserializer)?;
+        let mut state = SessionFields::deserialize(deserializer)?;
+        for (id, approval) in &state.pending_approvals {
+            state
+                .approval_states
+                .entry(id.clone())
+                .or_insert_with(|| ApprovalState {
+                    approval: approval.clone(),
+                    status: ApprovalStatus::Pending,
+                });
+        }
         state
             .validate(&state.cursor.host_id)
             .map_err(serde::de::Error::custom)?;
@@ -53,6 +90,7 @@ impl HostSessionState {
             threads: BTreeMap::new(),
             surfaces: BTreeMap::new(),
             pending_approvals: BTreeMap::new(),
+            approval_states: BTreeMap::new(),
             outbox: Outbox::new(host_id),
             connection: ConnectionState::Offline,
             snapshot_transfer: Default::default(),
@@ -77,6 +115,10 @@ impl HostSessionState {
 
     pub fn pending_approvals(&self) -> &BTreeMap<RequestId, PendingApproval> {
         &self.pending_approvals
+    }
+
+    pub fn approval_states(&self) -> &BTreeMap<RequestId, ApprovalState> {
+        &self.approval_states
     }
 
     pub fn outbox(&self) -> &Outbox {
@@ -133,12 +175,20 @@ impl HostSessionState {
         let snapshot: HostSnapshot =
             serde_json::from_value(serde_json::to_value(snapshot).map_err(invalid_state)?)
                 .map_err(invalid_state)?;
+        if snapshot.cursor.seq < self.cursor.seq {
+            return Err(HostError::new(
+                HostErrorCode::InvalidCursor,
+                "snapshot precedes committed cursor",
+            ));
+        }
         let mut next = self.clone();
         next.snapshot_transfer.reset();
         next.cursor = snapshot.cursor;
         next.threads.clear();
         next.surfaces.clear();
         next.pending_approvals.clear();
+        next.approval_states
+            .retain(|_, state| state.status != ApprovalStatus::Pending);
         for thread in snapshot.threads {
             if next.threads.insert(thread.thread.clone(), thread).is_some() {
                 return Err(HostError::new(
@@ -168,6 +218,23 @@ impl HostSessionState {
             }
         }
         for approval in snapshot.pending_approvals {
+            if self
+                .pending_approvals
+                .get(&approval.approval_id)
+                .is_some_and(|previous| previous != &approval)
+            {
+                return Err(invalid_approval("approval authority changed"));
+            }
+            if next.approval_states.contains_key(&approval.approval_id) {
+                return Err(invalid_approval("terminal approval cannot become pending"));
+            }
+            next.approval_states.insert(
+                approval.approval_id.clone(),
+                ApprovalState {
+                    approval: approval.clone(),
+                    status: ApprovalStatus::Pending,
+                },
+            );
             if next
                 .pending_approvals
                 .insert(approval.approval_id.clone(), approval)
@@ -208,6 +275,45 @@ impl HostSessionState {
                 "authoritative snapshot required",
             ));
         }
+        if matches!(event.kind.as_str(), "approval.created" | "approval.updated") {
+            let envelope: ApprovalEnvelope = serde_json::from_value(event.payload.clone())
+                .map_err(|_| invalid_approval("invalid approval envelope"))?;
+            require_host(host_id, &envelope.host_id)?;
+            if event.scope_id != envelope.approval.thread {
+                return Err(invalid_approval("approval thread mismatch"));
+            }
+            if event.kind == "approval.created" && envelope.status != ApprovalStatus::Pending {
+                return Err(invalid_approval("created approval must be pending"));
+            }
+            let previous_state = self.approval_states.get(&envelope.approval.approval_id);
+            if previous_state.is_some_and(|state| {
+                state.status != ApprovalStatus::Pending && state.status != envelope.status
+            }) {
+                return Err(invalid_approval("terminal approval status cannot change"));
+            }
+            let previous = previous_state
+                .map(|state| &state.approval)
+                .or_else(|| self.pending_approvals.get(&envelope.approval.approval_id));
+            if let Some(previous) = previous {
+                if previous != &envelope.approval {
+                    return Err(invalid_approval("approval authority changed"));
+                }
+            }
+            self.approval_states.insert(
+                envelope.approval.approval_id.clone(),
+                ApprovalState {
+                    approval: envelope.approval.clone(),
+                    status: envelope.status,
+                },
+            );
+            if envelope.status == ApprovalStatus::Pending {
+                self.pending_approvals
+                    .insert(envelope.approval.approval_id.clone(), envelope.approval);
+            } else {
+                self.pending_approvals
+                    .remove(&envelope.approval.approval_id);
+            }
+        }
         if mote_protocol::ThreadProjection::handles(&event.kind) {
             let mut projection = match self.threads.get(&event.scope_id) {
                 Some(thread) => mote_protocol::ThreadProjection::resume(thread.clone()),
@@ -227,6 +333,13 @@ impl HostSessionState {
             if let Some(id) = event.payload["approval_id"].as_str() {
                 if let Ok(id) = RequestId::new(id) {
                     self.pending_approvals.remove(&id);
+                    if self
+                        .approval_states
+                        .get(&id)
+                        .is_some_and(|state| state.status == ApprovalStatus::Pending)
+                    {
+                        self.approval_states.remove(&id);
+                    }
                 }
             }
         }
@@ -278,10 +391,24 @@ impl HostSessionState {
                 ));
             }
         }
+        for (id, state) in &self.approval_states {
+            if id != &state.approval.approval_id
+                || (state.status == ApprovalStatus::Pending
+                    && self.pending_approvals.get(id) != Some(&state.approval))
+                || (state.status != ApprovalStatus::Pending
+                    && self.pending_approvals.contains_key(id))
+            {
+                return Err(invalid_approval("approval state mismatch"));
+            }
+        }
         Ok(())
     }
 }
 
 fn invalid_state(_: serde_json::Error) -> HostError {
     HostError::new(HostErrorCode::InvalidRequest, "invalid host snapshot")
+}
+
+fn invalid_approval(message: &str) -> HostError {
+    HostError::new(HostErrorCode::InvalidApproval, message)
 }

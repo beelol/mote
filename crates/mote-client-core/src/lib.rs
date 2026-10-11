@@ -1,6 +1,7 @@
 //! Platform-neutral Matrix rendering and chat state shared by native host adapters.
 
 pub mod accessibility;
+pub mod approval;
 pub mod contract;
 pub mod gallery;
 #[cfg(any(test, feature = "test-observation"))]

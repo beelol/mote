@@ -335,6 +335,7 @@ pub struct LiveRuntime {
     pub(crate) persist: Sender<HostUpdate>,
     pub(crate) commands: BTreeMap<HostId, Sender<HostCommand>>,
     pub(crate) status: BTreeMap<HostId, String>,
+    pub(crate) approval_requests: BTreeMap<(HostId, RequestId), RequestId>,
 }
 
 impl LiveRuntime {
@@ -437,6 +438,7 @@ impl LiveRuntime {
             persist,
             commands,
             status: BTreeMap::new(),
+            approval_requests: BTreeMap::new(),
         }))
     }
 
@@ -461,19 +463,26 @@ impl LiveRuntime {
                 _ => {}
             }
             if let Err(error) = self.directory.reduce_update(update) {
-                self.status.insert(host, error.message);
+                self.status.insert(host.clone(), error.message);
             }
+            self.approval_requests.retain(|(host, approval), _| {
+                !self.directory.state(host).is_ok_and(|state| {
+                    state.approval_states().get(approval).is_some_and(|state| {
+                        state.status != mote_host_client::ApprovalStatus::Pending
+                    })
+                })
+            });
         }
     }
 
-    fn send(&mut self, host: &HostId, frame: ClientFrame) {
+    fn send(&mut self, host: &HostId, frame: ClientFrame) -> bool {
         if !self
             .directory
             .state(host)
             .is_ok_and(|state| state.connection() == &ConnectionState::Online)
         {
             self.status.insert(host.clone(), "Host is offline".into());
-            return;
+            return false;
         }
         if let Some(sender) = self.commands.get(host) {
             if sender
@@ -484,11 +493,13 @@ impl LiveRuntime {
                 .is_ok()
             {
                 self.status.insert(host.clone(), "Waiting for host".into());
+                return true;
             } else {
                 self.status
                     .insert(host.clone(), "Host connection is unavailable".into());
             }
         }
+        false
     }
 
     pub fn draw(&mut self, ctx: &egui::Context, safe: egui::Margin, composer: &mut String) {
@@ -586,6 +597,25 @@ impl LiveRuntime {
                 .and_then(|surfaces| surfaces.last_key_value())
                 .map(|(_, surface)| surface.clone());
             let snapshot_cursor = state.cursor().seq;
+            let (mut approvals, mut terminal): (Vec<_>, Vec<_>) = state
+                .approval_states()
+                .values()
+                .filter(|state| state.approval.thread == thread && state.approval.kind == "browser")
+                .cloned()
+                .partition(|state| state.status == mote_host_client::ApprovalStatus::Pending);
+            terminal.sort_by(|left, right| {
+                right
+                    .approval
+                    .expires_at
+                    .cmp(&left.approval.expires_at)
+                    .then_with(|| right.approval.approval_id.cmp(&left.approval.approval_id))
+            });
+            approvals.extend(terminal.into_iter().take(6));
+            let host_name = self
+                .directory
+                .host(&host)
+                .map_or("Host", |paired| paired.name())
+                .to_owned();
             egui::ScrollArea::vertical()
                 .id_salt(("live-chat", &host))
                 .max_height(ui.available_height() * 0.32)
@@ -594,6 +624,71 @@ impl LiveRuntime {
                         ui.label(format!("{:?}: {}", message.role, message.text));
                     }
                 });
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+                .min(i64::MAX as u128) as i64;
+            let approval_area = egui::ScrollArea::vertical()
+                .id_salt(("live-approvals", &host))
+                .max_height(ui.available_height() * 0.45)
+                .show(ui, |ui| {
+                    for approval in approvals {
+                        let key = (host.clone(), approval.approval.approval_id.clone());
+                        if approval.status == mote_host_client::ApprovalStatus::Pending
+                            && now_ms < approval.approval.expires_at
+                        {
+                            ctx.request_repaint_after(Duration::from_millis(
+                                (approval.approval.expires_at - now_ms).min(1000) as u64,
+                            ));
+                        }
+                        if let Some(decision) = mote_client_core::approval::draw(
+                            ui,
+                            mote_client_core::approval::Card {
+                                host_id: &host,
+                                host_name: &host_name,
+                                approval: &approval.approval,
+                                status: match approval.status {
+                                    mote_host_client::ApprovalStatus::Pending => {
+                                        mote_client_core::approval::ApprovalStatus::Pending
+                                    }
+                                    mote_host_client::ApprovalStatus::Approved => {
+                                        mote_client_core::approval::ApprovalStatus::Approved
+                                    }
+                                    mote_host_client::ApprovalStatus::Denied => {
+                                        mote_client_core::approval::ApprovalStatus::Denied
+                                    }
+                                    mote_host_client::ApprovalStatus::Expired => {
+                                        mote_client_core::approval::ApprovalStatus::Expired
+                                    }
+                                    mote_host_client::ApprovalStatus::Failed => {
+                                        mote_client_core::approval::ApprovalStatus::Failed
+                                    }
+                                },
+                                online,
+                                in_flight: self.approval_requests.contains_key(&key),
+                                now_ms,
+                            },
+                        ) {
+                            let request_id = RequestId::new(format!("approval-{}", unique_id()))
+                                .expect("generated ID");
+                            if self.send(
+                                &host,
+                                ClientFrame::ApprovalDecision {
+                                    request_id: request_id.clone(),
+                                    decision,
+                                },
+                            ) {
+                                self.approval_requests.insert(key, request_id);
+                                ctx.request_repaint();
+                            }
+                        }
+                    }
+                });
+            #[cfg(test)]
+            mote_client_core::observation::scroll("approvals", ui.clip_rect(), &approval_area);
+            #[cfg(not(test))]
+            let _ = approval_area;
             if let Some(surface) = surface {
                 let bytes = serde_json::to_vec(&surface.tree).unwrap_or_default();
                 match mote_ui::v1::validate(&bytes) {
