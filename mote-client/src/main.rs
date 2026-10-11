@@ -20,8 +20,9 @@ mod surface;
 mod surface_v1;
 mod theme;
 
-use std::sync::mpsc;
+#[cfg(test)]
 use matrix_submission::submit_matrix;
+use std::sync::mpsc;
 
 fn matrix_source(args: &[std::ffi::OsString]) -> Result<Option<String>, String> {
     if args.first().is_none_or(|argument| argument != "--matrix") {
@@ -75,48 +76,73 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             let clock = display_latency::InstantClock::shared();
             let live_mode = fixture.is_none() && chat_state_fixture.is_none();
-            let host_cursor = live_mode.then(|| cursor::local_host_cursor(&socket).ok()).flatten();
-            let (cursor_path, loaded_cursor) = host_cursor.map_or((None, None), |(path, loaded)| (Some(path), Some(loaded)));
+            let host = stream::UnixHostSession::new(&socket);
+            let host_cursor = live_mode
+                .then(|| {
+                    host.verified_client().ok().and_then(|mut client| {
+                        cursor::local_host_cursor_from_client(&mut client).ok()
+                    })
+                })
+                .flatten();
+            let (cursor_path, loaded_cursor) =
+                host_cursor.map_or((None, None), |(path, loaded)| (Some(path), Some(loaded)));
             let cursor_seq = loaded_cursor.as_ref().map_or(0, |loaded| loaded.seq);
             let cursor_warning = loaded_cursor.and_then(|loaded| loaded.warning);
             if live_mode {
-                let benchmark_socket = socket.clone();
+                let benchmark_host = host.clone();
                 let benchmark_clock = clock.clone();
                 let benchmark_tx = tx.clone();
                 let benchmark_repaint = cc.egui_ctx.clone();
                 std::thread::spawn(move || {
                     stream::run_benchmark(
-                        &benchmark_socket, benchmark_tx, benchmark_clock,
+                        &benchmark_host,
+                        benchmark_tx,
+                        benchmark_clock,
                         move || benchmark_repaint.request_repaint(),
                     );
                 });
                 let sock = socket.clone();
                 let stream_clock = clock.clone();
                 let repaint = cc.egui_ctx.clone();
+                let stream_host = host.clone();
                 std::thread::spawn(move || {
                     if let Some(source) = source {
-                        let submission_socket = sock.clone();
-                        stream::run_after_connect(
-                            &sock, "main", cursor_seq, tx, stream_clock,
+                        let submission_host = stream_host.clone();
+                        stream::run_pinned(
+                            stream_host,
+                            &sock,
+                            "main",
+                            cursor_seq,
+                            tx,
+                            stream_clock,
                             move || repaint.request_repaint(),
                             move || {
-                                if let Err(error) = submit_matrix(&submission_socket, &source) {
+                                if let Err(error) = matrix_submission::submit_matrix_for_host(
+                                    &submission_host,
+                                    &source,
+                                ) {
                                     eprintln!("{error}");
                                     std::process::exit(2);
                                 }
                             },
                         );
                     } else {
-                        stream::run(
-                            &sock, "main", cursor_seq, tx, stream_clock,
+                        stream::run_pinned(
+                            stream_host,
+                            &sock,
+                            "main",
+                            cursor_seq,
+                            tx,
+                            stream_clock,
                             move || repaint.request_repaint(),
+                            || {},
                         );
                     }
                 });
             }
             let mut app = app::MoteApp::new(
                 cc,
-                socket,
+                host,
                 rx,
                 fixture,
                 chat_state_fixture,

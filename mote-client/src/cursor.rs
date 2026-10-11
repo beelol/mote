@@ -54,14 +54,27 @@ pub fn migrate_legacy(data_dir: &Path, host: &mote_protocol::HostId) -> io::Resu
     Ok(load(&target))
 }
 
-pub fn local_host_cursor(socket: &Path) -> io::Result<(PathBuf, LoadedCursor)> {
-    local_host_path_in(socket, &mote_paths::data_dir())
+pub fn local_host_cursor_from_client(
+    client: &mut mote_ipc::Client,
+) -> io::Result<(PathBuf, LoadedCursor)> {
+    local_host_path_from_client(client, &mote_paths::data_dir())
 }
 
+#[cfg(test)]
 fn local_host_path_in(socket: &Path, data_dir: &Path) -> io::Result<(PathBuf, LoadedCursor)> {
     let mut client = mote_ipc::Client::connect(socket)?;
-    let hello = client.call("hello", serde_json::json!({}))?.map_err(|error| io::Error::other(error.message))?;
-    let host: mote_protocol::HostId = serde_json::from_value(hello["host_id"].clone()).map_err(io::Error::other)?;
+    local_host_path_from_client(&mut client, data_dir)
+}
+
+fn local_host_path_from_client(
+    client: &mut mote_ipc::Client,
+    data_dir: &Path,
+) -> io::Result<(PathBuf, LoadedCursor)> {
+    let hello = client
+        .call("hello", serde_json::json!({}))?
+        .map_err(|error| io::Error::other(error.message))?;
+    let host: mote_protocol::HostId =
+        serde_json::from_value(hello["host_id"].clone()).map_err(io::Error::other)?;
     let loaded = migrate_legacy(data_dir, &host)?;
     Ok((host_path(data_dir, &host, "main"), loaded))
 }

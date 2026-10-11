@@ -315,6 +315,9 @@ pub struct Client {
 impl Client {
     pub fn connect(path: &Path) -> io::Result<Client> {
         let writer = UnixStream::connect(path)?;
+        if !peer_allowed(writer.as_raw_fd(), our_uid()) {
+            return Err(io::Error::new(io::ErrorKind::PermissionDenied, "Unix host peer UID differs"));
+        }
         let reader = BufReader::new(writer.try_clone()?);
         Ok(Client { path: path.to_path_buf(), reader, writer, next_id: 1 })
     }

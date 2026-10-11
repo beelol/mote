@@ -94,11 +94,27 @@ struct HostEntry {
     state: HostSessionState,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(try_from = "UncheckedDirectory")]
 pub struct HostDirectory {
     hosts: BTreeMap<HostId, HostEntry>,
     selected_host: Option<HostId>,
+    local_state: Option<HostSessionState>,
+}
+
+impl Serialize for HostDirectory {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::{Error, SerializeStruct};
+        if self.local_state.is_some() {
+            return Err(S::Error::custom(
+                "trusted local projection cannot be persisted as paired hosts",
+            ));
+        }
+        let mut value = serializer.serialize_struct("HostDirectory", 2)?;
+        value.serialize_field("hosts", &self.hosts)?;
+        value.serialize_field("selected_host", &self.selected_host)?;
+        value.end()
+    }
 }
 
 #[derive(Deserialize)]
@@ -120,6 +136,7 @@ impl TryFrom<UncheckedDirectory> for HostDirectory {
         let directory = Self {
             hosts: value.hosts,
             selected_host: value.selected_host,
+            local_state: None,
         };
         if let Some(id) = &directory.selected_host {
             directory.host(id)?;
@@ -129,6 +146,15 @@ impl TryFrom<UncheckedDirectory> for HostDirectory {
 }
 
 impl HostDirectory {
+    /// Ephemeral projection for an identity learned over a peer-authorized local transport.
+    /// This is not a remote pairing and cannot be serialized as a paired-host directory.
+    pub fn trusted_local_projection(host_id: HostId) -> Self {
+        Self {
+            hosts: BTreeMap::new(),
+            local_state: Some(HostSessionState::new(&host_id)),
+            selected_host: Some(host_id),
+        }
+    }
     pub fn hosts(&self) -> impl Iterator<Item = &PairedHost> {
         self.hosts.values().map(|entry| &entry.host)
     }
@@ -164,6 +190,11 @@ impl HostDirectory {
         self.hosts
             .get(host_id)
             .map(|entry| &entry.state)
+            .or_else(|| {
+                self.local_state
+                    .as_ref()
+                    .filter(|state| &state.cursor().host_id == host_id)
+            })
             .ok_or_else(unpaired_host)
     }
 
@@ -172,7 +203,7 @@ impl HostDirectory {
     }
 
     pub fn select_host(&mut self, host_id: &HostId) -> Result<(), HostError> {
-        self.host(host_id)?;
+        self.state(host_id)?;
         self.selected_host = Some(host_id.clone());
         Ok(())
     }
@@ -231,6 +262,11 @@ impl HostDirectory {
         self.hosts
             .get_mut(host_id)
             .map(|entry| &mut entry.state)
+            .or_else(|| {
+                self.local_state
+                    .as_mut()
+                    .filter(|state| &state.cursor().host_id == host_id)
+            })
             .ok_or_else(unpaired_host)
     }
 }
@@ -240,4 +276,45 @@ fn unpaired_host() -> HostError {
         HostErrorCode::Unauthorized,
         "host is not paired in this directory",
     )
+}
+
+#[cfg(test)]
+mod local_tests {
+    use super::*;
+    use crate::{ConnectionState, HostUpdate};
+
+    #[test]
+    fn trusted_local_projection_is_host_scoped_and_never_remote_pairing() {
+        let id = HostId::from_public_key(&[73; 32]);
+        let mut directory = HostDirectory::trusted_local_projection(id.clone());
+        assert_eq!(directory.selected_host(), Some(&id));
+        assert_eq!(directory.hosts().count(), 0);
+        assert!(directory.host(&id).is_err());
+        assert!(serde_json::to_vec(&directory).is_err());
+        assert!(directory
+            .state(&HostId::from_public_key(&[74; 32]))
+            .is_err());
+        directory
+            .reduce_update(HostUpdate::Connection {
+                host_id: id.clone(),
+                state: ConnectionState::Online,
+            })
+            .unwrap();
+        assert_eq!(
+            directory.state(&id).unwrap().connection(),
+            &ConnectionState::Online
+        );
+        let error = HostError::new(HostErrorCode::IdentityChanged, "replacement rejected");
+        assert_eq!(
+            directory.reduce_update(HostUpdate::Failed {
+                host_id: id.clone(),
+                error: error.clone()
+            }),
+            Err(error)
+        );
+        assert_eq!(
+            directory.state(&id).unwrap().connection(),
+            &ConnectionState::IdentityChanged
+        );
+    }
 }

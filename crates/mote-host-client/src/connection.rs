@@ -34,7 +34,7 @@ pub trait HostTransport {
 impl crate::HostDirectory {
     pub fn receive_frame(&mut self, host: &HostId, frame: HostFrame) -> Result<(), HostError> {
         use mote_protocol::HostErrorCode;
-        self.host(host)?;
+        self.state(host)?;
         let frame = match self.snapshot_frame(host, frame) {
             Ok(Some(frame)) => frame,
             Ok(None) => return Ok(()),

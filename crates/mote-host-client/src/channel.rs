@@ -56,7 +56,7 @@ impl HostDirectory {
             HostUpdate::Frame { host_id, frame } => self.receive_frame(&host_id, frame),
             HostUpdate::Connection { host_id, state } => self.set_connection(&host_id, state),
             HostUpdate::Failed { host_id, error } => {
-                self.host(&host_id)?;
+                self.state(&host_id)?;
                 if error.code == mote_protocol::HostErrorCode::IdentityChanged {
                     self.set_connection(&host_id, ConnectionState::IdentityChanged)?;
                 }

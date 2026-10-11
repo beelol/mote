@@ -5,7 +5,6 @@ use crate::state::{ChatState, LocalMessageId};
 use crate::stream::StreamUpdate;
 use eframe::egui;
 use mote_eventlog::Event;
-use mote_ipc::Client;
 #[cfg(any(test, feature = "test-observation"))]
 use mote_ui::Node;
 use std::path::PathBuf;
@@ -96,21 +95,15 @@ fn spawn_config_worker_with(
 }
 
 fn spawn_config_worker(
-    socket: PathBuf,
+    host: crate::stream::UnixHostSession,
     requests: Receiver<ConfigBatch>,
     results: Sender<ConfigBatchResult>,
 ) {
     spawn_config_worker_with(requests, results, move |request| {
-        let mut client =
-            Client::connect(&socket).map_err(|error| format!("cannot reach daemon: {error}"))?;
-        client
-            .call(
-                "config.set",
-                serde_json::json!({ "key": request.key, "value": request.value }),
-            )
-            .map_err(|error| format!("cannot set {}: {error}", request.key))?
-            .map(|_| ())
-            .map_err(|error| error.message)
+        host.call(
+            "config.set",
+            serde_json::json!({ "key": request.key, "value": request.value }),
+        )
     });
 }
 
@@ -130,12 +123,12 @@ fn spawn_ui_event_worker_with(
 }
 
 fn spawn_ui_event_worker(
-    socket: PathBuf,
+    host: crate::stream::UnixHostSession,
     requests: Receiver<crate::surface::SurfaceEvent>,
     results: Sender<UiEventResult>,
 ) {
     spawn_ui_event_worker_with(requests, results, move |event| {
-        crate::stream::UnixHostAdapter::call(&socket, "ui.event", ui_event_params(event))
+        host.call("ui.event", ui_event_params(event))
     });
 }
 
@@ -183,7 +176,7 @@ const CONFIG_KEYS: [&str; 9] = [
 const LIVE_EVENT_BUFFER_LIMIT: usize = 200;
 
 pub struct MoteApp {
-    socket: PathBuf,
+    host: crate::stream::UnixHostSession,
     rx: Receiver<StreamUpdate>,
     chat: ChatState,
     input: String,
@@ -226,7 +219,7 @@ impl MoteApp {
 
     pub fn new(
         cc: &eframe::CreationContext<'_>,
-        socket: PathBuf,
+        host: crate::stream::UnixHostSession,
         rx: Receiver<StreamUpdate>,
         fixture: Option<crate::contract::Surface>,
         chat_state_fixture: Option<crate::fixture::ChatStateFixture>,
@@ -238,13 +231,13 @@ impl MoteApp {
         let (pipeline_tx, pipeline_rx) = mpsc::channel();
         let (config_tx, config_requests) = mpsc::channel();
         let (config_results, config_rx) = mpsc::channel();
-        spawn_config_worker(socket.clone(), config_requests, config_results);
+        spawn_config_worker(host.clone(), config_requests, config_results);
         let (ui_event_tx, ui_event_requests) = mpsc::channel();
         let (ui_event_results, ui_event_rx) = mpsc::channel();
-        spawn_ui_event_worker(socket.clone(), ui_event_requests, ui_event_results);
+        spawn_ui_event_worker(host.clone(), ui_event_requests, ui_event_results);
         let live_mode = fixture.is_none() && chat_state_fixture.is_none();
         Self {
-            socket,
+            host,
             rx,
             chat: chat_state_fixture.map_or_else(ChatState::default, ChatState::fixture),
             input: String::new(),
@@ -372,10 +365,11 @@ impl MoteApp {
             return;
         }
         self.pipeline_loading = true;
-        let socket = self.socket.clone();
+        let host = self.host.clone();
         let tx = self.pipeline_tx.clone();
         spawn_pipeline_load_with(tx, move || {
-            let mut client = Client::connect(&socket)
+            let mut client = host
+                .verified_client()
                 .map_err(|error| format!("cannot reach daemon: {error}"))?;
             let value = client
                 .call("pipeline.snapshot", serde_json::json!({}))
@@ -405,17 +399,17 @@ impl MoteApp {
         self.input.clear();
         let pending = self.chat.push_optimistic_user(msg.clone());
         let request_id = pending.clone();
-        let socket = self.socket.clone();
+        let host = self.host.clone();
         let result_tx = self.turn_tx.clone();
         std::thread::spawn(move || {
-            let result = crate::stream::UnixHostAdapter::call(&socket,
-                    "turn",
-                    serde_json::json!({
-                        "thread": "main",
-                        "message": msg,
-                        "client_message_id": request_id
-                    }),
-                );
+            let result = host.call(
+                "turn",
+                serde_json::json!({
+                    "thread": "main",
+                    "message": msg,
+                    "client_message_id": request_id
+                }),
+            );
             let _ = result_tx.send((pending, result));
         });
     }
@@ -1029,13 +1023,14 @@ mod tests {
         let (pipeline_tx, pipeline_rx) = std::sync::mpsc::channel();
         let (config_tx, config_requests) = std::sync::mpsc::channel();
         let (config_results, config_rx) = std::sync::mpsc::channel();
-        spawn_config_worker(PathBuf::new(), config_requests, config_results);
+        let host = crate::stream::UnixHostSession::new(std::path::Path::new(""));
+        spawn_config_worker(host.clone(), config_requests, config_results);
         let (ui_event_tx, ui_event_requests) = std::sync::mpsc::channel();
         let (ui_event_results, ui_event_rx) = std::sync::mpsc::channel();
-        spawn_ui_event_worker(PathBuf::new(), ui_event_requests, ui_event_results);
+        spawn_ui_event_worker(host.clone(), ui_event_requests, ui_event_results);
         (
             MoteApp {
-                socket: PathBuf::new(),
+                host,
                 rx,
                 chat: ChatState::default(),
                 input: String::new(),

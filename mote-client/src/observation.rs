@@ -52,13 +52,14 @@ impl Default for ObservationHarness {
         let (pipeline_tx, pipeline_rx) = mpsc::channel();
         let (config_tx, config_requests) = mpsc::channel();
         let (config_results, config_rx) = mpsc::channel();
-        spawn_config_worker(PathBuf::new(), config_requests, config_results);
+        let host = crate::stream::UnixHostSession::new(std::path::Path::new(""));
+        spawn_config_worker(host.clone(), config_requests, config_results);
         let ctx = egui::Context::default();
         ctx.enable_accesskit();
         crate::theme::install(&ctx);
         Self {
             app: MoteApp {
-                socket: PathBuf::new(),
+                host,
                 rx,
                 chat: ChatState::default(),
                 input: String::new(),
