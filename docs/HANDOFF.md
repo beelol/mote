@@ -1,32 +1,26 @@
-# Handoff: Surface accessibility roles
+# Handoff: Matrix compiler latency
 
 Updated 2026-10-10. Replace this file, never append.
 
-Branch: `main`. Base: `895cbb1`.
-Commits: `fix(client): expose surface accessibility roles`,
-`fix(client): route accessibility actions to controls` and
-`fix(client): focus fields on accessibility click`.
+Branch: `main`. Base: `0b7c0a6`.
+Commit: `perf(matrix): benchmark compiler p95`.
 Preserve untracked `.DS_Store` and `.superpowers/`. Do not push.
 
-The production egui surface renderer now emits current-v0 AccessKit roles, names and values from
-the existing surface namespace and structural path. The semantic hierarchy covers text, lists,
-tables, fields, toggles, selects, actions, progress and chat. Duplicate visual labels are hidden
-from AccessKit after their names are assigned, so the filtered tree has no duplicate nodes.
+`moted bench compiler` now benchmarks the production Matrix compiler with a fixed in-memory
+fixture. It performs 200 untimed warmups and 2,000 interleaved samples. It reports nearest-rank p95
+for parsing, resolve and check, v0 lowering and production end-to-end compilation. Debug builds
+refuse to run.
 
-Fix Round 1 moved Field, Toggle, Select and Action semantics onto their real egui response ids.
-Fix Round 2 explicitly converts an AccessKit Field click into an egui focus request because
-TextEdit's native click handling requires a pointer position. The emitted Field id now handles both
-focus and click. Field keeps egui's native TextRun children, text range metadata and
-`SetTextSelection` handling. Only duplicate visual labels and scroll interaction nodes are hidden.
+The JSON report includes the Git revision, release profile, Rust and Cargo versions, operating
+system, architecture, hardware name, source and combined fixture hashes, manifest version, sample
+counts, percentile method, nanosecond and millisecond results and target state. The report appends
+to `bench.jsonl`. The compiler command initializes no database, daemon, Ollama client or live user
+configuration.
 
-The observation harness captures the real AccessKit update through `MoteApp::draw_shell` and
-traverses an `accesskit_consumer::Tree` with the macOS adapter's `common_filter`. Eleven checked-in
-goldens cover all ten fixtures and the gallery. Both 800 by 480 and 1280 by 800 compare exactly, for
-22 production-shell comparisons.
+The Apple M5 Max release run passed. Production end-to-end p95 was 39,458 ns against a strict
+2,000,000 ns limit. UI-46 remains partial because no real Raspberry Pi 5 run exists. Raspberry Pi 5
+must be identified by its hardware model before the 10,000,000 ns budget applies.
 
-UI-22 remains open. It still needs an unlocked native NSAccessibility dump and the other target.
-Typed alt text, live status and overlay focus remain outside the current consumer contract.
-
-Focused accessibility passed four tests and 22 role-tree comparisons. The client passed 104 tests.
-The workspace passed 386 tests. Workspace clippy and `git diff --check` passed. No remote write or
-push occurred.
+The fixed source hash is `358e1bbbdb30b38a134a6b43152b3b90bddc463ac493920eadcbee8b44f10ea3`.
+The combined fixture hash is `0cacb63fcbfda9cf8f199ccf26516f1e89c505fd8ba435b21109c121ae5305ee`.
+The byte and token measurement tools and output were not changed.

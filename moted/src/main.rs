@@ -3793,16 +3793,24 @@ fn main() {
     }
 }
 
-/// Run a named benchmark (`moted bench talk|router|memory|surface`).
+/// Run a named benchmark (`moted bench talk|router|memory|surface|compiler`).
 fn run_bench(name: Option<String>) -> Result<(), i32> {
     let name = name.ok_or_else(|| {
-        eprintln!("moted bench: name required (talk|router|memory|surface)");
+        eprintln!("moted bench: name required (talk|router|memory|surface|compiler)");
         1
     })?;
     let data = mote_paths::ensure_data_dir().map_err(|e| {
         eprintln!("moted bench: {e}");
         1
     })?;
+    if name == "compiler" {
+        let report = bench::run_compiler(&data).map_err(|error| {
+            eprintln!("moted bench compiler: {error}");
+            1
+        })?;
+        println!("{}", report.line());
+        return if report.target_failed() { Err(1) } else { Ok(()) };
+    }
     let gate = Arc::new(OllamaGate::new(Ollama::local()));
     let log = EventLog::open(&mote_paths::db_path()).map_err(|_| 1)?;
     let config = ConfigStore::load(&mote_paths::config_path(), log.clone(), gate).map_err(|e| {

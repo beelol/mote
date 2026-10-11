@@ -1,4 +1,5 @@
-//! Benchmarks: `moted bench talk|router|memory|surface`. The latency benchmarks report p50 and p95.
+//! Benchmarks: `moted bench talk|router|memory|surface|compiler`. The latency benchmarks report
+//! p50 and p95.
 //! The surface benchmark reports its fixed-corpus validity gate. Each appends one JSON line to
 //! `<data dir>/bench.jsonl`. See docs/rfcs/v0.md section 17.
 
@@ -12,10 +13,368 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::Path;
+use std::process::Command;
 use std::time::Instant;
 
 /// Default run count.
 pub const RUNS: usize = 20;
+
+const COMPILER_SOURCE: &str = include_str!("../../matrix/examples/mote-dashboard.matrix");
+const COMPILER_WARMUPS: usize = 200;
+const COMPILER_SAMPLES: usize = 2_000;
+
+struct CompilerFixture {
+    source: &'static str,
+    source_hash: String,
+    combined_hash: String,
+    config: BTreeMap<String, Value>,
+    pipeline: pipeline::PipelineSnapshot,
+    host: matrix::HostSnapshot,
+}
+
+impl CompilerFixture {
+    fn bindings(&self) -> Result<matrix::HostBindings, Vec<matrix_lang::Diagnostic>> {
+        matrix::host_bindings(&self.config, &self.pipeline, &self.host)
+    }
+}
+
+fn compiler_fixture() -> Result<CompilerFixture, String> {
+    let config = BTreeMap::from([
+        ("models.local_only".to_string(), json!(true)),
+        ("models.talk".to_string(), json!("qwen3:4b")),
+        ("models.router".to_string(), json!("qwen3:0.6b")),
+        ("models.think".to_string(), json!("qwen3-coder:30b-64k")),
+        ("budgets.talk_first_token".to_string(), json!(300)),
+        ("budgets.router".to_string(), json!(150)),
+        ("budgets.think_first_token".to_string(), json!(3000)),
+        ("packs.talk".to_string(), json!(600)),
+        ("packs.think".to_string(), json!(8000)),
+    ]);
+    let numbers = [
+        (
+            "talk",
+            11,
+            "first_token",
+            10,
+            Some(120),
+            Some(210),
+            730,
+            190,
+            Some(300),
+        ),
+        (
+            "router",
+            13,
+            "total",
+            13,
+            Some(21),
+            Some(45),
+            320,
+            80,
+            Some(150),
+        ),
+        (
+            "think",
+            3,
+            "first_token",
+            3,
+            Some(940),
+            Some(1700),
+            2400,
+            510,
+            Some(3000),
+        ),
+        ("memory", 7, "unavailable", 0, None, None, 0, 0, None),
+        ("ledger", 34, "unavailable", 0, None, None, 0, 0, None),
+    ]
+    .into_iter()
+    .map(
+        |(stage, calls, latency_metric, latency_samples, p50, p95, prompt, completion, budget)| {
+            pipeline::StageNumbers {
+                stage: stage.to_string(),
+                calls,
+                latency_metric: latency_metric.to_string(),
+                latency_samples,
+                latency_p50_ms: p50,
+                latency_p95_ms: p95,
+                prompt_tokens: prompt,
+                completion_tokens: completion,
+                cost_usd: 0.0,
+                budget_ms: budget,
+            }
+        },
+    )
+    .collect();
+    let pipeline = pipeline::PipelineSnapshot {
+        generated_at: 0,
+        event_limit: pipeline::PIPELINE_EVENT_LIMIT,
+        request_limit: pipeline::PIPELINE_REQUEST_LIMIT,
+        window_ms: 3_600_000,
+        config: config.clone(),
+        events: Vec::new(),
+        numbers,
+        requests: Vec::new(),
+    };
+    let canonical = serde_json::to_string(&json!({
+        "source": COMPILER_SOURCE,
+        "config": config,
+        "pipeline": pipeline,
+        "host": {"progress": 0.5, "items": ["first", "second"]},
+    }))
+    .map_err(|error| error.to_string())?;
+    Ok(CompilerFixture {
+        source: COMPILER_SOURCE,
+        source_hash: hash_text(COMPILER_SOURCE),
+        combined_hash: hash_text(&canonical),
+        config,
+        pipeline,
+        host: matrix::HostSnapshot::ready(0.5, ["first", "second"]),
+    })
+}
+
+fn nearest_rank(samples: &[u64], percentile: usize) -> u64 {
+    assert!(!samples.is_empty(), "percentile needs at least one sample");
+    assert!(
+        (1..=100).contains(&percentile),
+        "percentile must be 1 through 100"
+    );
+    let mut sorted = samples.to_vec();
+    sorted.sort_unstable();
+    let rank = (percentile * sorted.len()).div_ceil(100);
+    sorted[rank - 1]
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+enum CompilerBudget {
+    Passed { limit_ns: u64 },
+    Failed { limit_ns: u64 },
+    Unsupported,
+}
+
+fn compiler_budget(os: &str, arch: &str, hardware: &str, p95_ns: u64) -> CompilerBudget {
+    let limit_ns = if os == "macos" && arch == "aarch64" {
+        Some(2_000_000)
+    } else if os == "linux"
+        && arch == "aarch64"
+        && hardware.to_ascii_lowercase().contains("raspberry pi 5")
+    {
+        Some(10_000_000)
+    } else {
+        None
+    };
+    match limit_ns {
+        Some(limit_ns) if p95_ns < limit_ns => CompilerBudget::Passed { limit_ns },
+        Some(limit_ns) => CompilerBudget::Failed { limit_ns },
+        None => CompilerBudget::Unsupported,
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct CompilerReport {
+    name: &'static str,
+    revision: String,
+    profile: &'static str,
+    rustc_version: String,
+    cargo_version: String,
+    os: &'static str,
+    arch: &'static str,
+    hardware: String,
+    source_hash: String,
+    combined_hash: String,
+    manifest_version: u64,
+    warmups: usize,
+    samples: usize,
+    percentile_method: &'static str,
+    parse_p95_ns: u64,
+    parse_p95_ms: f64,
+    resolve_check_p95_ns: u64,
+    resolve_check_p95_ms: f64,
+    lower_v0_p95_ns: u64,
+    lower_v0_p95_ms: f64,
+    end_to_end_p95_ns: u64,
+    end_to_end_p95_ms: f64,
+    budget: CompilerBudget,
+}
+
+impl CompilerReport {
+    pub fn line(&self) -> String {
+        serde_json::to_string(self).expect("compiler report serializes")
+    }
+
+    pub fn target_failed(&self) -> bool {
+        matches!(self.budget, CompilerBudget::Failed { .. })
+    }
+}
+
+fn command_version(program: &str) -> String {
+    Command::new(program)
+        .arg("--version")
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|version| !version.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn hardware_name() -> String {
+    #[cfg(target_os = "macos")]
+    {
+        return Command::new("sysctl")
+            .args(["-n", "machdep.cpu.brand_string"])
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| "unknown Apple Silicon".to_string());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        return std::fs::read("/proc/device-tree/model")
+            .ok()
+            .map(|bytes| {
+                String::from_utf8_lossy(&bytes)
+                    .trim_matches(char::from(0))
+                    .trim()
+                    .to_string()
+            })
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| "unknown Linux hardware".to_string());
+    }
+    #[allow(unreachable_code)]
+    "unknown hardware".to_string()
+}
+
+fn elapsed_ns(start: Instant) -> u64 {
+    u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX)
+}
+
+fn compiler_pass(fixture: &CompilerFixture, bindings: &matrix::HostBindings) -> Result<(), String> {
+    let parsed = parse_surface(std::hint::black_box(fixture.source))
+        .map_err(|errors| matrix::diagnostics(&errors).to_string())?;
+    let resolved = resolve(
+        std::hint::black_box(&parsed),
+        std::hint::black_box(&bindings.manifest),
+        std::hint::black_box(&bindings.snapshot),
+    )
+    .map_err(|errors| matrix::diagnostics(&errors).to_string())?;
+    let lowered = lower_v0(std::hint::black_box(&resolved))
+        .map_err(|errors| matrix::diagnostics(&errors).to_string())?;
+    std::hint::black_box(lowered);
+    Ok(())
+}
+
+pub fn run_compiler(data_dir: &Path) -> Result<CompilerReport, String> {
+    if cfg!(debug_assertions) {
+        return Err("moted bench compiler requires a release build".to_string());
+    }
+    let fixture = compiler_fixture()?;
+    let bindings = fixture
+        .bindings()
+        .map_err(|errors| matrix::diagnostics(&errors).to_string())?;
+    for _ in 0..COMPILER_WARMUPS {
+        compiler_pass(&fixture, &bindings)?;
+        std::hint::black_box(
+            matrix::compile(
+                std::hint::black_box(fixture.source),
+                std::hint::black_box(&bindings),
+            )
+            .map_err(|errors| matrix::diagnostics(&errors).to_string())?,
+        );
+    }
+
+    let parsed =
+        parse_surface(fixture.source).map_err(|errors| matrix::diagnostics(&errors).to_string())?;
+    let resolved = resolve(&parsed, &bindings.manifest, &bindings.snapshot)
+        .map_err(|errors| matrix::diagnostics(&errors).to_string())?;
+    let mut parse_samples = Vec::with_capacity(COMPILER_SAMPLES);
+    let mut resolve_samples = Vec::with_capacity(COMPILER_SAMPLES);
+    let mut lower_samples = Vec::with_capacity(COMPILER_SAMPLES);
+    let mut end_to_end_samples = Vec::with_capacity(COMPILER_SAMPLES);
+    for _ in 0..COMPILER_SAMPLES {
+        let start = Instant::now();
+        std::hint::black_box(
+            parse_surface(std::hint::black_box(fixture.source))
+                .map_err(|errors| matrix::diagnostics(&errors).to_string())?,
+        );
+        parse_samples.push(elapsed_ns(start));
+
+        let start = Instant::now();
+        std::hint::black_box(
+            resolve(
+                std::hint::black_box(&parsed),
+                std::hint::black_box(&bindings.manifest),
+                std::hint::black_box(&bindings.snapshot),
+            )
+            .map_err(|errors| matrix::diagnostics(&errors).to_string())?,
+        );
+        resolve_samples.push(elapsed_ns(start));
+
+        let start = Instant::now();
+        std::hint::black_box(
+            lower_v0(std::hint::black_box(&resolved))
+                .map_err(|errors| matrix::diagnostics(&errors).to_string())?,
+        );
+        lower_samples.push(elapsed_ns(start));
+
+        let start = Instant::now();
+        std::hint::black_box(
+            matrix::compile(
+                std::hint::black_box(fixture.source),
+                std::hint::black_box(&bindings),
+            )
+            .map_err(|errors| matrix::diagnostics(&errors).to_string())?,
+        );
+        end_to_end_samples.push(elapsed_ns(start));
+    }
+
+    let parse_p95_ns = nearest_rank(&parse_samples, 95);
+    let resolve_check_p95_ns = nearest_rank(&resolve_samples, 95);
+    let lower_v0_p95_ns = nearest_rank(&lower_samples, 95);
+    let end_to_end_p95_ns = nearest_rank(&end_to_end_samples, 95);
+    let hardware = hardware_name();
+    let report = CompilerReport {
+        name: "compiler",
+        revision: revision(),
+        profile: "release",
+        rustc_version: command_version("rustc"),
+        cargo_version: command_version("cargo"),
+        os: std::env::consts::OS,
+        arch: std::env::consts::ARCH,
+        hardware: hardware.clone(),
+        source_hash: fixture.source_hash,
+        combined_hash: fixture.combined_hash,
+        manifest_version: u64::from(bindings.manifest.version),
+        warmups: COMPILER_WARMUPS,
+        samples: COMPILER_SAMPLES,
+        percentile_method: "nearest_rank",
+        parse_p95_ns,
+        parse_p95_ms: parse_p95_ns as f64 / 1_000_000.0,
+        resolve_check_p95_ns,
+        resolve_check_p95_ms: resolve_check_p95_ns as f64 / 1_000_000.0,
+        lower_v0_p95_ns,
+        lower_v0_p95_ms: lower_v0_p95_ns as f64 / 1_000_000.0,
+        end_to_end_p95_ns,
+        end_to_end_p95_ms: end_to_end_p95_ns as f64 / 1_000_000.0,
+        budget: compiler_budget(
+            std::env::consts::OS,
+            std::env::consts::ARCH,
+            &hardware,
+            end_to_end_p95_ns,
+        ),
+    };
+    let path = data_dir.join("bench.jsonl");
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|error| format!("could not append {}: {error}", path.display()))?;
+    writeln!(file, "{}", report.line())
+        .map_err(|error| format!("could not append {}: {error}", path.display()))?;
+    Ok(report)
+}
 
 #[derive(Clone, Debug)]
 struct SurfaceCase {
@@ -660,6 +1019,91 @@ mod tests {
     use mote_context::ContextStore;
     use mote_eventlog::EventLog;
     use mote_testkit::ScriptedServer;
+
+    #[test]
+    fn compiler_benchmark_fixture_is_fixed_and_exercises_v0_bindings() {
+        let fixture = compiler_fixture().unwrap();
+
+        assert_eq!(
+            fixture.source_hash,
+            "358e1bbbdb30b38a134a6b43152b3b90bddc463ac493920eadcbee8b44f10ea3"
+        );
+        assert_eq!(
+            fixture.combined_hash,
+            "0cacb63fcbfda9cf8f199ccf26516f1e89c505fd8ba435b21109c121ae5305ee"
+        );
+        assert_eq!(fixture.config.len(), 9);
+        assert_eq!(fixture.pipeline.numbers.len(), 5);
+
+        let parsed = parse_surface(fixture.source).unwrap();
+        let bindings = fixture.bindings().unwrap();
+        assert_eq!(
+            bindings.snapshot.values["host.items"],
+            json!([{"label": "first"}, {"label": "second"}])
+        );
+        assert_eq!(bindings.snapshot.values["host.progress"], json!(0.5));
+        let resolved = resolve(&parsed, &bindings.manifest, &bindings.snapshot).unwrap();
+        let lowered = lower_v0(&resolved).unwrap();
+        let encoded = serde_json::to_value(lowered).unwrap();
+        mote_ui::validate(&serde_json::to_vec(&encoded).unwrap()).unwrap();
+        let text = encoded.to_string();
+
+        assert!(text.contains("talk"));
+        assert!(text.contains("router"));
+        assert!(text.contains("think"));
+        assert!(text.contains("models.local_only"));
+        assert!(text.contains("models.talk"));
+        assert!(text.contains("refresh"));
+    }
+
+    #[test]
+    fn compiler_benchmark_uses_nearest_rank_p95() {
+        let samples = (1_u64..=20).collect::<Vec<_>>();
+
+        assert_eq!(nearest_rank(&samples, 95), 19);
+        assert_eq!(nearest_rank(&[7], 95), 7);
+    }
+
+    #[test]
+    fn compiler_benchmark_budget_only_passes_on_named_target_hardware() {
+        assert_eq!(
+            compiler_budget("macos", "aarch64", "Apple M4", 1_999_999),
+            CompilerBudget::Passed {
+                limit_ns: 2_000_000
+            }
+        );
+        assert_eq!(
+            compiler_budget("macos", "aarch64", "Apple M4", 2_000_000),
+            CompilerBudget::Failed {
+                limit_ns: 2_000_000
+            }
+        );
+        assert_eq!(
+            compiler_budget(
+                "linux",
+                "aarch64",
+                "Raspberry Pi 5 Model B Rev 1.0",
+                9_999_999
+            ),
+            CompilerBudget::Passed {
+                limit_ns: 10_000_000
+            }
+        );
+        assert_eq!(
+            compiler_budget("linux", "aarch64", "generic arm64", 100),
+            CompilerBudget::Unsupported
+        );
+    }
+
+    #[test]
+    fn compiler_benchmark_refuses_debug_builds() {
+        if cfg!(debug_assertions) {
+            assert_eq!(
+                run_compiler(Path::new("unused")).unwrap_err(),
+                "moted bench compiler requires a release build"
+            );
+        }
+    }
 
     #[test]
     fn three_benches_each_write_one_line() {
