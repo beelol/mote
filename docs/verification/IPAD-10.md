@@ -61,3 +61,15 @@ Output: exited 0 with the icon and native accessibility bridge together. The res
 Command: `security find-identity -v -p codesigning`.
 
 Output: `0 valid identities found`. No Apple Distribution certificate was available on this Mac for a signed archive. `MOTE_ASC_API_KEY_ID`, `MOTE_ASC_ISSUER_ID` and `API_PRIVATE_KEYS_DIR` were also absent from the process environment. No credentials or identity values were printed or added to Git. The selected Apple team, distinct app record and upload remain unverified.
+
+## Signing availability recheck
+
+Date: 2026-10-11, America/Los_Angeles. Environment: the same local Mac. This is a later read-only check and supersedes the earlier certificate inventory above.
+
+Command: `security find-identity -v -p codesigning`.
+
+Output: three valid identities were present, including one Apple Distribution identity. Its team has not been approved for Mote and must not be assumed from the certificate. No signing or archive command was run.
+
+Command: check whether `MOTE_ASC_API_KEY_ID`, `MOTE_ASC_ISSUER_ID` and `API_PRIVATE_KEYS_DIR` are set, without printing values.
+
+Output: all three were unset. The Mac was locked for native app access. A read-only browser navigation to App Store Connect reached its Apple Account sign-in page with `authResult=FAILED`, so the app inventory could not be inspected. No login, Mote app record or unique identity was confirmed. IPAD-10 remains unchecked.
