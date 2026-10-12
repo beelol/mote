@@ -105,3 +105,15 @@ Output: exited 0 on 2026-10-12. Live tests requiring a physical device or explic
 Command: `cargo clippy --workspace -- -D warnings`.
 
 Output: exited 0 with no warnings on 2026-10-12.
+
+## Account-backed preflight
+
+Date: 2026-10-12, America/Los_Angeles. Environment: the signed-in STATION 42 INTERACTIVE L.L.C. Apple account, Xcode 27.0 and the local Mac. The account inventory and proposed Mote identity are recorded in `docs/verification/IPAD-07.md`. No Apple mutation was made.
+
+Command: `python3 -B ios/Mote/distribute.py preflight --manifest /private/tmp/mote-preflight-2026-10-12-manifest.json --inventory /private/tmp/mote-preflight-2026-10-12-inventory.json --output /Users/bilal/projects/mote/target/distribution/0.1.0-1`.
+
+Output: exited 0 outside the restricted shell sandbox. It confirmed Xcode 27.0, iPhoneOS SDK 27.0, the physical Rust target and a local Apple Distribution identity for the observed team. The input is a manually supplied snapshot, not a live API query. The bundle ID and SKU remain provisional.
+
+Command: the same `archive-export` invocation with `--confirm-inventory-current` but without a Mote App Store Connect record or physical-device confirmation.
+
+Output: exited 1 with `A distinct App Store Connect record is required`. No archive output was created. This is a real refusal check, not a signed archive or upload pass.
