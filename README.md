@@ -298,7 +298,7 @@ The separate App Store Connect listing is [Mote Agent](https://appstoreconnect.a
     existing Simulator build without changing its bundle identity, behavior or tests. **Verify:**
     `aarch64-apple-ios` Rust check, an unsigned `iphoneos` build, unchanged Simulator
     gallery and paired-host journeys, and recorded Xcode, SDK and target versions.
-  - [ ] **IPAD-10** A repeatable, guarded distribution script performs a no-mutation preflight,
+  - [x] **IPAD-10** A repeatable, guarded distribution script performs a no-mutation preflight,
     then an explicit signed archive and `.ipa` export for only the confirmed Mote team and bundle
     ID. Upload is a separate opt-in command. **Verify:** test missing and colliding identity,
     absent signing, duplicate build number and bad output path fail closed without Apple mutation;

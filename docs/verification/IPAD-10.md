@@ -1,4 +1,4 @@
-# IPAD-10 verification in progress
+# IPAD-10 verification
 
 Date: 2026-10-11, America/Los_Angeles.
 
@@ -149,3 +149,15 @@ Output: export options set `method = app-store-connect`, `destination = export`,
 Command: `python3 -B -m unittest ios/Mote/test_distribute.py`, `cargo test --workspace`, `cargo clippy --workspace -- -D warnings` and `git diff --check`.
 
 Output: sixteen Python distribution tests, the full workspace tests and the warning-free clippy check all exited 0 on 2026-10-12. Live tests requiring explicit external fixtures or a physical device remained ignored. The diff whitespace check passed. The current diff contains only the release script, its tests, the distribution guide, README and verification documents. The archive, IPA, local manifest, inventory and signing material are outside Git. No API key or private-key value was used in these commands or emitted in their output.
+
+## Deliberate internal upload
+
+Date: 2026-10-12, America/Los_Angeles. Environment: the signed-in STATION 42 INTERACTIVE L.L.C. Xcode account on the local Mac, Xcode 27.0 and App Store Connect. The distinct `Mote Agent` app record was confirmed to show No Builds immediately before upload. The signed IPA receipt remained in the ignored `target/distribution/0.1.0-1c` directory.
+
+Command: `python3 -B ios/Mote/distribute.py upload --manifest /private/tmp/mote-preflight-2026-10-12-manifest.json --inventory /private/tmp/mote-preflight-2026-10-12-inventory.json --output /Users/bilal/projects/mote/target/distribution/0.1.0-1c --confirm-inventory-current --confirm-native-ui-verified --confirm-upload --use-xcode-account`.
+
+Output: exited 0. Preflight confirmed Xcode 27.0, iPhoneOS SDK 27.0, the physical Rust target and identity `com.beelol.mote`, team `FQ6YGD7554`, version `0.1.0 (1)`. Xcode's upload command succeeded. The script created `upload-attempt.json` before the Apple action to prevent a blind retry. No API key was created or printed. App Store Connect initially still showed No Builds after the successful command. On refresh, its iOS Builds page showed Build Uploads row `Version 0.1.0, Build (1)`, status `Processing`, created October 12, 2026 at 4:26 PM. A later refresh showed Build 1 in the processed version list as `Internal` with status `Missing Compliance`. The build identifier is `e05b53e3-adf2-4c60-baa1-5f36034e8d69`. The processing outcome is recorded. IPAD-10 is verified. The separate internal availability criterion IPAD-11 remains open.
+
+Command: `git grep` for private-key PEM headers and non-placeholder App Store Connect API key assignments, plus `rg` over the distribution receipt and logs.
+
+Output: no private-key material or credential values appeared. The only matching Git line was a documentation example with `...` placeholders. The run used Xcode's signed-in account, not a new API key. The release artifacts and attempt marker are ignored by Git.
