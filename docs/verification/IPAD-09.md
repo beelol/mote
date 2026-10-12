@@ -39,3 +39,17 @@ Output: exited 0. The first sandboxed attempt was denied a local browser fixture
 Command: `cargo clippy --workspace -- -D warnings`.
 
 Output: exited 0 with no warnings.
+
+## Final native Simulator journey recheck
+
+Date: 2026-10-11, America/Los_Angeles. Environment: macOS 26.6.2, iPad Pro 11-inch (M5) Simulator, iOS 27.0 (24A434), arm64. The app included the later packaging-time version settings from `340db58`. A new temporary Simulator was used and deleted after the checks. No physical iPad was involved.
+
+Command: `MOTE_LIVE=1 TMPDIR=/private/tmp MOTE_SIMULATOR_ID=54E1E19F-42B1-4E01-8AF5-2B8B2DB5463D MOTE_ARTIFACTS=/private/tmp/mote-ipad-final-inferred-20261011 MOTE_SURFACE_ATTESTATION=/private/tmp/mote-surface-attested.8F07uH/surface-activation.json cargo test -p mote-ios --test inferred_surface_simulator native_inferred -- --ignored --nocapture`.
+
+Output: one passed Rust test. The native XCUITest result bundle reported one passed test and zero failures. It verified successful inferred UI, one retry, prior-surface preservation, a terminal diagnostic and prose fallback. The harness reported 14 model calls, 14 ledger rows, 14 packs and three authenticated typed refusals.
+
+Command: `MOTE_LIVE=1 MOTE_CHROME='/private/tmp/mote-browser-runtime-155/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing' MOTE_SIMULATOR_ID=54E1E19F-42B1-4E01-8AF5-2B8B2DB5463D MOTE_ARTIFACTS=/private/tmp/mote-ipad-final-browser-20261011 cargo test -p mote-ios --test browser_approval native_paired -- --ignored --nocapture`.
+
+Output: one passed Rust test. The native XCUITest result bundle reported one passed test and zero failures. Denial released zero effects, repeated approval taps released exactly one effect, natural 120-second expiry released no additional effect, and the validated Matrix result matched.
+
+These rechecks strengthen Simulator evidence only. They do not substitute for installation or interaction on a physical iPad, or for the final signed TestFlight build.
