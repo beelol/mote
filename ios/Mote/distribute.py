@@ -158,6 +158,11 @@ def read_bundle_info(path, identity):
     for key, value in expected.items():
         if str(info.get(key)) != value:
             raise ReleaseError(f"Exported {key} does not match the approved identity")
+    icons = info.get("CFBundleIcons~ipad")
+    icon = icons.get("CFBundlePrimaryIcon") if isinstance(icons, dict) else None
+    if not isinstance(icon, dict) or icon.get("CFBundleIconName") != "AppIcon" or not (
+            Path(path).parent / "Assets.car").is_file():
+        raise ReleaseError("Exported iPad app icon is missing")
 
 
 def verify_signing(app, identity):

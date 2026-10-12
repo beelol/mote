@@ -135,6 +135,20 @@ class DistributionPreflightTests(unittest.TestCase):
             release.verify_signing(Path("/private/tmp/Mote.app"), identity)
         self.assertEqual(run.call_args_list[1].args[0][3], ":-")
 
+    def test_export_without_ipad_icon_fails_closed(self):
+        identity = self.valid()
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory) / "Mote.app"
+            app.mkdir()
+            info = app / "Info.plist"
+            with info.open("wb") as target:
+                plistlib.dump({"CFBundleIdentifier": identity["bundle_id"],
+                              "CFBundleShortVersionString": identity["version"],
+                              "CFBundleVersion": identity["build_number"],
+                              "CFBundleDisplayName": identity["display_name"]}, target)
+            with self.assertRaisesRegex(release.ReleaseError, "iPad app icon"):
+                release.read_bundle_info(info, identity)
+
     def test_archive_export_uses_internal_only_export_and_no_upload(self):
         identity = self.valid()
         commands = []
@@ -150,7 +164,10 @@ class DistributionPreflightTests(unittest.TestCase):
                         plistlib.dump({"CFBundleIdentifier": identity["bundle_id"],
                                       "CFBundleShortVersionString": identity["version"],
                                       "CFBundleVersion": identity["build_number"],
-                                      "CFBundleDisplayName": identity["display_name"]}, target)
+                                      "CFBundleDisplayName": identity["display_name"],
+                                      "CFBundleIcons~ipad": {"CFBundlePrimaryIcon": {
+                                          "CFBundleIconName": "AppIcon"}}}, target)
+                    (app / "Assets.car").write_bytes(b"fixture icon")
                 else:
                     export = output / "export"
                     export.mkdir()
