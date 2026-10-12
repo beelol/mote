@@ -4,62 +4,26 @@ Updated 2026-10-11 in America/Los_Angeles. This file is a replacement snapshot.
 
 ## Contract and scope
 
-Read `AGENTS.md`, `docs/rfcs/v0.md` and the root README Ready for Go board first.
-The previous goal delivered the Rust immediate-mode Matrix client in the iPad Simulator over an authenticated localhost Mac host.
-The active goal is a distinct physical-iPad and internal TestFlight build of that same client, including guarded, repeatable archive and export tooling.
-The approved design is `docs/superpowers/specs/2026-10-11-ipad-host.md`.
-The implementation plans are under `docs/superpowers/plans/2026-10-11-ipad-*.md`.
-The owner activated IPAD-06 through IPAD-10 on 2026-10-11. Physical iPad, signing and internal TestFlight work are now in scope.
-HOST-05's literal sleep and wake test and V0-53's logout and login test are deferred without being marked passed.
-Cloud relay, external testing, App Review and public release remain out of scope.
+Read `AGENTS.md`, `docs/rfcs/v0.md`, the root README Ready for Go board and `docs/superpowers/specs/2026-10-11-ipad-host.md` first. The active goal is a distinct physical-iPad and internal TestFlight build of the existing Rust immediate-mode Matrix client. IPAD-06 through IPAD-10 are active. HOST-05's literal Mac sleep and wake test and V0-53's logout and login test remain deferred and open. Cloud relay, external testing, App Review and public release remain out of scope.
 
 ## Verified state
 
-HOST-01 through HOST-04 and IPAD-01 through IPAD-05 are checked in the README with evidence in `docs/verification/`.
-The iPad gallery, red pixel materialization, paired live chat, typed Matrix interactions, two-host isolation and inferred UI are verified in the Simulator.
-The approved local `qwen3:4b` model passed the fixed 200-prompt gate with 192 first-try valid decisions.
-No subscription harness was enabled and no model outside `docs/rfcs/v0.md` section 0 was pulled.
+HOST-01 through HOST-04 and IPAD-01 through IPAD-05 are checked with evidence in `docs/verification/`. The iPad Simulator has passed the gallery, live two-host pairing, chat, typed Matrix interactions, inferred UI and browser approval journeys. The Mac host uses local Ollama only. The browser uses a pinned Chrome for Testing profile separate from the owner's default profile. Approval remains host-bound and inert until a valid exact decision.
 
-The browser runtime uses pinned Chrome for Testing 155.0.8059.39 with a temporary per-character Mote profile and loopback CDP.
-It blocks protected requests before dispatch, plus WebSocket and WebRTC side channels.
-The daemon exposes named browser tools and retains one exact request for a durable host-bound approval.
-The paired gateway grants decision authority only after complete card delivery.
-Approval rechecks origin, stable reference, page state, request fingerprint and expiry.
-Attempt accounting is durable before release.
-Independent review cleared the browser coordinator and iPad approval client.
-The browser and UI implementations are locally committed as `3019700` and `b91ebae`.
+IPAD-09 is checked and pushed as `03434e4`. `cargo check -p mote-ios --target aarch64-apple-ios` and an unsigned Xcode `iphoneos` arm64 build passed. The native Simulator gallery test and the live paired-host regression passed after the Xcode change. The temporary Simulator used for the live test was deleted. The existing Simulator was left intact. Evidence is in `docs/verification/IPAD-09.md`. The physical build is unsigned and retains `local.mote.simulator`. It is not a TestFlight build.
 
-A real iPad Pro 11-inch (M5) Simulator run passed denial, relaunch with pending approval, two rapid approval taps with exactly one POST, a validated Matrix HTTP 200 result, and natural 127-second expiry with no extra effect.
-XCUITest passed one native test with zero failures.
-The Rust evidence test passed one live test in 185.34 seconds.
-The test re-resolved an Xcode-changed app data container, restored prior Documents files, and confirmed removal of its temporary Keychain credential.
-The native harness and recovery regressions are locally committed as `cd2ff0f` after 709 workspace tests, strict workspace clippy, and the Apple Simulator target check passed.
-`docs/verification/IPAD-05.md` links the selected redacted captures, headed tests, native run and final source gates.
+The prior planning commit `6ead290` and the IPAD-09 commit were pushed to `origin/main` at `https://github.com/beelol/mote.git`. The latest full workspace test and strict clippy gates passed before `03434e4`.
 
-## Remaining work
+## Work in progress
 
-The new distribution planning edit passed `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` on 2026-10-11. Commit and push only the three scoped documentation files next.
-IPAD-09 is implemented and verified. The unsigned arm64 physical-iPad build passed. The native Simulator gallery and paired-host journeys passed after the Xcode changes. Evidence is in `docs/verification/IPAD-09.md`. The temporary Simulator used for the live test was deleted.
-IPAD-10 is the next independent task. Add a guarded no-mutation preflight and explicit archive/export/upload script. Its signed export and upload evidence depends on confirmed Apple identity and IPAD-07. Do not reuse `local.mote.simulator` as the distribution identity.
-IPAD-06 requires a physical iPad. IPAD-07 requires a unique bundle ID, Apple team, SKU, signing and a separate App Store Connect record. IPAD-08 requires a processed internal build installed and exercised on the physical iPad.
-Do not invent these Apple identifiers or assume the installed app works from another city. TestFlight distribution does not add an Internet route to the local Mac gateway.
-HOST-05 remains open for a literal Mac sleep and wake run. The read-only power preflight found no future wake event. Its exact observations are in `docs/verification/HOST-05.md`.
+The IPAD-10 packaging checkpoint is uncommitted. `ios/Mote/distribute.py` now has read-only preflight, explicit signed archive and IPA export, and separate opt-in upload commands. It uses a supplied current app inventory and requires a matching distinct App Store Connect record before archive. It checks local signing, duplicate builds, output paths, archive and IPA identity, signatures and entitlements. `ios/Mote/DISTRIBUTION.md` explains the inputs. `ios/Mote/test_distribute.py` has eight passing fail-closed tests. Xcode and plist syntax passed. A rebuilt Simulator app kept bundle ID `local.mote.simulator`, version `0.0.0` and build `1`. Partial evidence is in `docs/verification/IPAD-10.md`. The criterion is not checked because no signed archive, export or upload exists yet.
 
-The local `main` contains the browser coordinator, iPad approval client and native harness commits.
-On 2026-10-11 the owner confirmed the repository's configured `origin`, `https://github.com/beelol/mote.git`, as the push destination and requested pushes whenever work is ready.
-The prior 26 pending commits through `301736a` were pushed. Local `main` and `origin/main` matched at `5521a1b` before the new distribution planning edit.
-Push later verified commits to this configured origin when ready.
+The script review, eight Python tests, full workspace test, strict clippy, plist lint, and unsigned physical-device rebuild passed. Commit only scoped files, then push `main`. Do not stage unrelated `.DS_Store` or `.superpowers/`.
 
-Preserve unrelated `.DS_Store` and ignored `.superpowers/` work.
-Do not check in pairing offers, private credentials, persisted client state, raw filled-page snapshots, host databases or Xcode derived data.
+## External dependencies
 
-## Limits
+IPAD-06 requires a physical iPad and its real local-network privacy prompt, touch and accessibility checks. IPAD-07 requires the confirmed display name, unique bundle ID, SKU, team, signing and a separate App Store Connect record. IPAD-08 requires a processed internal build installed and exercised on the physical iPad. Do not invent Apple identity values or reuse another app. Do not run a signed archive or upload before the physical-device checks and App Store Connect record are confirmed.
 
-The pinned iOS AccessKit backend exposes one window TextView to XCUITest.
-Native journeys use screenshot text recognition, exact state assertions and measured touch targets.
-Do not claim individual accessibility nodes from that workaround.
-Simulator GPU captures and renderer encoding cadence are not display scanout measurements.
-The desktop queries host identity at startup.
-If the host is unavailable, cursor persistence waits for recovery attachment.
-Interrupted remote request IDs remain indeterminate until reconciled.
-Never read the default Chrome profile or keychain item.
+TestFlight distributes the client binary. It does not provide an Internet route to the local Mac host. A test from another city needs a separately verified route. The existing localhost gateway and Bonjour discovery do not provide that route.
+
+Preserve user data and do not check in pairing offers, credentials, persisted client state, raw browser captures, host databases or Xcode derived data. All model calls must use the ledger and all stored events must pass redaction.
