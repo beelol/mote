@@ -87,3 +87,21 @@ The upload action now rechecks the local IPA hash and the signed archive identit
 Command: `python3 -B -m unittest ios/Mote/test_distribute.py`.
 
 Output: fifteen tests passed. A mocked upload checked the Xcode command, credential path, exact internal-only options, archive recheck and one-attempt marker. Missing archive, missing key and changed IPA cases stopped before an Apple mutation command. A real signed archive and actual upload remain unverified.
+
+## Archive binding after local export
+
+Date: 2026-10-11 to 2026-10-12, America/Los_Angeles. Environment: the local Python test fixture. No Apple signing or account access was used.
+
+The receipt now records a deterministic digest of the entire signed archive app. Upload compares this digest before Xcode receives the archive. The digest rejects external symlinks and includes file paths and contents. This prevents a different validly signed app with the same identity and build number from replacing the archive after local IPA verification.
+
+Command: `python3 -B -m unittest ios/Mote/test_distribute.py`.
+
+Output: sixteen tests passed. Changing the archived icon after writing the receipt stopped upload before the mocked Apple mutation. An external archive symlink was refused. The real archive and remote upload remain unverified.
+
+Command: `cargo test --workspace`.
+
+Output: exited 0 on 2026-10-12. Live tests requiring a physical device or explicit fixture environment remained ignored. This does not replace IPAD-06 or a signed distribution check.
+
+Command: `cargo clippy --workspace -- -D warnings`.
+
+Output: exited 0 with no warnings on 2026-10-12.

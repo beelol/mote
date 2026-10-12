@@ -202,6 +202,37 @@ def verify_ipa(ipa, identity):
             verify_signing(app, identity)
 
 
+def archive_app_digest(app):
+    if app.is_symlink() or not app.is_dir():
+        raise ReleaseError("Signed Mote archive app is missing or unsafe")
+    digest = hashlib.sha256()
+    try:
+        app_root = app.resolve(strict=True)
+        for path in sorted(app.rglob("*"), key=lambda item: item.relative_to(app).as_posix()):
+            name = path.relative_to(app).as_posix().encode("utf-8")
+            digest.update(len(name).to_bytes(8, "big"))
+            digest.update(name)
+            if path.is_symlink():
+                resolved = path.resolve(strict=True)
+                if app_root not in resolved.parents:
+                    raise ReleaseError("Signed Mote archive contains an external symlink")
+                target = os.readlink(path).encode("utf-8")
+                digest.update(b"L" + len(target).to_bytes(8, "big") + target)
+            elif path.is_dir():
+                digest.update(b"D")
+            elif path.is_file():
+                digest.update(b"F")
+                digest.update(path.stat().st_size.to_bytes(8, "big"))
+                with path.open("rb") as source:
+                    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                        digest.update(chunk)
+            else:
+                raise ReleaseError("Signed Mote archive contains an unsupported file type")
+    except (OSError, RuntimeError) as error:
+        raise ReleaseError("Signed Mote archive could not be read") from error
+    return digest.hexdigest()
+
+
 def archive_export(identity, output):
     output.mkdir(parents=True, exist_ok=False)
     archive = output / "Mote.xcarchive"
@@ -227,7 +258,8 @@ def archive_export(identity, output):
     if not ipa.is_file():
         raise ReleaseError("Export did not produce Mote.ipa")
     verify_ipa(ipa, identity)
-    receipt = {"identity": identity, "ipa_sha256": hashlib.sha256(ipa.read_bytes()).hexdigest()}
+    receipt = {"identity": identity, "ipa_sha256": hashlib.sha256(ipa.read_bytes()).hexdigest(),
+               "archive_app_sha256": archive_app_digest(app)}
     (output / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
     print(f"Signed archive and IPA verified at {output}. No upload was attempted.")
 
@@ -255,6 +287,8 @@ def upload(identity, output):
     archive_app = output / "Mote.xcarchive/Products/Applications/Mote.app"
     if not (archive_app / "Info.plist").is_file():
         raise ReleaseError("Signed Mote archive is missing")
+    if archive_app_digest(archive_app) != receipt.get("archive_app_sha256"):
+        raise ReleaseError("Signed Mote archive has changed since export")
     read_bundle_info(archive_app / "Info.plist", identity)
     verify_signing(archive_app, identity)
     key = require_string(os.environ.get("MOTE_ASC_API_KEY_ID"), "App Store Connect API key ID",

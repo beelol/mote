@@ -149,6 +149,17 @@ class DistributionPreflightTests(unittest.TestCase):
             with self.assertRaisesRegex(release.ReleaseError, "iPad app icon"):
                 release.read_bundle_info(info, identity)
 
+    def test_archive_digest_refuses_external_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            app = root / "Mote.app"
+            app.mkdir()
+            outside = root / "outside"
+            outside.write_bytes(b"outside")
+            (app / "outside-link").symlink_to(outside)
+            with self.assertRaisesRegex(release.ReleaseError, "external symlink"):
+                release.archive_app_digest(app)
+
     def test_archive_export_uses_internal_only_export_and_no_upload(self):
         identity = self.valid()
         commands = []
@@ -196,6 +207,8 @@ class DistributionPreflightTests(unittest.TestCase):
             receipt = release.load_json(output / "receipt.json")
             self.assertEqual(receipt["identity"], identity)
             self.assertEqual(receipt["ipa_sha256"], hashlib.sha256(b"fixture ipa").hexdigest())
+            self.assertEqual(receipt["archive_app_sha256"], release.archive_app_digest(
+                output / "Mote.xcarchive/Products/Applications/Mote.app"))
 
     def test_upload_is_separate_and_refuses_a_changed_ipa(self):
         identity = self.valid()
@@ -221,10 +234,6 @@ class DistributionPreflightTests(unittest.TestCase):
             export.mkdir(parents=True)
             ipa = export / "Mote.ipa"
             ipa.write_bytes(b"signed fixture")
-            (output / "receipt.json").write_text(json.dumps({
-                "identity": identity,
-                "ipa_sha256": hashlib.sha256(b"signed fixture").hexdigest(),
-            }), encoding="utf-8")
             app = output / "Mote.xcarchive/Products/Applications/Mote.app"
             app.mkdir(parents=True)
             with (app / "Info.plist").open("wb") as target:
@@ -235,6 +244,11 @@ class DistributionPreflightTests(unittest.TestCase):
                               "CFBundleIcons~ipad": {"CFBundlePrimaryIcon": {
                                   "CFBundleIconName": "AppIcon"}}}, target)
             (app / "Assets.car").write_bytes(b"fixture icon")
+            (output / "receipt.json").write_text(json.dumps({
+                "identity": identity,
+                "ipa_sha256": hashlib.sha256(b"signed fixture").hexdigest(),
+                "archive_app_sha256": release.archive_app_digest(app),
+            }), encoding="utf-8")
             keys = Path(directory) / "keys"
             keys.mkdir()
             (keys / "AuthKey_TESTKEY123.p8").write_text("fixture key", encoding="utf-8")
@@ -290,6 +304,11 @@ class DistributionPreflightTests(unittest.TestCase):
                               "CFBundleIcons~ipad": {"CFBundlePrimaryIcon": {
                                   "CFBundleIconName": "AppIcon"}}}, target)
             (app / "Assets.car").write_bytes(b"fixture icon")
+            (output / "receipt.json").write_text(json.dumps({
+                "identity": identity,
+                "ipa_sha256": hashlib.sha256(b"signed fixture").hexdigest(),
+                "archive_app_sha256": release.archive_app_digest(app),
+            }), encoding="utf-8")
             keys = Path(directory) / "keys"
             keys.mkdir()
             env = {"MOTE_ASC_API_KEY_ID": "TESTKEY123",
@@ -299,6 +318,14 @@ class DistributionPreflightTests(unittest.TestCase):
                     patch.object(release, "verify_signing"), \
                     patch.object(release, "run_mutation") as run:
                 with self.assertRaisesRegex(release.ReleaseError, "private key file"):
+                    release.upload(identity, output)
+                run.assert_not_called()
+            (keys / "AuthKey_TESTKEY123.p8").write_text("fixture key", encoding="utf-8")
+            (app / "Assets.car").write_bytes(b"changed icon")
+            with patch.dict(os.environ, env), patch.object(release, "verify_ipa"), \
+                    patch.object(release, "verify_signing"), \
+                    patch.object(release, "run_mutation") as run:
+                with self.assertRaisesRegex(release.ReleaseError, "archive has changed"):
                     release.upload(identity, output)
                 run.assert_not_called()
 
