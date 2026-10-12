@@ -1,14 +1,18 @@
 #!/bin/sh
 set -eu
 
-if [ "${PLATFORM_NAME:-}" != "iphonesimulator" ]; then
-    echo "Mote's Xcode shell currently supports Simulator builds only." >&2
-    exit 1
-fi
 if [ "${ARCHS:-}" != "arm64" ]; then
-    echo "Mote's Simulator shell requires the Apple Silicon arm64 architecture." >&2
+    echo "Mote's iPad shell requires the arm64 architecture." >&2
     exit 1
 fi
+case "${PLATFORM_NAME:-}" in
+    iphonesimulator) rust_target=aarch64-apple-ios-sim ;;
+    iphoneos) rust_target=aarch64-apple-ios ;;
+    *)
+        echo "Mote's iPad shell requires an iOS device or Simulator platform." >&2
+        exit 1
+        ;;
+esac
 
 export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
 repo_root="$(CDPATH= cd -- "$SRCROOT/../.." && pwd)"
@@ -18,11 +22,11 @@ unset SDKROOT
 
 cd "$repo_root"
 if [ "$CONFIGURATION" = "Release" ]; then
-    cargo build --locked -p mote-ios --target aarch64-apple-ios-sim --release
+    cargo build --locked -p mote-ios --target "$rust_target" --release
     profile=release
 else
-    cargo build --locked -p mote-ios --target aarch64-apple-ios-sim
+    cargo build --locked -p mote-ios --target "$rust_target"
     profile=debug
 fi
 mkdir -p "$BUILT_PRODUCTS_DIR/rust"
-cp "$CARGO_TARGET_DIR/aarch64-apple-ios-sim/$profile/libmote_ios.a" "$BUILT_PRODUCTS_DIR/rust/"
+cp "$CARGO_TARGET_DIR/$rust_target/$profile/libmote_ios.a" "$BUILT_PRODUCTS_DIR/rust/"

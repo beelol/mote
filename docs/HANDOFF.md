@@ -39,8 +39,8 @@ The native harness and recovery regressions are locally committed as `cd2ff0f` a
 ## Remaining work
 
 The new distribution planning edit passed `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` on 2026-10-11. Commit and push only the three scoped documentation files next.
-IPAD-09 is the first independent implementation task: add the physical Rust target and Xcode device build while keeping the Simulator target unchanged.
-IPAD-10 adds a guarded no-mutation preflight and explicit archive/export/upload script. Its signed export and upload evidence depends on confirmed Apple identity and IPAD-07.
+IPAD-09 is implemented and verified. The unsigned arm64 physical-iPad build passed. The native Simulator gallery and paired-host journeys passed after the Xcode changes. Evidence is in `docs/verification/IPAD-09.md`. The temporary Simulator used for the live test was deleted.
+IPAD-10 is the next independent task. Add a guarded no-mutation preflight and explicit archive/export/upload script. Its signed export and upload evidence depends on confirmed Apple identity and IPAD-07. Do not reuse `local.mote.simulator` as the distribution identity.
 IPAD-06 requires a physical iPad. IPAD-07 requires a unique bundle ID, Apple team, SKU, signing and a separate App Store Connect record. IPAD-08 requires a processed internal build installed and exercised on the physical iPad.
 Do not invent these Apple identifiers or assume the installed app works from another city. TestFlight distribution does not add an Internet route to the local Mac gateway.
 HOST-05 remains open for a literal Mac sleep and wake run. The read-only power preflight found no future wake event. Its exact observations are in `docs/verification/HOST-05.md`.

@@ -292,7 +292,7 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     pairing, live chat, generated Matrix UI, browser approval, reconnect and host-switch isolation.
     **Verify:** record the build and processing state, install it on the physical iPad, run every
     journey and keep external testing, App Review and public release disabled.
-  - [ ] **IPAD-09** The existing Rust and Xcode client builds for a physical iPad in addition to the
+  - [x] **IPAD-09** The existing Rust and Xcode client builds for a physical iPad in addition to the
     existing Simulator build without changing its bundle identity, behavior or tests. **Verify:**
     `aarch64-apple-ios` Rust check, an unsigned `iphoneos` build, unchanged Simulator
     gallery and paired-host journeys, and recorded Xcode, SDK and target versions.
