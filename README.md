@@ -68,24 +68,24 @@ turn.
 
 ### Continue development
 
-Copy this goal into a driver. Current scope is the remaining v0 item and the iPad Simulator phase.
+Copy this goal into a driver. Current scope is the distinct device build and internal TestFlight phase.
 
 ```text
 Continue mote from repository state at ~/projects/mote without relying on chat history.
 
-Read AGENTS.md, docs/rfcs/v0.md, docs/superpowers/specs/2026-10-11-ipad-host.md, root README.md -> Ready for Go, and docs/HANDOFF.md if present. Active ACs are V0-53 under Ready for Go -> v0 build list and HOST-01 through HOST-05 plus IPAD-01 through IPAD-05 under Ready for Go -> Native iPad host feature. IPAD-06 through IPAD-08 are deferred. The active iPad ACs are self-contained and do not activate additional docs/backlog.md criteria. The older open Matrix parent remains a historical completion record; work its behavior only where an active HOST or IPAD AC requires it. Raspberry Pi work is deferred.
+Read AGENTS.md, docs/rfcs/v0.md, docs/superpowers/specs/2026-10-11-ipad-host.md, root README.md -> Ready for Go, and docs/HANDOFF.md if present. Active ACs are IPAD-06 through IPAD-10 under Ready for Go -> Physical iPad and internal TestFlight. HOST-05 under Native iPad Simulator host and V0-53 under v0 build list remain open for a later owner-present session. Do not mark them passed or remove their Verify clauses. IPAD-01 through IPAD-05 are verified; recheck affected behavior after distribution changes. Backlog, external testing, App Review, public release and cloud relay remain out of scope.
 
-Finish independent work even when V0-53 remains owner-only. Respect the simulator delivery order in the iPad spec. Preserve the existing Unix client while adding the protocol, multi-host identity, secure loopback gateway, Rust iPad consumer, simulator journey, inferred Matrix UI and browser approval journey. Connect the simulator to `moted` over localhost. Do not start physical-device, signing, App Store Connect or TestFlight work. models.local_only stays true. Use only the three approved Ollama models. Every model verdict is structured JSON parsed fail-closed. Every model call uses the ledger. Redact before storage. Never read the default Chrome profile or its keychain item.
+The outcome is a separate Mote app installed from internal TestFlight on a physical iPad. The app uses the same Rust immediate-mode Matrix UI, paired host gateway, inferred surfaces and browser approval. It must not collide with any existing app. TestFlight does not make the Mac reachable from another city. Do not claim remote use without a separately verified route. Keep models.local_only true, use only the approved Ollama models, ledger every model call and redact stored events.
 
-Choose the smallest actionable AC or coherent dependency set. Inspect existing code first. If delegation is available, send bounded work to the least costly capable subagent with AC IDs, objective, owned files, dependencies and evidence requirements. Parallelize only independent work. Inspect every result before accepting it. Otherwise work directly. Add an AC for any discovered in-scope gap and reopen its parent. Never remove or weaken an unmet requirement.
+Choose the smallest actionable AC or coherent dependency set. Inspect existing code and Apple account state first. If delegation is available and authorized, send bounded work to the least costly capable subagent with AC IDs, owned files, dependencies and evidence requirements. Inspect every result. Otherwise work directly. Add an AC for any discovered in-scope gap and reopen its parent. Never remove or weaken an unmet requirement.
 
-Verify the full AC clause, including failures, reconnect, replay, identity isolation and real UI or device behavior where required. Run cargo test --workspace and cargo clippy --workspace -- -D warnings before every commit. Record commands or manual steps, output, environment, date and commit in docs/verification/<ID>.md. A simulator cannot close a physical-device AC. Upload cannot close TestFlight installation. A checked AC without matching evidence is a bug.
+Build device-capable Rust/Xcode targets without breaking Simulator behavior. Create a guarded dry-run and archive/export script before any Apple mutation. It must validate the selected bundle ID, team, version, build number and output paths, fail closed on collisions, keep signing material out of Git and logs, and require a separate explicit upload step. Do not guess the owner's Apple team or identifiers. A new App Store Connect record requires the owner's confirmed identity and suitable access. Do not modify another app. Record creation, signed export and upload are separate observable outcomes.
 
-Deliver small verified Conventional Commits to main and push confirmed commits to the configured origin. Include evidence and AC checkmarks in the same verified delivery. Check the Simulator parent only when HOST-01 through HOST-05 and IPAD-01 through IPAD-05 are verified. Leave the deferred physical parent open. Do not use a physical device, configure signing, create an App Store Connect record, upload a build, publish externally, spend on cloud infrastructure, send messages, make purchases or deploy a cloud relay without separate authority.
+Verify full AC clauses with relevant tests and real UI or device journeys, including refusal and recovery. Run cargo test --workspace and cargo clippy --workspace -- -D warnings before every commit. Record commands or manual steps, output, environment, date and commit in docs/verification/<ID>.md. Simulator evidence cannot close a physical-device AC. Archive or upload alone cannot close installed TestFlight verification. Leave any owner-only step open while independent work continues.
 
-After every integration, reread both active README sections and recheck affected completed ACs. Check a parent only when every child is verified. Continue until all authorized ACs close. If one is blocked, leave it open and continue independent work. Stop only for completion, an owner stop, a budget limit or when every remaining AC needs unavailable input, access or authorization. State the exact blockers.
+Deliver small verified Conventional Commits to main and push to the confirmed configured origin. Include evidence and AC checkmarks in the verified delivery. Check a parent only when every child is verified. After every integration, reread the active board and recheck affected completed ACs. Stop only for completion, an owner stop, a budget limit or when all remaining work needs unavailable input, access or authorization. State exact blockers. No external TestFlight group, App Review, public release, cloud spending or relay is authorized by this goal.
 
-Replace docs/HANDOFF.md with current ACs, branch, delegated tasks, uncommitted work, verified results and limits, blockers and exact next action. Checkpoint before delegation or long operations and after every edit batch, subtask, test run, commit, push or blocker, at most two minutes apart during active work. Before a blocking call record the in-flight action and any handle. Save before stopping. On resume reconcile the files and commits against the handoff. Delete it only when nothing needs transfer.
+Replace docs/HANDOFF.md with current ACs, branch, delegated tasks, uncommitted work, results, limits, blockers and exact next action. Checkpoint before delegation or long operations and after each edit batch, subtask, test run, commit, push or blocker, at most two minutes apart during active work. Record in-flight handles before blocking calls and checkpoint on return. Save before stopping. On resume reconcile files and commits against the handoff. Delete it only when nothing needs transfer.
 ```
 
 ### Later
@@ -207,7 +207,9 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
 
 ### Native iPad host feature
 
-Current execution stops after the Simulator, inferred UI and local browser approval journeys.
+The Simulator, inferred UI and local browser approval journeys are complete. The owner activated
+the distinct device build and internal TestFlight phase on 2026-10-11. HOST-05's literal Mac sleep
+and wake run stays open for later and is not counted as device distribution evidence.
 The [approved design](docs/superpowers/specs/2026-10-11-ipad-host.md) defines the journeys,
 security boundary, incorporated Matrix and browser behavior, and deferred physical delivery.
 Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-ipad-simulator-host.md),
@@ -274,14 +276,14 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     final validated Matrix result card. The [verification record](docs/verification/IPAD-05.md)
     includes the headed fixture and paired native Simulator evidence.
 
-### Deferred physical iPad delivery
+### Physical iPad and internal TestFlight
 
 - [ ] **[Physical iPad and TestFlight](docs/superpowers/specs/2026-10-11-ipad-host.md#distribution)**
   - [ ] **IPAD-06** A physical iPad passes touch, keyboard, rotation, split view, background recovery,
     local-network permission, light and dark appearance, reduced motion and VoiceOver checks.
     **Verify:** repeat the named journeys on the device, including center and edge taps for every
     control, and record the device, iPadOS version, role tree, screenshots and observed recovery.
-  - [ ] **IPAD-07** After HOST-01 through HOST-05 and IPAD-01 through IPAD-06 pass, Mote has a new
+  - [ ] **IPAD-07** After device-capable build and physical UI verification, Mote has a new
     explicit bundle ID, signing configuration and App Store Connect record that do not reuse or alter
     another app. **Verify:** record the approved display name, bundle ID, SKU and team, confirm their
     uniqueness against the owner's existing apps, archive the verified client and retain the App
@@ -290,3 +292,13 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     pairing, live chat, generated Matrix UI, browser approval, reconnect and host-switch isolation.
     **Verify:** record the build and processing state, install it on the physical iPad, run every
     journey and keep external testing, App Review and public release disabled.
+  - [ ] **IPAD-09** The existing Rust and Xcode client builds for a physical iPad in addition to the
+    existing Simulator build without changing its bundle identity, behavior or tests. **Verify:**
+    `aarch64-apple-ios` Rust check, an unsigned `iphoneos` build, unchanged Simulator
+    gallery and paired-host journeys, and recorded Xcode, SDK and target versions.
+  - [ ] **IPAD-10** A repeatable, guarded distribution script performs a no-mutation preflight,
+    then an explicit signed archive and `.ipa` export for only the confirmed Mote team and bundle
+    ID. Upload is a separate opt-in command. **Verify:** test missing and colliding identity,
+    absent signing, duplicate build number and bad output path fail closed without Apple mutation;
+    inspect a real exported archive and IPA for exact identity and entitlements, prove no secrets
+    entered Git or logs, and record one deliberate upload and processing outcome only after IPAD-07.

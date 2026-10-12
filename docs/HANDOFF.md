@@ -5,12 +5,13 @@ Updated 2026-10-11 in America/Los_Angeles. This file is a replacement snapshot.
 ## Contract and scope
 
 Read `AGENTS.md`, `docs/rfcs/v0.md` and the root README Ready for Go board first.
-The active goal is the Rust immediate-mode Matrix client in the iPad Simulator over an authenticated localhost Mac host.
-It includes the component gallery, local-model inferred UI and contained browser actions with iPad approval cards.
+The previous goal delivered the Rust immediate-mode Matrix client in the iPad Simulator over an authenticated localhost Mac host.
+The active goal is a distinct physical-iPad and internal TestFlight build of that same client, including guarded, repeatable archive and export tooling.
 The approved design is `docs/superpowers/specs/2026-10-11-ipad-host.md`.
 The implementation plans are under `docs/superpowers/plans/2026-10-11-ipad-*.md`.
-Physical iPad, signing, App Store Connect, TestFlight and cloud relay work are deferred.
-V0-53 requires the owner's literal logout and login and is independent.
+The owner activated IPAD-06 through IPAD-10 on 2026-10-11. Physical iPad, signing and internal TestFlight work are now in scope.
+HOST-05's literal sleep and wake test and V0-53's logout and login test are deferred without being marked passed.
+Cloud relay, external testing, App Review and public release remain out of scope.
 
 ## Verified state
 
@@ -37,16 +38,16 @@ The native harness and recovery regressions are locally committed as `cd2ff0f` a
 
 ## Remaining work
 
-HOST-05 remains open.
-Its scripted reconnect, retention resync, version mismatch and identity-change cases exist, but its Verify clause also requires one literal Mac sleep and wake run.
-Do not sleep the owner's Mac unattended without a reliable wake mechanism.
-The 2026-10-11 read-only power preflight found no future wake event and showed active use and audio input. The exact observations are in `docs/verification/HOST-05.md`.
-Do not check HOST-05 from scripted tests alone.
-IPAD-06 through IPAD-08 remain deferred until the owner can provide a physical iPad and distribution authority.
+The new distribution planning edit passed `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` on 2026-10-11. Commit and push only the three scoped documentation files next.
+IPAD-09 is the first independent implementation task: add the physical Rust target and Xcode device build while keeping the Simulator target unchanged.
+IPAD-10 adds a guarded no-mutation preflight and explicit archive/export/upload script. Its signed export and upload evidence depends on confirmed Apple identity and IPAD-07.
+IPAD-06 requires a physical iPad. IPAD-07 requires a unique bundle ID, Apple team, SKU, signing and a separate App Store Connect record. IPAD-08 requires a processed internal build installed and exercised on the physical iPad.
+Do not invent these Apple identifiers or assume the installed app works from another city. TestFlight distribution does not add an Internet route to the local Mac gateway.
+HOST-05 remains open for a literal Mac sleep and wake run. The read-only power preflight found no future wake event. Its exact observations are in `docs/verification/HOST-05.md`.
 
 The local `main` contains the browser coordinator, iPad approval client and native harness commits.
 On 2026-10-11 the owner confirmed the repository's configured `origin`, `https://github.com/beelol/mote.git`, as the push destination and requested pushes whenever work is ready.
-The 26 pending commits through `301736a` were pushed, and local `main` and `origin/main` matched afterward.
+The prior 26 pending commits through `301736a` were pushed. Local `main` and `origin/main` matched at `5521a1b` before the new distribution planning edit.
 Push later verified commits to this configured origin when ready.
 
 Preserve unrelated `.DS_Store` and ignored `.superpowers/` work.
