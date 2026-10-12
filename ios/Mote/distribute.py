@@ -272,7 +272,7 @@ def export_options(identity, destination):
             "testFlightInternalTestingOnly": True}
 
 
-def upload(identity, output):
+def upload(identity, output, use_xcode_account=False):
     receipt = load_json(output / "receipt.json")
     if receipt.get("identity") != identity:
         raise ReleaseError("Export receipt does not match the approved identity")
@@ -291,22 +291,26 @@ def upload(identity, output):
         raise ReleaseError("Signed Mote archive has changed since export")
     read_bundle_info(archive_app / "Info.plist", identity)
     verify_signing(archive_app, identity)
-    key = require_string(os.environ.get("MOTE_ASC_API_KEY_ID"), "App Store Connect API key ID",
-                         r"[A-Z0-9]{10}")
-    issuer = require_string(os.environ.get("MOTE_ASC_ISSUER_ID"), "App Store Connect issuer ID",
-                            r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
-    private_keys = Path(require_string(os.environ.get("API_PRIVATE_KEYS_DIR"), "private-key directory"))
-    if not private_keys.is_absolute() or ".." in private_keys.parts:
-        raise ReleaseError("Private-key directory must be an absolute path without traversal")
-    try:
-        private_keys = private_keys.resolve(strict=True)
-    except (OSError, RuntimeError) as error:
-        raise ReleaseError("Private-key directory cannot be resolved") from error
-    if private_keys == ROOT or ROOT in private_keys.parents or not private_keys.is_dir():
-        raise ReleaseError("Private keys must be in an existing directory outside the repository")
-    key_file = private_keys / f"AuthKey_{key}.p8"
-    if key_file.is_symlink() or not key_file.is_file():
-        raise ReleaseError("The selected App Store Connect private key file is missing or unsafe")
+    authentication = []
+    if not use_xcode_account:
+        key = require_string(os.environ.get("MOTE_ASC_API_KEY_ID"), "App Store Connect API key ID",
+                             r"[A-Z0-9]{10}")
+        issuer = require_string(os.environ.get("MOTE_ASC_ISSUER_ID"), "App Store Connect issuer ID",
+                                r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
+        private_keys = Path(require_string(os.environ.get("API_PRIVATE_KEYS_DIR"), "private-key directory"))
+        if not private_keys.is_absolute() or ".." in private_keys.parts:
+            raise ReleaseError("Private-key directory must be an absolute path without traversal")
+        try:
+            private_keys = private_keys.resolve(strict=True)
+        except (OSError, RuntimeError) as error:
+            raise ReleaseError("Private-key directory cannot be resolved") from error
+        if private_keys == ROOT or ROOT in private_keys.parents or not private_keys.is_dir():
+            raise ReleaseError("Private keys must be in an existing directory outside the repository")
+        key_file = private_keys / f"AuthKey_{key}.p8"
+        if key_file.is_symlink() or not key_file.is_file():
+            raise ReleaseError("The selected App Store Connect private key file is missing or unsafe")
+        authentication = ["-authenticationKeyPath", str(key_file), "-authenticationKeyID", key,
+                          "-authenticationKeyIssuerID", issuer]
     with upload_options.open("xb") as target:
         plistlib.dump(export_options(identity, "upload"), target)
     with attempt.open("x", encoding="utf-8") as target:
@@ -315,8 +319,7 @@ def upload(identity, output):
                                 indent=2) + "\n")
     run_mutation(["xcodebuild", "-exportArchive", "-archivePath", str(output / "Mote.xcarchive"),
                   "-exportPath", str(output / "upload"), "-exportOptionsPlist", str(upload_options),
-                  "-authenticationKeyPath", str(key_file), "-authenticationKeyID", key,
-                  "-authenticationKeyIssuerID", issuer], "Upload")
+                  *authentication], "Upload")
     print("Upload command succeeded. Confirm processing in App Store Connect before TestFlight testing.")
 
 
@@ -327,8 +330,9 @@ def main():
     parser.add_argument("--inventory", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--confirm-inventory-current", action="store_true")
-    parser.add_argument("--confirm-physical-device-verified", action="store_true")
+    parser.add_argument("--confirm-native-ui-verified", action="store_true")
     parser.add_argument("--confirm-upload", action="store_true")
+    parser.add_argument("--use-xcode-account", action="store_true")
     args = parser.parse_args()
     try:
         identity = validate_identity(load_json(args.manifest), load_json(args.inventory),
@@ -336,15 +340,17 @@ def main():
         output = validate_output(args.output, args.action != "upload")
         if args.action != "preflight" and not args.confirm_inventory_current:
             raise ReleaseError("Confirm the supplied inventory is complete and current")
-        if args.action != "preflight" and not args.confirm_physical_device_verified:
-            raise ReleaseError("Confirm the physical iPad UI checks passed before distribution")
+        if args.action != "preflight" and not args.confirm_native_ui_verified:
+            raise ReleaseError("Confirm the final native iPad Simulator UI checks passed before distribution")
         if args.action == "upload" and not args.confirm_upload:
             raise ReleaseError("Upload requires --confirm-upload")
+        if args.use_xcode_account and args.action != "upload":
+            raise ReleaseError("Xcode account selection applies only to upload")
         preflight(identity)
         if args.action == "archive-export":
             archive_export(identity, output)
         elif args.action == "upload":
-            upload(identity, output)
+            upload(identity, output, args.use_xcode_account)
     except ReleaseError as error:
         print(f"Mote distribution stopped: {error}", file=sys.stderr)
         return 1

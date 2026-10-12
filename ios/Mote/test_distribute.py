@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import plistlib
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -100,7 +101,7 @@ class DistributionPreflightTests(unittest.TestCase):
             with self.assertRaises(release.ReleaseError):
                 release.validate_output(outside, True)
 
-    def test_archive_requires_explicit_physical_and_inventory_confirmations(self):
+    def test_archive_requires_explicit_native_ui_and_inventory_confirmations(self):
         with tempfile.TemporaryDirectory() as directory:
             manifest = Path(directory) / "manifest.json"
             inventory = Path(directory) / "inventory.json"
@@ -120,6 +121,13 @@ class DistributionPreflightTests(unittest.TestCase):
                 self.assertEqual(release.main(), 1)
                 preflight.assert_not_called()
                 archive.assert_not_called()
+            with patch("sys.argv", arguments + ["--confirm-inventory-current",
+                                                 "--confirm-native-ui-verified"]), \
+                    patch.object(release, "preflight") as preflight, \
+                    patch.object(release, "archive_export") as archive:
+                self.assertEqual(release.main(), 0)
+                preflight.assert_called_once()
+                archive.assert_called_once()
 
     def test_xcode_entitlements_are_parsed_as_plist(self):
         identity = self.valid()
@@ -255,6 +263,8 @@ class DistributionPreflightTests(unittest.TestCase):
             env = {"MOTE_ASC_API_KEY_ID": "TESTKEY123",
                    "MOTE_ASC_ISSUER_ID": "12345678-1234-1234-1234-123456789abc",
                    "API_PRIVATE_KEYS_DIR": str(keys)}
+            account_output = Path(directory) / "signed-in-account"
+            shutil.copytree(output, account_output)
             with patch.dict(os.environ, env), patch.object(release, "verify_ipa"), \
                     patch.object(release, "verify_signing") as signing, \
                     patch.object(release, "run_mutation") as run:
@@ -277,6 +287,16 @@ class DistributionPreflightTests(unittest.TestCase):
             self.assertTrue(options["testFlightInternalTestingOnly"])
             self.assertFalse(options["manageAppVersionAndBuildNumber"])
             self.assertEqual(release.load_json(output / "upload-attempt.json")["identity"], identity)
+            with patch.dict(os.environ, {}, clear=True), patch.object(release, "verify_ipa"), \
+                    patch.object(release, "verify_signing"), \
+                    patch.object(release, "run_mutation") as account_run:
+                release.upload(identity, account_output, use_xcode_account=True)
+            account_command, account_label = account_run.call_args.args
+            self.assertEqual(account_label, "Upload")
+            self.assertNotIn("-authenticationKeyPath", account_command)
+            self.assertEqual(account_command[account_command.index("-archivePath") + 1],
+                             str(account_output / "Mote.xcarchive"))
+            self.assertTrue((account_output / "upload-attempt.json").is_file())
 
     def test_upload_refuses_missing_archive_or_key_without_mutation(self):
         identity = self.valid()

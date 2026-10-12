@@ -7,8 +7,8 @@
 1. Inspect the selected Apple team's existing app identifiers and App Store Connect apps. Choose a new explicit bundle ID and SKU that belong only to Mote. Keep the existing apps unchanged.
 2. Register that explicit App ID in the Apple Developer account. In App Store Connect, create a new iOS app record named Mote using the same bundle ID and the new SKU. Record the generated App Store Connect app ID. Account Holder, Admin or App Manager access is required for record creation.
 3. Install or select an Apple Distribution signing identity for that team. Keep the certificate, provisioning material and App Store Connect API private key outside Git. Make a current inventory snapshot and a release manifest with the exact approved identity.
-4. Run the read-only `preflight`. After physical iPad verification, run `archive-export` to produce and inspect a signed archive and IPA. Run `upload` separately. Wait for Apple to process the uploaded build.
-5. Add that processed build to an internal TestFlight group, then install it through TestFlight on the physical iPad. Recheck pairing, chat, generated UI, browser approval and host isolation. No external group or App Review action is part of this workflow.
+4. Run the read-only `preflight`. After final native Simulator UI verification, run `archive-export` to produce and inspect a signed archive and IPA. Run `upload` separately. Wait for Apple to process the uploaded build.
+5. Add that processed build to an internal TestFlight group. Physical iPad installation can follow later. On the device, recheck touch, accessibility, pairing, chat, generated UI, browser approval and host isolation. No external group or App Review action is part of this workflow.
 
 Apple's instructions for [registering an App ID](https://developer.apple.com/help/account/identifiers/register-an-app-id/), [creating an app record](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-a-new-app/) and [adding internal testers](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers) are the authority for the account-side steps. The local script automates archive, IPA export and upload. It cannot manufacture the Apple account identity or signing credentials.
 
@@ -34,17 +34,19 @@ Use a new absolute output path below `target/distribution` for each archive. The
 
 ```sh
 python3 -B ios/Mote/distribute.py preflight --manifest /private/tmp/mote-release.json --inventory /private/tmp/mote-apps.json --output /Users/bilal/projects/mote/target/distribution/0.1.0-1
-python3 -B ios/Mote/distribute.py archive-export --manifest /private/tmp/mote-release.json --inventory /private/tmp/mote-apps.json --output /Users/bilal/projects/mote/target/distribution/0.1.0-1 --confirm-inventory-current --confirm-physical-device-verified
+python3 -B ios/Mote/distribute.py archive-export --manifest /private/tmp/mote-release.json --inventory /private/tmp/mote-apps.json --output /Users/bilal/projects/mote/target/distribution/0.1.0-1 --confirm-inventory-current --confirm-native-ui-verified
 ```
 
 Preflight requires the physical Rust target and a local Apple Distribution identity for the selected team. Archive requires a matching App Store Connect record in the inventory. It uses the Xcode `app-store-connect` export method with `testFlightInternalTestingOnly` enabled. It checks the archive and IPA bundle ID, version, build number, team signature and entitlements. It records a local receipt and does not upload.
 
-Upload requires an App Store Connect API key ID, issuer ID and private key directory outside the repository. It also requires a separate confirmation flag. The private key contents are never passed on the command line. Put `AuthKey_<key ID>.p8` in `API_PRIVATE_KEYS_DIR`. The upload action rechecks the receipt, IPA and a full-content digest of the signed archive app. It then uses Xcode's separate `-exportArchive` upload destination with internal-only options. Xcode may repackage the archive for upload, so the receipt proves the locally exported IPA and archive content, not byte-for-byte equality with Apple's processed build.
+Upload requires either an App Store Connect API key ID, issuer ID and private key directory outside the repository, or the explicit `--use-xcode-account` option with the selected team already signed in to Xcode. It also requires a separate confirmation flag. The API key contents are never passed on the command line. Put `AuthKey_<key ID>.p8` in `API_PRIVATE_KEYS_DIR` if using that method. The Xcode account method avoids creating a persistent API key. The upload action rechecks the receipt, IPA and a full-content digest of the signed archive app. It then uses Xcode's separate `-exportArchive` upload destination with internal-only options. Xcode may repackage the archive for upload, so the receipt proves the locally exported IPA and archive content, not byte-for-byte equality with Apple's processed build.
 
 Before starting Xcode, the script writes `UploadOptions.plist` and `upload-attempt.json` in the release output directory. It refuses another attempt from that directory. If Xcode reports an error or the result is unclear, inspect App Store Connect before deciding whether to create a new build and output directory. Do not delete the attempt marker just to retry an unknown upload.
 
 ```sh
-MOTE_ASC_API_KEY_ID=... MOTE_ASC_ISSUER_ID=... API_PRIVATE_KEYS_DIR=/private/path/to/keys python3 -B ios/Mote/distribute.py upload --manifest /private/tmp/mote-release.json --inventory /private/tmp/mote-apps.json --output /Users/bilal/projects/mote/target/distribution/0.1.0-1 --confirm-inventory-current --confirm-physical-device-verified --confirm-upload
+MOTE_ASC_API_KEY_ID=... MOTE_ASC_ISSUER_ID=... API_PRIVATE_KEYS_DIR=/private/path/to/keys python3 -B ios/Mote/distribute.py upload --manifest /private/tmp/mote-release.json --inventory /private/tmp/mote-apps.json --output /Users/bilal/projects/mote/target/distribution/0.1.0-1 --confirm-inventory-current --confirm-native-ui-verified --confirm-upload
 ```
 
-Successful upload is not a TestFlight pass. Check processing in App Store Connect, install the internal build on a physical iPad and repeat the named journeys. Do not enable external testing or App Review.
+For the signed-in Xcode account method, omit the API-key environment variables and add `--use-xcode-account` to the upload command. If the outcome is unclear, inspect App Store Connect before making another attempt. Do not switch authentication methods blindly after an ambiguous result.
+
+Successful upload is not internal TestFlight availability. Check processing in App Store Connect and assign the build only to an internal group. That is an interim outcome, not a physical-device pass. Install the build on a physical iPad later and repeat the named journeys. Do not enable external testing or App Review.

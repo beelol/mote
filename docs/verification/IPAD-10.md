@@ -117,3 +117,15 @@ Output: exited 0 outside the restricted shell sandbox. It confirmed Xcode 27.0, 
 Command: the same `archive-export` invocation with `--confirm-inventory-current` but without a Mote App Store Connect record or physical-device confirmation.
 
 Output: exited 1 with `A distinct App Store Connect record is required`. No archive output was created. This is a real refusal check, not a signed archive or upload pass.
+
+## Revised distribution gate
+
+Date: 2026-10-12, America/Los_Angeles. Environment: local macOS, Python 3.14 and Xcode 27.0. The owner's later instruction moved internal TestFlight availability before physical iPad installation. The script's explicit archive and upload gate now requires confirmation that the final native iPad Simulator UI passed, while IPAD-06 and IPAD-08 retain the physical-device work. The earlier physical gate described above is historical.
+
+Command: `python3 -B -m unittest ios/Mote/test_distribute.py`.
+
+Output: sixteen tests passed. The archive path refused missing current-inventory and native-UI confirmations before preflight or packaging. A mocked positive path accepted both flags and reached the archive action. The mocked upload verified that the explicit `--use-xcode-account` path omits API-key arguments while keeping the internal-only options, receipt checks and one-attempt marker. The original API-key path still requires an existing private key outside Git. No real signed archive, IPA or upload is claimed here.
+
+Command: `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` on 2026-10-12.
+
+Output: both exited 0. The workspace tests ran outside the restricted shell sandbox because local fixture sockets need access. Live tests that require explicit fixture setup or a physical iPad remained ignored. These checks cover the revised release gate and upload option only through unit tests. They do not verify signing, Apple processing or physical installation.

@@ -19,3 +19,13 @@ No new identifier or app record was created. The criterion remains unchecked. Th
 Command: `cargo test --workspace` and `cargo clippy --workspace -- -D warnings`.
 
 Output: both exited 0 on 2026-10-12. The workspace test needed local fixture socket access outside the restricted shell sandbox. These checks do not replace the physical-device or Apple distribution verification.
+
+## Delivery order and App ID registration
+
+Date: 2026-10-12, America/Los_Angeles. Environment: the signed-in Apple Developer account for STATION 42 INTERACTIVE L.L.C., team `FQ6YGD7554`, in Chrome. The owner's later instruction moved internal TestFlight availability before physical iPad installation. The README and iPad host spec now retain the physical Verify clauses under IPAD-06 and IPAD-08 while allowing IPAD-07, IPAD-10 and IPAD-11 first. The earlier physical prerequisite and provisional-identity statements above are historical observations, not the current order.
+
+Manual action: open Certificates, Identifiers & Profiles, choose a new App ID of type App, enter description `Mote` and explicit bundle ID `com.beelol.mote`, leave optional capabilities off, review the confirmation page and register it.
+
+Observed result: the All Identifiers page listed `Mote` with `com.beelol.mote` alongside the unchanged `aquafriends` and `Overseer` entries. The separate App Store Connect record is still pending. Its New App form lists `Mote - com.beelol.mote` as the only available bundle ID. The form offers only Full Access for user access. Action-time confirmation was requested before creating the record. No archive or upload has occurred.
+
+The owner allowed the form's Full Access setting. This was not evidence that any other App Store Connect users exist; the earlier assumption about existing users was corrected. The form then rejected the proposed name `Mote` with `The app name you entered is already being used.` No app record was created. The bundle ID remains registered. A new user-facing App Store Connect name requires the owner's choice before retrying.

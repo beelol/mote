@@ -73,9 +73,9 @@ Copy this goal into a driver. Current scope is the distinct device build and int
 ```text
 Continue mote from repository state at ~/projects/mote without relying on chat history.
 
-Read AGENTS.md, docs/rfcs/v0.md, docs/superpowers/specs/2026-10-11-ipad-host.md, root README.md -> Ready for Go, and docs/HANDOFF.md if present. Active ACs are IPAD-06 through IPAD-10 under Ready for Go -> Physical iPad and internal TestFlight. HOST-05 under Native iPad Simulator host and V0-53 under v0 build list remain open for a later owner-present session. Do not mark them passed or remove their Verify clauses. IPAD-01 through IPAD-05 are verified; recheck affected behavior after distribution changes. Backlog, external testing, App Review, public release and cloud relay remain out of scope.
+Read AGENTS.md, docs/rfcs/v0.md, docs/superpowers/specs/2026-10-11-ipad-host.md, root README.md -> Ready for Go, and docs/HANDOFF.md if present. Active ACs are IPAD-06 through IPAD-11 under Ready for Go -> Physical iPad and internal TestFlight. Deliver IPAD-11 before physical IPAD-06 and IPAD-08. HOST-05 under Native iPad Simulator host and V0-53 under v0 build list remain open for a later owner-present session. Do not mark them passed or remove their Verify clauses. IPAD-01 through IPAD-05 are verified; recheck affected behavior after distribution changes. Backlog, external testing, App Review, public release and cloud relay remain out of scope.
 
-The outcome is a separate Mote app installed from internal TestFlight on a physical iPad. The app uses the same Rust immediate-mode Matrix UI, paired host gateway, inferred surfaces and browser approval. It must not collide with any existing app. TestFlight does not make the Mac reachable from another city. Do not claim remote use without a separately verified route. Keep models.local_only true, use only the approved Ollama models, ledger every model call and redact stored events.
+First deliver a separate Mote build processed and available to internal TestFlight testers. Physical iPad installation and the device journeys follow when hardware is available. The final outcome remains the same Rust immediate-mode Matrix UI, paired host gateway, inferred surfaces and browser approval on that iPad. It must not collide with any existing app. TestFlight does not make the Mac reachable from another city. Do not claim remote use without a separately verified route. Keep models.local_only true, use only the approved Ollama models, ledger every model call and redact stored events.
 
 Choose the smallest actionable AC or coherent dependency set. Inspect existing code and Apple account state first. If delegation is available and authorized, send bounded work to the least costly capable subagent with AC IDs, owned files, dependencies and evidence requirements. Inspect every result. Otherwise work directly. Add an AC for any discovered in-scope gap and reopen its parent. Never remove or weaken an unmet requirement.
 
@@ -283,12 +283,12 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     local-network permission, light and dark appearance, reduced motion and VoiceOver checks.
     **Verify:** repeat the named journeys on the device, including center and edge taps for every
     control, and record the device, iPadOS version, role tree, screenshots and observed recovery.
-  - [ ] **IPAD-07** After device-capable build and physical UI verification, Mote has a new
+  - [ ] **IPAD-07** After device-capable build and final native Simulator UI verification, Mote has a new
     explicit bundle ID, signing configuration and App Store Connect record that do not reuse or alter
     another app. **Verify:** record the approved display name, bundle ID, SKU and team, confirm their
-    uniqueness against the owner's existing apps, archive the verified client and retain the App
+    uniqueness against the owner's existing apps, archive the same native client and retain the App
     Store Connect record link.
-  - [ ] **IPAD-08** After IPAD-07, the processed build installs through internal TestFlight and repeats
+  - [ ] **IPAD-08** After IPAD-06 and IPAD-11, the processed build installs through internal TestFlight and repeats
     pairing, live chat, generated Matrix UI, browser approval, reconnect and host-switch isolation.
     **Verify:** record the build and processing state, install it on the physical iPad, run every
     journey and keep external testing, App Review and public release disabled.
@@ -302,3 +302,7 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     absent signing, duplicate build number and bad output path fail closed without Apple mutation;
     inspect a real exported archive and IPA for exact identity and entitlements, prove no secrets
     entered Git or logs, and record one deliberate upload and processing outcome only after IPAD-07.
+  - [ ] **IPAD-11** The processed Mote build is available only to an internal TestFlight group before
+    physical installation. **Verify:** record the build identifier and processing state in the separate
+    Mote app, assign only an internal group with an eligible tester, and confirm external testing and
+    App Review remain disabled. Physical installation is verified separately by IPAD-08.
