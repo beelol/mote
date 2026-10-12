@@ -6,7 +6,7 @@ Environment: macOS 26.6.2, Xcode 27.0, iPhoneOS SDK 27.0, iOS 27.0 (24A434) Simu
 
 The native iOS client now mirrors Matrix control records into individual UIKit accessibility elements. Each frame updates their role, label, value, enabled state and clipped frame. Matching ID and role reuse the same UIKit element to preserve focus. Old elements refuse actions. Activation and adjustable requests return to egui through its AccessKit action path. This is implementation evidence, not a physical VoiceOver pass.
 
-The same bridge now records the live host picker, connection and chat text, composer, Send button and browser approval cards. Approval controls retain their online, in-flight and expiry checks when activated through the native bridge. The existing live and browser XCUITests contain native-element assertions, but those longer journeys were not rerun after this extension. They do not count as passing evidence yet.
+The same bridge now records the live host picker, connection and chat text, composer, Send button and browser approval cards. Approval controls retain their online, in-flight and expiry checks when activated through the native bridge. The existing live and browser XCUITests contain native-element assertions. Their later rerun is recorded below.
 
 Command: `cargo check --locked -p mote-ios --target aarch64-apple-ios-sim` on the live and approval extension. Focused host and approval AccessKit tests were also run.
 
@@ -39,3 +39,33 @@ Output: exited 0. The result bundle reported one passed test and zero failures. 
 Command: `xcrun devicectl list devices`.
 
 Output: no physical iPad was connected. The only physical device listed was an unavailable iPhone Air. All listed iPads were simulated. Physical touch, keyboard, rotation, split view, background recovery, local-network permission, light and dark appearance, reduced motion and actual VoiceOver gestures remain unverified. IPAD-06 stays unchecked.
+
+## Final native Simulator regression after the accessibility extension
+
+Date: 2026-10-12, America/Los_Angeles. Environment: macOS 26.6.2, Xcode 27.0, iOS 27.0 (24A434) on a temporary iPad Pro 11-inch (M5) Simulator. The temporary device ID was `79374702-1858-4AB2-BD79-C7C06DADC0AB`. The current native app was rebuilt from `main` at `0131b9f`. These are Simulator checks, not physical iPad evidence.
+
+Command: `xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote -configuration Debug -destination 'platform=iOS Simulator,id=79374702-1858-4AB2-BD79-C7C06DADC0AB' -derivedDataPath /private/tmp/mote-native-regression-20261012-derived build`, followed by `xcrun simctl install` on that temporary device.
+
+Output: both exited 0. The freshly built native app installed on the isolated Simulator.
+
+Command: `xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote -configuration Debug -destination 'platform=iOS Simulator,id=79374702-1858-4AB2-BD79-C7C06DADC0AB' -derivedDataPath /private/tmp/mote-native-regression-20261012-derived -resultBundlePath /private/tmp/mote-native-regression-20261012-gallery.xcresult -collect-test-diagnostics never -only-testing:MoteUITests/MoteUITests/testMatrixControlsAppearAsIndividualNativeAccessibilityElements -only-testing:MoteUITests/MoteUITests/testGalleryPagesAndControlsInBothOrientations test`.
+
+Output: exited 0. `xcresulttool` reported two passed tests, zero failed and zero skipped. The tests checked separate native toggle, adjustable slider and select elements, gallery page changes, controls and both orientations.
+
+Command: `MOTE_LIVE=1 MOTE_SIMULATOR_ID=79374702-1858-4AB2-BD79-C7C06DADC0AB MOTE_ARTIFACTS=/private/tmp/mote-native-regression-20261012-live cargo test -p mote-ios --test simulator_live -- --ignored --nocapture`.
+
+Output: exited 0. The native XCUITest result bundle reported one pass and zero failures. The fixture paired two hosts, used the native host picker and chat composer, changed the talk-model select, resumed cursor without duplicate chat, moved one authenticated host endpoint and rejected an impostor. It restored and deleted the temporary native Keychain credentials.
+
+Command: `MOTE_LIVE=1 TMPDIR=/private/tmp MOTE_SIMULATOR_ID=79374702-1858-4AB2-BD79-C7C06DADC0AB MOTE_ARTIFACTS=/private/tmp/mote-native-regression-20261012-inferred MOTE_SURFACE_ATTESTATION=/private/tmp/mote-surface-attested.8F07uH/surface-activation.json cargo test -p mote-ios --test inferred_surface_simulator native_inferred -- --ignored --nocapture`.
+
+Output: exited 0. The native XCUITest result bundle reported one pass and zero failures. Success, one retry, prior-surface preservation, visible terminal diagnostic and prose fallback passed. The fixture reported 14 model calls, 14 ledger rows, 14 packs and three authenticated typed refusals. The attestation and scripted model fixture were isolated under `/private/tmp`.
+
+Command: `MOTE_LIVE=1 MOTE_CHROME='/private/tmp/mote-browser-runtime-155/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing' MOTE_SIMULATOR_ID=79374702-1858-4AB2-BD79-C7C06DADC0AB MOTE_ARTIFACTS=/private/tmp/mote-native-regression-20261012-browser cargo test -p mote-ios --test browser_approval native_paired -- --ignored --nocapture`.
+
+Output: exited 0. The native XCUITest result bundle reported one pass and zero failures. Deny caused zero effects. Repeated Approve taps caused exactly one effect. Natural expiry caused no additional effect. The same validated Matrix result remained visible. The browser used the pinned Chrome for Testing and a local fixture, not the user's regular profile or a remote site.
+
+Each result bundle summary was read with `xcrun xcresulttool get test-results summary --path <bundle> --format json`. The temporary Simulator was shut down and deleted after the tests. No physical iPad was connected or tested. IPAD-06 remains unchecked.
+
+Command: `cargo test --workspace` with local fixture socket access and `cargo clippy --workspace -- -D warnings` after recording this evidence.
+
+Output: both exited 0. The live native tests above were run separately because the default workspace suite correctly leaves them ignored without their explicit fixture environment.
