@@ -278,12 +278,14 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
 
 ### Physical iPad and internal TestFlight
 
+The separate App Store Connect listing is [Mote Agent](https://appstoreconnect.apple.com/apps/6822101041/distribution/info), Apple ID `6822101041`, bundle ID `com.beelol.mote`, SKU `mote-ipad-001`, on team `FQ6YGD7554`. The native app still displays `Mote`. The owner chose the listing name after Apple rejected `Mote` as already in use.
+
 - [ ] **[Physical iPad and TestFlight](docs/superpowers/specs/2026-10-11-ipad-host.md#distribution)**
   - [ ] **IPAD-06** A physical iPad passes touch, keyboard, rotation, split view, background recovery,
     local-network permission, light and dark appearance, reduced motion and VoiceOver checks.
     **Verify:** repeat the named journeys on the device, including center and edge taps for every
     control, and record the device, iPadOS version, role tree, screenshots and observed recovery.
-  - [ ] **IPAD-07** After device-capable build and final native Simulator UI verification, Mote has a new
+  - [x] **IPAD-07** After device-capable build and final native Simulator UI verification, Mote has a new
     explicit bundle ID, signing configuration and App Store Connect record that do not reuse or alter
     another app. **Verify:** record the approved display name, bundle ID, SKU and team, confirm their
     uniqueness against the owner's existing apps, archive the same native client and retain the App

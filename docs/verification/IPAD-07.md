@@ -29,3 +29,19 @@ Manual action: open Certificates, Identifiers & Profiles, choose a new App ID of
 Observed result: the All Identifiers page listed `Mote` with `com.beelol.mote` alongside the unchanged `aquafriends` and `Overseer` entries. The separate App Store Connect record is still pending. Its New App form lists `Mote - com.beelol.mote` as the only available bundle ID. The form offers only Full Access for user access. Action-time confirmation was requested before creating the record. No archive or upload has occurred.
 
 The owner allowed the form's Full Access setting. This was not evidence that any other App Store Connect users exist; the earlier assumption about existing users was corrected. The form then rejected the proposed name `Mote` with `The app name you entered is already being used.` No app record was created. The bundle ID remains registered. A new user-facing App Store Connect name requires the owner's choice before retrying.
+
+## Distinct App Store Connect record
+
+Date: 2026-10-12, America/Los_Angeles. Environment: the signed-in App Store Connect account for STATION 42 INTERACTIVE L.L.C. in Chrome. The owner selected the user-facing name `Mote Agent` after Apple's global name collision. The native target remains named `Mote`.
+
+Manual action: submit a new iOS app record with name `Mote Agent`, English (U.S.), bundle ID `com.beelol.mote`, SKU `mote-ipad-001` and the allowed Full Access setting. Open its App Information and TestFlight pages to verify the resulting account state.
+
+Observed result: App Information showed `Mote Agent`, `com.beelol.mote`, SKU `mote-ipad-001` and Apple ID `6822101041`. The record URL is https://appstoreconnect.apple.com/apps/6822101041/distribution/info. TestFlight showed `No Builds` at https://appstoreconnect.apple.com/teams/c419168b-6bd1-4b72-bbed-78617b507726/apps/6822101041/testflight. The other two apps were not changed. This establishes the distinct record, but IPAD-07 still needs the signed archive Verify clause.
+
+Command: `python3 -B ios/Mote/distribute.py preflight --manifest /private/tmp/mote-preflight-2026-10-12-manifest.json --inventory /private/tmp/mote-preflight-2026-10-12-inventory.json --output /Users/bilal/projects/mote/target/distribution/0.1.0-1`.
+
+Output: exited 0. The supplied inventory now includes the Mote Agent record and empty build list observed on the TestFlight page. Xcode 27.0, iPhoneOS SDK 27.0, `aarch64-apple-ios`, team `FQ6YGD7554` and the local Apple Distribution identity passed. The inventory is a manual snapshot, not a live API check. Archive and upload outcomes are recorded separately.
+
+Command: `python3 -B ios/Mote/distribute.py archive-export --manifest /private/tmp/mote-preflight-2026-10-12-manifest.json --inventory /private/tmp/mote-preflight-2026-10-12-inventory.json --output /Users/bilal/projects/mote/target/distribution/0.1.0-1c --confirm-inventory-current --confirm-native-ui-verified`.
+
+Output: exited 0 after the Xcode 27 signing compatibility correction. The real archive contains the native `Mote` app with bundle ID `com.beelol.mote`, version `0.1.0 (1)`, team `FQ6YGD7554` and the compiled iPad icon. The exported IPA passed signature, entitlement, identity and icon checks. The local receipt binds archive and IPA hashes. No upload was attempted by this command. This completes the distinct identity, record and archive Verify clause for IPAD-07. Physical-device IPAD-06 and installed-TestFlight IPAD-08 remain open.

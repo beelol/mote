@@ -165,25 +165,50 @@ def read_bundle_info(path, identity):
         raise ReleaseError("Exported iPad app icon is missing")
 
 
-def verify_signing(app, identity):
+def parse_entitlements(data):
+    lines = [line.strip() for line in data.decode("utf-8", "replace").splitlines()]
+    if not lines or lines[0] != "[Dict]":
+        raise ReleaseError("Signed app entitlements could not be inspected")
+    values = {}
+    index = 1
+    while index < len(lines):
+        line = lines[index]
+        if not line.startswith("[Key] ") or index + 2 >= len(lines) or lines[index + 1] != "[Value]":
+            raise ReleaseError("Signed app entitlements have an unexpected format")
+        key = line[len("[Key] "):]
+        raw = lines[index + 2]
+        if key in values:
+            raise ReleaseError("Signed app entitlements contain a duplicate key")
+        if raw.startswith("[String] "):
+            values[key] = raw[len("[String] "):]
+        elif raw == "[Bool] true":
+            values[key] = True
+        elif raw == "[Bool] false":
+            values[key] = False
+        else:
+            raise ReleaseError("Signed app entitlements have an unsupported value")
+        index += 3
+    return values
+
+
+def verify_signing(app, identity, require_distribution=True):
     tool_output(["codesign", "--verify", "--deep", "--strict", str(app)])
     details = subprocess.run(["codesign", "-dv", "--verbose=4", str(app)],
                              capture_output=True, check=False)
     if details.returncode or f"TeamIdentifier={identity['team_id']}" not in (
             details.stdout + details.stderr).decode("utf-8", "replace"):
         raise ReleaseError("Code signature has the wrong team")
-    result = subprocess.run(["codesign", "-d", "--entitlements", ":-", str(app)],
+    result = subprocess.run(["codesign", "-d", "--entitlements", "-", str(app)],
                             capture_output=True, check=False)
-    data = result.stdout + result.stderr
-    begin = data.find(b"<plist")
-    end = data.find(b"</plist>", begin)
-    if result.returncode or begin < 0 or end < 0:
+    if result.returncode:
         raise ReleaseError("Signed app entitlements could not be inspected")
-    entitlements = plistlib.loads(data[begin:end + len(b"</plist>")])
+    entitlements = parse_entitlements(result.stdout)
     if entitlements.get("application-identifier") != (
             identity["team_id"] + "." + identity["bundle_id"]):
         raise ReleaseError("Signed app entitlement has the wrong application identifier")
-    if entitlements.get("get-task-allow") is not False:
+    if not isinstance(entitlements.get("get-task-allow"), bool):
+        raise ReleaseError("Signed app must declare its debug entitlement")
+    if require_distribution and entitlements["get-task-allow"] is not False:
         raise ReleaseError("Distribution app must not allow debugging")
 
 
@@ -240,19 +265,18 @@ def archive_export(identity, output):
     options = output / "ExportOptions.plist"
     with options.open("wb") as target:
         plistlib.dump(export_options(identity, "export"), target)
-    run_mutation(["xcodebuild", "-project", str(PROJECT), "-scheme", "Mote", "-configuration",
+    run_mutation(["xcodebuild", "-allowProvisioningUpdates", "-project", str(PROJECT), "-scheme", "Mote", "-configuration",
                   "Release", "-destination", "generic/platform=iOS", "-derivedDataPath",
                   str(output / "DerivedData"), "-archivePath", str(archive),
                   "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_STYLE=Automatic",
-                  "CODE_SIGN_IDENTITY=Apple Distribution",
                   "DEVELOPMENT_TEAM=" + identity["team_id"],
                   "PRODUCT_BUNDLE_IDENTIFIER=" + identity["bundle_id"],
                   "MARKETING_VERSION=" + identity["version"],
                   "CURRENT_PROJECT_VERSION=" + identity["build_number"], "archive"], "Archive")
     app = archive / "Products/Applications/Mote.app"
     read_bundle_info(app / "Info.plist", identity)
-    verify_signing(app, identity)
-    run_mutation(["xcodebuild", "-exportArchive", "-archivePath", str(archive),
+    verify_signing(app, identity, require_distribution=False)
+    run_mutation(["xcodebuild", "-allowProvisioningUpdates", "-exportArchive", "-archivePath", str(archive),
                   "-exportPath", str(export), "-exportOptionsPlist", str(options)], "IPA export")
     ipa = export / "Mote.ipa"
     if not ipa.is_file():
@@ -290,7 +314,7 @@ def upload(identity, output, use_xcode_account=False):
     if archive_app_digest(archive_app) != receipt.get("archive_app_sha256"):
         raise ReleaseError("Signed Mote archive has changed since export")
     read_bundle_info(archive_app / "Info.plist", identity)
-    verify_signing(archive_app, identity)
+    verify_signing(archive_app, identity, require_distribution=False)
     authentication = []
     if not use_xcode_account:
         key = require_string(os.environ.get("MOTE_ASC_API_KEY_ID"), "App Store Connect API key ID",
@@ -317,7 +341,7 @@ def upload(identity, output, use_xcode_account=False):
         target.write(json.dumps({"identity": identity, "ipa_sha256": receipt["ipa_sha256"],
                                  "started_at": dt.datetime.now(dt.timezone.utc).isoformat()},
                                 indent=2) + "\n")
-    run_mutation(["xcodebuild", "-exportArchive", "-archivePath", str(output / "Mote.xcarchive"),
+    run_mutation(["xcodebuild", "-allowProvisioningUpdates", "-exportArchive", "-archivePath", str(output / "Mote.xcarchive"),
                   "-exportPath", str(output / "upload"), "-exportOptionsPlist", str(upload_options),
                   *authentication], "Upload")
     print("Upload command succeeded. Confirm processing in App Store Connect before TestFlight testing.")

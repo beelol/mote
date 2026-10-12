@@ -129,3 +129,23 @@ Output: sixteen tests passed. The archive path refused missing current-inventory
 Command: `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` on 2026-10-12.
 
 Output: both exited 0. The workspace tests ran outside the restricted shell sandbox because local fixture sockets need access. Live tests that require explicit fixture setup or a physical iPad remained ignored. These checks cover the revised release gate and upload option only through unit tests. They do not verify signing, Apple processing or physical installation.
+
+## Real archive and IPA
+
+Date: 2026-10-12, America/Los_Angeles. Environment: macOS 26.6.2, Xcode 27.0 (27A266a), iPhoneOS SDK 27.0 and Apple team `FQ6YGD7554`. App Store Connect record `6822101041` exists under `Mote Agent`. The final native Simulator journeys described in `IPAD-06.md` passed before archive. No physical iPad was used under the revised distribution order.
+
+The first guarded archive command into `target/distribution/0.1.0-1` stopped with Xcode exit 65 before producing an archive. A local diagnostic Xcode command showed that specifying `CODE_SIGN_IDENTITY=Apple Distribution` conflicted with automatic signing. Removing that override exposed Xcode's need for `-allowProvisioningUpdates` on this Mac. A subsequent diagnostic archive exposed a host Rust linker failure in the Xcode environment. The equivalent `env -u SDKROOT cargo build --locked -p mote-ios --target aarch64-apple-ios --release` exited 0. The local diagnostic archive then exited 0 after its Rust dependencies were built. It was development-signed with `get-task-allow = true`. A separate diagnostic App Store Connect export exited 0 and re-signed its IPA with `get-task-allow = false` and `beta-reports-active = true`. Neither diagnostic action uploaded a build. The failed `0.1.0-1` and `0.1.0-1b` directories were not reused.
+
+The guarded script now uses Xcode automatic provisioning, does not force an incompatible certificate during archive, and verifies the archive's identity and team separately from the exported IPA's distribution entitlement. Xcode 27's `codesign -d --entitlements -` produces a typed human-readable tree on this Mac. The verifier parses its exact key/value form fail-closed, including duplicate and malformed-key refusals, instead of relying on the deprecated `:-` XML form. The unit tests cover development versus distribution entitlements and keep API-key and signed-in-Xcode upload paths separate.
+
+Command: `python3 -B ios/Mote/distribute.py archive-export --manifest /private/tmp/mote-preflight-2026-10-12-manifest.json --inventory /private/tmp/mote-preflight-2026-10-12-inventory.json --output /Users/bilal/projects/mote/target/distribution/0.1.0-1c --confirm-inventory-current --confirm-native-ui-verified`.
+
+Output: exited 0. The script printed `Signed archive and IPA verified` and `No upload was attempted.` The receipt records bundle ID `com.beelol.mote`, team `FQ6YGD7554`, version `0.1.0 (1)`, App Store Connect ID `6822101041`, IPA SHA-256 `3a845457323dd966ceced489c9ab9dfdc8c97ff340e5758e12f4a9f1359d973e` and archive-app SHA-256 `2b34512496c1d7a8bcd57ed9186e8aff1b622e33c76f75efdf57df39f3c98be9`.
+
+Command: `plutil -p target/distribution/0.1.0-1c/ExportOptions.plist`, `plutil -p target/distribution/0.1.0-1c/Mote.xcarchive/Products/Applications/Mote.app/Info.plist` and `unzip -l target/distribution/0.1.0-1c/export/Mote.ipa`.
+
+Output: export options set `method = app-store-connect`, `destination = export`, `teamID = FQ6YGD7554`, `distributionBundleIdentifier = com.beelol.mote`, `manageAppVersionAndBuildNumber = false` and `testFlightInternalTestingOnly = true`. The archive Info.plist showed native display name `Mote`, exact bundle ID and version, and `AppIcon`. The 5.2 MiB IPA contained `Payload/Mote.app/Mote`, `Info.plist`, `Assets.car` and `embedded.mobileprovision`. The script also extracted the IPA and verified its code signature and distribution entitlements. IPAD-10 remains open until a deliberate upload and observed Apple processing are recorded.
+
+Command: `python3 -B -m unittest ios/Mote/test_distribute.py`, `cargo test --workspace`, `cargo clippy --workspace -- -D warnings` and `git diff --check`.
+
+Output: sixteen Python distribution tests, the full workspace tests and the warning-free clippy check all exited 0 on 2026-10-12. Live tests requiring explicit external fixtures or a physical device remained ignored. The diff whitespace check passed. The current diff contains only the release script, its tests, the distribution guide, README and verification documents. The archive, IPA, local manifest, inventory and signing material are outside Git. No API key or private-key value was used in these commands or emitted in their output.

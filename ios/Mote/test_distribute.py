@@ -129,19 +129,33 @@ class DistributionPreflightTests(unittest.TestCase):
                 preflight.assert_called_once()
                 archive.assert_called_once()
 
-    def test_xcode_entitlements_are_parsed_as_plist(self):
+    def test_xcode_entitlements_are_parsed_fail_closed(self):
         identity = self.valid()
-        entitlements = plistlib.dumps({
-            "application-identifier": "ABCDE12345.com.example.mote",
-            "get-task-allow": False,
-        })
+        entitlements = (b"[Dict]\n"
+                        b"[Key] application-identifier\n[Value]\n"
+                        b"[String] ABCDE12345.com.example.mote\n"
+                        b"[Key] get-task-allow\n[Value]\n[Bool] false\n")
         results = [
             subprocess.CompletedProcess([], 0, b"", b"TeamIdentifier=ABCDE12345\n"),
-            subprocess.CompletedProcess([], 0, entitlements, b""),
+            subprocess.CompletedProcess([], 0, entitlements, b"Executable=/private/tmp/Mote.app/Mote\n"),
         ]
         with patch.object(release, "tool_output"), patch.object(release.subprocess, "run", side_effect=results) as run:
             release.verify_signing(Path("/private/tmp/Mote.app"), identity)
-        self.assertEqual(run.call_args_list[1].args[0][3], ":-")
+        self.assertEqual(run.call_args_list[1].args[0][3], "-")
+        development = entitlements.replace(b"[Bool] false", b"[Bool] true")
+        with patch.object(release, "tool_output"), patch.object(release.subprocess, "run", side_effect=[
+                results[0], subprocess.CompletedProcess([], 0, development, b"")]):
+            release.verify_signing(Path("/private/tmp/Mote.app"), identity, require_distribution=False)
+        with patch.object(release, "tool_output"), patch.object(release.subprocess, "run", side_effect=[
+                results[0], subprocess.CompletedProcess([], 0, development, b"")]):
+            with self.assertRaisesRegex(release.ReleaseError, "must not allow debugging"):
+                release.verify_signing(Path("/private/tmp/Mote.app"), identity)
+        with self.assertRaisesRegex(release.ReleaseError, "duplicate key"):
+            release.parse_entitlements(entitlements + b"[Key] get-task-allow\n[Value]\n[Bool] true\n")
+        with self.assertRaisesRegex(release.ReleaseError, "unexpected format"):
+            release.parse_entitlements(entitlements + b"warning: malformed\n")
+        with self.assertRaisesRegex(release.ReleaseError, "could not be inspected"):
+            release.parse_entitlements(b"untrusted prefix\n" + entitlements)
 
     def test_export_without_ipad_icon_fails_closed(self):
         identity = self.valid()
@@ -198,12 +212,15 @@ class DistributionPreflightTests(unittest.TestCase):
             self.assertEqual([label for _, label in commands], ["Archive", "IPA export"])
             archive_command, export_command = [command for command, _ in commands]
             self.assertIn("CODE_SIGNING_ALLOWED=YES", archive_command)
+            self.assertIn("-allowProvisioningUpdates", archive_command)
+            self.assertNotIn("CODE_SIGN_IDENTITY=Apple Distribution", archive_command)
             self.assertIn("DEVELOPMENT_TEAM=ABCDE12345", archive_command)
             self.assertIn("PRODUCT_BUNDLE_IDENTIFIER=com.example.mote", archive_command)
             self.assertIn("MARKETING_VERSION=0.1.0", archive_command)
             self.assertIn("CURRENT_PROJECT_VERSION=7", archive_command)
             self.assertIn("archive", archive_command)
             self.assertIn("-exportArchive", export_command)
+            self.assertIn("-allowProvisioningUpdates", export_command)
             self.assertFalse(any("altool" in command for command in (archive_command, export_command)))
             with (output / "ExportOptions.plist").open("rb") as source:
                 options = plistlib.load(source)
@@ -271,10 +288,10 @@ class DistributionPreflightTests(unittest.TestCase):
                 release.upload(identity, output)
                 with self.assertRaisesRegex(release.ReleaseError, "already exists"):
                     release.upload(identity, output)
-            signing.assert_called_once_with(app, identity)
+            signing.assert_called_once_with(app, identity, require_distribution=False)
             command, label = run.call_args.args
             self.assertEqual(label, "Upload")
-            self.assertEqual(command[:2], ["xcodebuild", "-exportArchive"])
+            self.assertEqual(command[:3], ["xcodebuild", "-allowProvisioningUpdates", "-exportArchive"])
             self.assertEqual(command[command.index("-archivePath") + 1], str(output / "Mote.xcarchive"))
             self.assertEqual(command[command.index("-authenticationKeyPath") + 1],
                              str((keys / "AuthKey_TESTKEY123.p8").resolve()))
