@@ -39,7 +39,9 @@ python3 -B ios/Mote/distribute.py archive-export --manifest /private/tmp/mote-re
 
 Preflight requires the physical Rust target and a local Apple Distribution identity for the selected team. Archive requires a matching App Store Connect record in the inventory. It uses the Xcode `app-store-connect` export method with `testFlightInternalTestingOnly` enabled. It checks the archive and IPA bundle ID, version, build number, team signature and entitlements. It records a local receipt and does not upload.
 
-Upload requires an App Store Connect API key ID, issuer ID and private key directory outside the repository. It also requires a separate confirmation flag. The private key is never passed on the command line. Use Xcode's `altool`-compatible `AuthKey_<key ID>.p8` file in `API_PRIVATE_KEYS_DIR`.
+Upload requires an App Store Connect API key ID, issuer ID and private key directory outside the repository. It also requires a separate confirmation flag. The private key contents are never passed on the command line. Put `AuthKey_<key ID>.p8` in `API_PRIVATE_KEYS_DIR`. The upload action rechecks the receipt, IPA and signed archive. It then uses Xcode's separate `-exportArchive` upload destination with internal-only options. Xcode may repackage the archive for upload, so the receipt proves the locally exported IPA and archive identity, not byte-for-byte equality with Apple's processed build.
+
+Before starting Xcode, the script writes `UploadOptions.plist` and `upload-attempt.json` in the release output directory. It refuses another attempt from that directory. If Xcode reports an error or the result is unclear, inspect App Store Connect before deciding whether to create a new build and output directory. Do not delete the attempt marker just to retry an unknown upload.
 
 ```sh
 MOTE_ASC_API_KEY_ID=... MOTE_ASC_ISSUER_ID=... API_PRIVATE_KEYS_DIR=/private/path/to/keys python3 -B ios/Mote/distribute.py upload --manifest /private/tmp/mote-release.json --inventory /private/tmp/mote-apps.json --output /Users/bilal/projects/mote/target/distribution/0.1.0-1 --confirm-inventory-current --confirm-physical-device-verified --confirm-upload

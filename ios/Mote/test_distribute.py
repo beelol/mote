@@ -213,7 +213,7 @@ class DistributionPreflightTests(unittest.TestCase):
                     release.upload(identity, output)
                 run.assert_not_called()
 
-    def test_upload_uses_only_the_verified_ipa_and_explicit_key_directory(self):
+    def test_upload_rechecks_archive_and_uses_internal_only_xcode_upload(self):
         identity = self.valid()
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "release"
@@ -225,18 +225,82 @@ class DistributionPreflightTests(unittest.TestCase):
                 "identity": identity,
                 "ipa_sha256": hashlib.sha256(b"signed fixture").hexdigest(),
             }), encoding="utf-8")
+            app = output / "Mote.xcarchive/Products/Applications/Mote.app"
+            app.mkdir(parents=True)
+            with (app / "Info.plist").open("wb") as target:
+                plistlib.dump({"CFBundleIdentifier": identity["bundle_id"],
+                              "CFBundleShortVersionString": identity["version"],
+                              "CFBundleVersion": identity["build_number"],
+                              "CFBundleDisplayName": identity["display_name"],
+                              "CFBundleIcons~ipad": {"CFBundlePrimaryIcon": {
+                                  "CFBundleIconName": "AppIcon"}}}, target)
+            (app / "Assets.car").write_bytes(b"fixture icon")
             keys = Path(directory) / "keys"
             keys.mkdir()
-            env = {"MOTE_ASC_API_KEY_ID": "TESTKEY123", "MOTE_ASC_ISSUER_ID": "test-issuer",
+            (keys / "AuthKey_TESTKEY123.p8").write_text("fixture key", encoding="utf-8")
+            env = {"MOTE_ASC_API_KEY_ID": "TESTKEY123",
+                   "MOTE_ASC_ISSUER_ID": "12345678-1234-1234-1234-123456789abc",
                    "API_PRIVATE_KEYS_DIR": str(keys)}
             with patch.dict(os.environ, env), patch.object(release, "verify_ipa"), \
+                    patch.object(release, "verify_signing") as signing, \
                     patch.object(release, "run_mutation") as run:
                 release.upload(identity, output)
+                with self.assertRaisesRegex(release.ReleaseError, "already exists"):
+                    release.upload(identity, output)
+            signing.assert_called_once_with(app, identity)
             command, label = run.call_args.args
             self.assertEqual(label, "Upload")
-            self.assertEqual(command[:4], ["xcrun", "altool", "--upload-app", "-f"])
-            self.assertEqual(command[4], str(ipa))
-            self.assertNotIn(str(keys), command)
+            self.assertEqual(command[:2], ["xcodebuild", "-exportArchive"])
+            self.assertEqual(command[command.index("-archivePath") + 1], str(output / "Mote.xcarchive"))
+            self.assertEqual(command[command.index("-authenticationKeyPath") + 1],
+                             str((keys / "AuthKey_TESTKEY123.p8").resolve()))
+            self.assertNotIn("fixture key", command)
+            with (output / "UploadOptions.plist").open("rb") as source:
+                options = plistlib.load(source)
+            self.assertEqual(options["destination"], "upload")
+            self.assertEqual(options["teamID"], identity["team_id"])
+            self.assertEqual(options["distributionBundleIdentifier"], identity["bundle_id"])
+            self.assertTrue(options["testFlightInternalTestingOnly"])
+            self.assertFalse(options["manageAppVersionAndBuildNumber"])
+            self.assertEqual(release.load_json(output / "upload-attempt.json")["identity"], identity)
+
+    def test_upload_refuses_missing_archive_or_key_without_mutation(self):
+        identity = self.valid()
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "release"
+            export = output / "export"
+            export.mkdir(parents=True)
+            ipa = export / "Mote.ipa"
+            ipa.write_bytes(b"signed fixture")
+            (output / "receipt.json").write_text(json.dumps({
+                "identity": identity,
+                "ipa_sha256": hashlib.sha256(b"signed fixture").hexdigest(),
+            }), encoding="utf-8")
+            with patch.object(release, "verify_ipa"), patch.object(release, "run_mutation") as run:
+                with self.assertRaisesRegex(release.ReleaseError, "archive is missing"):
+                    release.upload(identity, output)
+                run.assert_not_called()
+            app = output / "Mote.xcarchive/Products/Applications/Mote.app"
+            app.mkdir(parents=True)
+            with (app / "Info.plist").open("wb") as target:
+                plistlib.dump({"CFBundleIdentifier": identity["bundle_id"],
+                              "CFBundleShortVersionString": identity["version"],
+                              "CFBundleVersion": identity["build_number"],
+                              "CFBundleDisplayName": identity["display_name"],
+                              "CFBundleIcons~ipad": {"CFBundlePrimaryIcon": {
+                                  "CFBundleIconName": "AppIcon"}}}, target)
+            (app / "Assets.car").write_bytes(b"fixture icon")
+            keys = Path(directory) / "keys"
+            keys.mkdir()
+            env = {"MOTE_ASC_API_KEY_ID": "TESTKEY123",
+                   "MOTE_ASC_ISSUER_ID": "12345678-1234-1234-1234-123456789abc",
+                   "API_PRIVATE_KEYS_DIR": str(keys)}
+            with patch.dict(os.environ, env), patch.object(release, "verify_ipa"), \
+                    patch.object(release, "verify_signing"), \
+                    patch.object(release, "run_mutation") as run:
+                with self.assertRaisesRegex(release.ReleaseError, "private key file"):
+                    release.upload(identity, output)
+                run.assert_not_called()
 
 
 if __name__ == "__main__":

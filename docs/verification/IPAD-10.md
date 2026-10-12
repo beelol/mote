@@ -73,3 +73,17 @@ Output: three valid identities were present, including one Apple Distribution id
 Command: check whether `MOTE_ASC_API_KEY_ID`, `MOTE_ASC_ISSUER_ID` and `API_PRIVATE_KEYS_DIR` are set, without printing values.
 
 Output: all three were unset. The Mac was locked for native app access. A read-only browser navigation to App Store Connect reached its Apple Account sign-in page with `authResult=FAILED`, so the app inventory could not be inspected. No login, Mote app record or unique identity was confirmed. IPAD-10 remains unchecked.
+
+## Upload tool compatibility
+
+Date: 2026-10-11, America/Los_Angeles. Environment: Xcode 27.0 (27A266a) on the local Mac. No App Store Connect credentials or remote upload were used.
+
+Command: `xcrun altool --help` and `xcrun altool --version`.
+
+Output: both exited 1 before showing help or a version because this Xcode installation could not open `Defaults.properties`. The earlier upload command would not run here. `xcodebuild -help` listed `-exportArchive`, the `destination` options `export` and `upload`, App Store Connect authentication key flags, and `testFlightInternalTestingOnly`.
+
+The upload action now rechecks the local IPA hash and the signed archive identity, then prepares a distinct Xcode upload export using the approved team, bundle ID and internal-only option. It requires the exact API key file outside the repository. An attempt marker prevents silent retries if Apple's processing outcome is unclear. No upload has been attempted.
+
+Command: `python3 -B -m unittest ios/Mote/test_distribute.py`.
+
+Output: fifteen tests passed. A mocked upload checked the Xcode command, credential path, exact internal-only options, archive recheck and one-attempt marker. Missing archive, missing key and changed IPA cases stopped before an Apple mutation command. A real signed archive and actual upload remain unverified.

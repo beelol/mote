@@ -208,11 +208,7 @@ def archive_export(identity, output):
     export = output / "export"
     options = output / "ExportOptions.plist"
     with options.open("wb") as target:
-        plistlib.dump({"method": "app-store-connect", "destination": "export",
-                      "signingStyle": "automatic", "teamID": identity["team_id"],
-                      "distributionBundleIdentifier": identity["bundle_id"],
-                      "manageAppVersionAndBuildNumber": False,
-                      "testFlightInternalTestingOnly": True}, target)
+        plistlib.dump(export_options(identity, "export"), target)
     run_mutation(["xcodebuild", "-project", str(PROJECT), "-scheme", "Mote", "-configuration",
                   "Release", "-destination", "generic/platform=iOS", "-derivedDataPath",
                   str(output / "DerivedData"), "-archivePath", str(archive),
@@ -236,6 +232,14 @@ def archive_export(identity, output):
     print(f"Signed archive and IPA verified at {output}. No upload was attempted.")
 
 
+def export_options(identity, destination):
+    return {"method": "app-store-connect", "destination": destination,
+            "signingStyle": "automatic", "teamID": identity["team_id"],
+            "distributionBundleIdentifier": identity["bundle_id"],
+            "manageAppVersionAndBuildNumber": False,
+            "testFlightInternalTestingOnly": True}
+
+
 def upload(identity, output):
     receipt = load_json(output / "receipt.json")
     if receipt.get("identity") != identity:
@@ -243,9 +247,20 @@ def upload(identity, output):
     ipa = output / "export/Mote.ipa"
     if not ipa.is_file() or hashlib.sha256(ipa.read_bytes()).hexdigest() != receipt.get("ipa_sha256"):
         raise ReleaseError("Exported IPA is missing or has changed")
+    upload_options = output / "UploadOptions.plist"
+    attempt = output / "upload-attempt.json"
+    if upload_options.exists() or attempt.exists() or (output / "upload").exists():
+        raise ReleaseError("An upload attempt already exists. Inspect App Store Connect before retrying")
     verify_ipa(ipa, identity)
-    key = require_string(os.environ.get("MOTE_ASC_API_KEY_ID"), "App Store Connect API key ID")
-    issuer = require_string(os.environ.get("MOTE_ASC_ISSUER_ID"), "App Store Connect issuer ID")
+    archive_app = output / "Mote.xcarchive/Products/Applications/Mote.app"
+    if not (archive_app / "Info.plist").is_file():
+        raise ReleaseError("Signed Mote archive is missing")
+    read_bundle_info(archive_app / "Info.plist", identity)
+    verify_signing(archive_app, identity)
+    key = require_string(os.environ.get("MOTE_ASC_API_KEY_ID"), "App Store Connect API key ID",
+                         r"[A-Z0-9]{10}")
+    issuer = require_string(os.environ.get("MOTE_ASC_ISSUER_ID"), "App Store Connect issuer ID",
+                            r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
     private_keys = Path(require_string(os.environ.get("API_PRIVATE_KEYS_DIR"), "private-key directory"))
     if not private_keys.is_absolute() or ".." in private_keys.parts:
         raise ReleaseError("Private-key directory must be an absolute path without traversal")
@@ -255,8 +270,19 @@ def upload(identity, output):
         raise ReleaseError("Private-key directory cannot be resolved") from error
     if private_keys == ROOT or ROOT in private_keys.parents or not private_keys.is_dir():
         raise ReleaseError("Private keys must be in an existing directory outside the repository")
-    run_mutation(["xcrun", "altool", "--upload-app", "-f", str(ipa), "--api-key", key,
-                  "--api-issuer", issuer], "Upload")
+    key_file = private_keys / f"AuthKey_{key}.p8"
+    if key_file.is_symlink() or not key_file.is_file():
+        raise ReleaseError("The selected App Store Connect private key file is missing or unsafe")
+    with upload_options.open("xb") as target:
+        plistlib.dump(export_options(identity, "upload"), target)
+    with attempt.open("x", encoding="utf-8") as target:
+        target.write(json.dumps({"identity": identity, "ipa_sha256": receipt["ipa_sha256"],
+                                 "started_at": dt.datetime.now(dt.timezone.utc).isoformat()},
+                                indent=2) + "\n")
+    run_mutation(["xcodebuild", "-exportArchive", "-archivePath", str(output / "Mote.xcarchive"),
+                  "-exportPath", str(output / "upload"), "-exportOptionsPlist", str(upload_options),
+                  "-authenticationKeyPath", str(key_file), "-authenticationKeyID", key,
+                  "-authenticationKeyIssuerID", issuer], "Upload")
     print("Upload command succeeded. Confirm processing in App Store Connect before TestFlight testing.")
 
 
