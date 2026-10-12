@@ -65,6 +65,9 @@ def validate_identity(manifest, inventory, today, need_record):
         raise ReleaseError("Invalid inventory date") from error
     if not dt.timedelta(0) <= today - inventory_date <= dt.timedelta(days=1):
         raise ReleaseError("App inventory must be checked within one day")
+    inventory_team = require_string(inventory.get("team_id"), "inventory team ID", r"[A-Z0-9]{10}")
+    if inventory_team != team:
+        raise ReleaseError("App inventory belongs to a different signing team")
     apps = inventory.get("apps")
     if not isinstance(apps, list):
         raise ReleaseError("App inventory must contain an apps list")

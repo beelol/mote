@@ -15,7 +15,7 @@ Add `"app_store_connect_id":"1234567890"` after the distinct record exists. The 
 Inventory example after record creation:
 
 ```json
-{"checked_at":"2026-10-11","apps":[{"bundle_id":"com.example.mote","sku":"MOTE-NEW","app_store_connect_id":"1234567890","builds":[]}]}
+{"checked_at":"2026-10-11","team_id":"ABCDE12345","apps":[{"bundle_id":"com.example.mote","sku":"MOTE-NEW","app_store_connect_id":"1234567890","builds":[]}]}
 ```
 
 Use a new absolute output path below `target/distribution` for each archive. The script refuses an existing path, symlinks and paths outside that directory. For example:

@@ -30,6 +30,7 @@ class DistributionPreflightTests(unittest.TestCase):
         }
         self.inventory = {
             "checked_at": "2026-10-11",
+            "team_id": "ABCDE12345",
             "apps": [{"bundle_id": "com.example.mote", "sku": "MOTE-NEW",
                       "app_store_connect_id": "1234567890", "builds": []}],
         }
@@ -68,6 +69,14 @@ class DistributionPreflightTests(unittest.TestCase):
 
     def test_duplicate_build_number_fails_closed(self):
         self.inventory["apps"][0]["builds"] = [{"version": "0.1.0", "build_number": 7}]
+        with self.assertRaises(release.ReleaseError):
+            self.valid()
+
+    def test_inventory_must_belong_to_the_selected_signing_team(self):
+        self.inventory["team_id"] = "DIFFERENT1"
+        with self.assertRaises(release.ReleaseError):
+            self.valid()
+        self.inventory.pop("team_id")
         with self.assertRaises(release.ReleaseError):
             self.valid()
 
