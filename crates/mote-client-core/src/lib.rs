@@ -1,6 +1,8 @@
 //! Platform-neutral Matrix rendering and chat state shared by native host adapters.
 
 pub mod accessibility;
+#[cfg(any(test, target_os = "ios"))]
+pub mod native_accessibility;
 pub mod approval;
 pub mod contract;
 pub mod gallery;

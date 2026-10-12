@@ -51,6 +51,44 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     XCUIDevice.sharedDevice.orientation = UIDeviceOrientationPortrait;
     [super tearDown];
 }
+
+- (XCUIElement *)nativeElement:(NSString *)label app:(XCUIApplication *)app {
+    return [[[app descendantsMatchingType:XCUIElementTypeAny]
+        matchingPredicate:[NSPredicate predicateWithFormat:@"label == %@", label]] firstMatch];
+}
+
+- (void)testMatrixControlsAppearAsIndividualNativeAccessibilityElements {
+    XCUIApplication *app = [XCUIApplication new];
+    app.launchArguments = @[@"--mote-offline", @"--mote-page", @"toggle"];
+    [app launch];
+
+    XCUIElement *togglePage = app.buttons[@"Toggle"];
+    XCUIElement *toggle = app.buttons[@"Enable preview"];
+    XCTAssertTrue([togglePage waitForExistenceWithTimeout:10]);
+    XCTAssertTrue([toggle waitForExistenceWithTimeout:10]);
+    XCTAssertEqualObjects(toggle.value, @"On");
+    XCTAssertGreaterThanOrEqual(toggle.frame.size.height, 48.0);
+    [toggle tap];
+    XCTAssertEqualObjects(toggle.value, @"Off");
+
+    [app.buttons[@"Slider"] tap];
+    XCUIElement *slider = app.otherElements[@"Volume"];
+    XCTAssertTrue([slider waitForExistenceWithTimeout:10]);
+    XCTAssertEqualObjects(slider.value, @"4");
+    [[slider coordinateWithNormalizedOffset:CGVectorMake(0.8, 0.5)] tap];
+    XCTAssertEqualObjects(slider.value, @"8");
+
+    [app.buttons[@"Select"] tap];
+    XCUIElement *select = app.buttons[@"Priority"];
+    XCTAssertTrue([select waitForExistenceWithTimeout:10]);
+    XCTAssertEqualObjects(select.value, @"Normal");
+    [select tap];
+    XCUIElement *high = app.buttons[@"High"];
+    XCTAssertTrue([high waitForExistenceWithTimeout:10]);
+    [high tap];
+    XCTAssertEqualObjects(select.value, @"High");
+    XCTAssertFalse(toggle.exists);
+}
 - (UIImage *)windowImage:(XCUIApplication *)app {
     UIImage *source = app.windows.firstMatch.screenshot.image;
     CGSize size = app.windows.firstMatch.frame.size;
@@ -437,6 +475,10 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     [app activate];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
     [self assertText:@"Home: online" app:app];
+    XCTAssertTrue([app.buttons[@"Home"] waitForExistenceWithTimeout:10]);
+    XCTAssertTrue([[self nativeElement:@"Home: online" app:app] exists]);
+    XCTAssertTrue([[self nativeElement:@"Message your Mote host" app:app] exists]);
+    XCTAssertTrue([app.buttons[@"Send"] exists]);
     [self assertText:@"Home dashboard" app:app];
     [self capture:@"live-home-paired" app:app];
     [self tapText:@"Talk model:" app:app];
@@ -449,6 +491,7 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     [app.textViews.firstMatch typeText:@"hello"];
     [self tapText:@"Send" app:app];
     [self assertText:@"User: hello" app:app];
+    XCTAssertTrue([[self nativeElement:@"User: hello" app:app] exists]);
     [self assertText:@"greeting" app:app];
     [self capture:@"live-chat" app:app];
     [app terminate];
@@ -459,6 +502,8 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     [self capture:@"live-relaunched-cursor" app:app];
     [self tapText:@"Office" app:app];
     [self assertText:@"Office: online" app:app];
+    XCTAssertTrue([app.buttons[@"Office"] exists]);
+    XCTAssertTrue([[self nativeElement:@"Office: online" app:app] exists]);
     [self assertText:@"Office dashboard" app:app];
     XCTAssertFalse([compactText([self visibleText:app]) containsString:compactText(@"User: hello")]);
     [self capture:@"live-office-isolated" app:app];
@@ -520,6 +565,9 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     [self assertText:@"Browser fixture ready" app:app];
     NSLog(@"MOTE BROWSER READY");
     [self assertText:@"Pending" app:app];
+    XCTAssertTrue([app.buttons[@"Approve"] waitForExistenceWithTimeout:10]);
+    XCTAssertTrue([app.buttons[@"Deny"] exists]);
+    XCTAssertTrue([[self nativeElement:@"Browser: online" app:app] exists]);
     [self capture:@"browser-pending-deny" app:app];
     [app terminate];
     [app launch];
@@ -551,6 +599,8 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
         NSString *text = [item topCandidates:1].firstObject.string;
         XCTAssertFalse(statusTextMatches(text, @"Approve") || statusTextMatches(text, @"Deny"));
     }
+    XCTAssertFalse(app.buttons[@"Approve"].exists);
+    XCTAssertFalse(app.buttons[@"Deny"].exists);
     [self assertText:@"Approved request completed." app:app];
     NSLog(@"MOTE BROWSER EXPIRED OBSERVED");
 }

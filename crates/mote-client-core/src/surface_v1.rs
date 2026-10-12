@@ -660,13 +660,20 @@ impl Renderer<'_> {
                             .selected_text(format!("{label}: {edited}"))
                             .show_ui(ui, |ui| {
                                 for option in options {
-                                    if ui
-                                        .add_sized(
-                                            [ui.available_width(), 48.0],
-                                            egui::Button::new(option),
-                                        )
-                                        .clicked()
-                                    {
+                                    let option_response = ui.add_sized(
+                                        [ui.available_width(), 48.0],
+                                        egui::Button::new(option),
+                                    );
+                                    #[cfg(target_os = "ios")]
+                                    crate::native_accessibility::record(
+                                        ui,
+                                        option_response.id,
+                                        crate::native_accessibility::Role::Button,
+                                        option,
+                                        None,
+                                        &option_response,
+                                    );
+                                    if option_response.clicked() {
                                         edited = option.clone();
                                         ui.memory_mut(|memory| memory.close_popup());
                                     }

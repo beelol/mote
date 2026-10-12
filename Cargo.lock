@@ -2793,6 +2793,7 @@ dependencies = [
 name = "mote-ios"
 version = "0.0.0"
 dependencies = [
+ "accesskit",
  "anyhow",
  "eframe",
  "egui",

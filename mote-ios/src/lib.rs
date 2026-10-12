@@ -1,7 +1,9 @@
+#[cfg(any(test, target_os = "ios"))]
+mod accessibility;
 mod app;
+pub mod discovery;
 pub mod keychain;
 pub mod live;
-pub mod discovery;
 #[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]
 mod probe;
 mod simulator;
@@ -19,10 +21,12 @@ pub extern "C" fn mote_ios_main() -> ! {
         Box::new(|cc| {
             #[cfg(target_os = "ios")]
             attach_scene(cc)?;
+            #[cfg(target_os = "ios")]
+            accessibility::install(&cc.egui_ctx);
             mote_client_core::install_theme(&cc.egui_ctx);
-            let mut app = app::MoteApp::with_launch_options(
-                simulator::LaunchOptions::parse(std::env::args()),
-            );
+            let mut app = app::MoteApp::with_launch_options(simulator::LaunchOptions::parse(
+                std::env::args(),
+            ));
             app.attach_live(&cc.egui_ctx);
             Ok(Box::new(app))
         }),

@@ -19,6 +19,21 @@ pub struct Card<'a> {
     pub now_ms: i64,
 }
 
+fn card_label(ui: &mut egui::Ui, key: &'static str, text: String) {
+    let response = ui.label(&text);
+    #[cfg(target_os = "ios")]
+    crate::native_accessibility::record(
+        ui,
+        ui.make_persistent_id(("approval-label", key)),
+        crate::native_accessibility::Role::Label,
+        &text,
+        None,
+        &response,
+    );
+    #[cfg(not(target_os = "ios"))]
+    let _ = (key, response);
+}
+
 pub fn draw(ui: &mut egui::Ui, card: Card<'_>) -> Option<ApprovalDecision> {
     let approval = card.approval;
     let mut decision = None;
@@ -26,7 +41,7 @@ pub fn draw(ui: &mut egui::Ui, card: Card<'_>) -> Option<ApprovalDecision> {
         (card.host_id, &approval.thread, &approval.approval_id),
         |ui| {
             egui::Frame::group(ui.style()).show(ui, |ui| {
-                ui.label(format!("Browser request from {}", card.host_name));
+                card_label(ui, "title", format!("Browser request from {}", card.host_name));
                 let site = approval
                     .payload
                     .get("site")
@@ -37,8 +52,8 @@ pub fn draw(ui: &mut egui::Ui, card: Card<'_>) -> Option<ApprovalDecision> {
                     .get("effect")
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or("browser action");
-                ui.label(format!("{effect} on {site}"));
-                ui.label(format!("Expires at {}", approval.expires_at));
+                card_label(ui, "effect", format!("{effect} on {site}"));
+                card_label(ui, "expiry", format!("Expires at {}", approval.expires_at));
                 let label = match card.status {
                     ApprovalStatus::Pending if card.now_ms >= approval.expires_at => {
                         "Expired locally. Waiting for host confirmation"
@@ -51,7 +66,7 @@ pub fn draw(ui: &mut egui::Ui, card: Card<'_>) -> Option<ApprovalDecision> {
                     ApprovalStatus::Expired => "Expired",
                     ApprovalStatus::Failed => "Failed",
                 };
-                ui.label(label);
+                card_label(ui, "status", label.to_owned());
                 if card.status == ApprovalStatus::Pending {
                     let enabled =
                         card.online && !card.in_flight && card.now_ms < approval.expires_at;
@@ -63,6 +78,15 @@ pub fn draw(ui: &mut egui::Ui, card: Card<'_>) -> Option<ApprovalDecision> {
                             ] {
                                 let response =
                                     ui.add_sized([112.0, 48.0], egui::Button::new(label));
+                                #[cfg(target_os = "ios")]
+                                crate::native_accessibility::record(
+                                    ui,
+                                    response.id,
+                                    crate::native_accessibility::Role::Button,
+                                    label,
+                                    None,
+                                    &response,
+                                );
                                 #[cfg(any(test, feature = "test-observation"))]
                                 crate::observation::control(ui, "approval", &[index], &response);
                                 #[cfg(not(any(test, feature = "test-observation")))]
@@ -193,6 +217,26 @@ mod tests {
             assert_eq!(decision.decision, verdict);
             crate::observation::take_layout();
         }
+    }
+
+    #[test]
+    fn accesskit_approval_action_targets_only_the_enabled_bound_card() {
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        let state = state(ApprovalStatus::Pending);
+        frame(&ctx, &state, true, false, 1000, vec![]);
+        let controls = crate::observation::take_layout().controls;
+        let request = egui::Event::AccessKitActionRequest(accesskit::ActionRequest {
+            action: accesskit::Action::Click,
+            target: controls[0].id.value().into(),
+            data: None,
+        });
+        let (_, decision) = frame(&ctx, &state, true, false, 1000, vec![request.clone()]);
+        assert_eq!(decision.unwrap().decision, ApprovalVerdict::Approve);
+        crate::observation::take_layout();
+        let (_, denied) = frame(&ctx, &state, false, false, 1000, vec![request]);
+        assert!(denied.is_none());
+        crate::observation::take_layout();
     }
 
     #[test]

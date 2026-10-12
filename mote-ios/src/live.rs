@@ -228,7 +228,8 @@ impl<S: CredentialStore<Credential = StoredCredential>> NetworkHost<S> {
 
     pub fn reconnect_events(&self, cursor: &Cursor) -> Result<NetworkStream> {
         let stream = self.subscribe(cursor)?;
-        self.generation.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        self.generation
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
         Ok(stream)
     }
 }
@@ -336,6 +337,21 @@ pub struct LiveRuntime {
     pub(crate) commands: BTreeMap<HostId, Sender<HostCommand>>,
     pub(crate) status: BTreeMap<HostId, String>,
     pub(crate) approval_requests: BTreeMap<(HostId, RequestId), RequestId>,
+}
+
+fn live_label(ui: &mut egui::Ui, id: egui::Id, text: String) {
+    let response = ui.label(&text);
+    #[cfg(target_os = "ios")]
+    mote_client_core::native_accessibility::record(
+        ui,
+        id,
+        mote_client_core::native_accessibility::Role::Label,
+        &text,
+        None,
+        &response,
+    );
+    #[cfg(not(target_os = "ios"))]
+    let _ = (id, response);
 }
 
 impl LiveRuntime {
@@ -513,18 +529,27 @@ impl LiveRuntime {
                 let hosts: Vec<_> = self.directory.hosts().cloned().collect();
                 ui.horizontal_wrapped(|ui| {
                     for host in hosts {
-                        if ui
-                            .add_sized(
+                        ui.push_id(host.host_id(), |ui| {
+                            let response = ui.add_sized(
                                 [128.0, 48.0],
                                 egui::Button::new(host.name())
                                     .selected(selected.as_ref() == Some(host.host_id())),
-                            )
-                            .clicked()
-                        {
-                            let _ = self.persist.send(HostUpdate::Selected {
-                                host_id: host.host_id().clone(),
-                            });
-                        }
+                            );
+                            #[cfg(target_os = "ios")]
+                            mote_client_core::native_accessibility::record(
+                                ui,
+                                response.id,
+                                mote_client_core::native_accessibility::Role::Button,
+                                host.name(),
+                                None,
+                                &response,
+                            );
+                            if response.clicked() {
+                                let _ = self.persist.send(HostUpdate::Selected {
+                                    host_id: host.host_id().clone(),
+                                });
+                            }
+                        });
                     }
                 });
                 if let Some(host) = &selected {
@@ -540,14 +565,30 @@ impl LiveRuntime {
                             ConnectionState::Incompatible { .. } => "incompatible",
                             ConnectionState::IdentityChanged => "identity changed",
                         };
-                        ui.label(format!("{name}: {status}"));
-                        ui.label(format!("Cursor: {}", state.cursor().seq));
+                        live_label(
+                            ui,
+                            ui.make_persistent_id(("host-status", host)),
+                            format!("{name}: {status}"),
+                        );
+                        live_label(
+                            ui,
+                            ui.make_persistent_id(("host-cursor", host)),
+                            format!("Cursor: {}", state.cursor().seq),
+                        );
                     }
                 } else {
-                    ui.label("Connecting to paired hosts");
+                    live_label(
+                        ui,
+                        ui.make_persistent_id("no-host-status"),
+                        "Connecting to paired hosts".into(),
+                    );
                 }
                 if let Some(status) = selected.as_ref().and_then(|host| self.status.get(host)) {
-                    ui.label(status);
+                    live_label(
+                        ui,
+                        ui.make_persistent_id(("request-status", &selected)),
+                        status.clone(),
+                    );
                 }
                 ui.horizontal(|ui| {
                     let field = ui.add_sized(
@@ -556,9 +597,31 @@ impl LiveRuntime {
                             .id(egui::Id::new("live-chat"))
                             .hint_text("Message your Mote host"),
                     );
-                    let send = ui
-                        .add_sized([96.0, 48.0], egui::Button::new("Send"))
-                        .clicked()
+                    #[cfg(target_os = "ios")]
+                    mote_client_core::native_accessibility::record(
+                        ui,
+                        field.id,
+                        mote_client_core::native_accessibility::Role::TextField,
+                        "Message your Mote host",
+                        Some(composer.clone()),
+                        &field,
+                    );
+                    let send_response = ui.push_id(("live-send", &selected), |ui| {
+                        ui.add_enabled_ui(selected.is_some() && !composer.trim().is_empty(), |ui| {
+                            ui.add_sized([96.0, 48.0], egui::Button::new("Send"))
+                        })
+                        .inner
+                    }).inner;
+                    #[cfg(target_os = "ios")]
+                    mote_client_core::native_accessibility::record(
+                        ui,
+                        send_response.id,
+                        mote_client_core::native_accessibility::Role::Button,
+                        "Send",
+                        None,
+                        &send_response,
+                    );
+                    let send = send_response.clicked()
                         || (field.lost_focus()
                             && ui.input(|input| input.key_pressed(egui::Key::Enter)));
                     if send && !composer.trim().is_empty() {
@@ -621,7 +684,8 @@ impl LiveRuntime {
                 .max_height(ui.available_height() * 0.32)
                 .show(ui, |ui| {
                     for message in messages {
-                        ui.label(format!("{:?}: {}", message.role, message.text));
+                        let id = ui.make_persistent_id(("chat-message", &host, thread, &message.id));
+                        live_label(ui, id, format!("{:?}: {}", message.role, message.text));
                     }
                 });
             let now_ms = std::time::SystemTime::now()
@@ -739,11 +803,19 @@ impl LiveRuntime {
                         }
                     }
                     Err(_) => {
-                        ui.label("This committed surface requires a compatible client");
+                        live_label(
+                            ui,
+                            ui.make_persistent_id("incompatible-surface"),
+                            "This committed surface requires a compatible client".into(),
+                        );
                     }
                 }
             }
-            ui.label(format!("Committed through {snapshot_cursor}"));
+            live_label(
+                ui,
+                ui.make_persistent_id(("committed-cursor", &host)),
+                format!("Committed through {snapshot_cursor}"),
+            );
         });
     }
 }

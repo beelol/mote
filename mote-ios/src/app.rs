@@ -29,6 +29,11 @@ impl Default for MoteApp {
 
 impl eframe::App for MoteApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        #[cfg(target_os = "ios")]
+        {
+            mote_client_core::native_accessibility::begin_frame();
+            crate::accessibility::apply_pending(ctx);
+        }
         let safe_area = crate::safe_area();
         #[cfg(all(target_os = "ios", target_abi = "sim"))]
         if let Some(probe) = self.probe.as_mut() {
@@ -37,6 +42,8 @@ impl eframe::App for MoteApp {
             }
         }
         self.draw(ctx, safe_area);
+        #[cfg(target_os = "ios")]
+        crate::accessibility::publish();
         #[cfg(all(target_os = "ios", target_abi = "sim"))]
         if let Some(probe) = self.probe.as_mut() {
             probe.after_draw(ctx, safe_area);
@@ -83,15 +90,22 @@ impl MoteApp {
                 ui.label("Offline gallery");
                 ui.horizontal_wrapped(|ui| {
                     for page in GalleryPage::ALL {
-                        if ui
-                            .add_sized(
-                                [96.0, 48.0],
-                                egui::Button::new(page.name())
-                                    .selected(self.gallery.selected() == page)
-                                    .fill(ui.visuals().panel_fill),
-                            )
-                            .clicked()
-                        {
+                        let response = ui.add_sized(
+                            [96.0, 48.0],
+                            egui::Button::new(page.name())
+                                .selected(self.gallery.selected() == page)
+                                .fill(ui.visuals().panel_fill),
+                        );
+                        #[cfg(target_os = "ios")]
+                        mote_client_core::native_accessibility::record(
+                            ui,
+                            response.id,
+                            mote_client_core::native_accessibility::Role::Button,
+                            page.name(),
+                            None,
+                            &response,
+                        );
+                        if response.clicked() {
                             self.gallery.select(page);
                             self.last_event = format!("Selected {}", page.name());
                         }
@@ -122,6 +136,15 @@ impl MoteApp {
                 response.widget_info(|| {
                     egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Preview note")
                 });
+                #[cfg(target_os = "ios")]
+                mote_client_core::native_accessibility::record(
+                    ui,
+                    response.id,
+                    mote_client_core::native_accessibility::Role::TextField,
+                    "Preview note",
+                    Some(self.composer.clone()),
+                    &response,
+                );
                 #[cfg(test)]
                 mote_client_core::observation::control(ui, "composer", &[], &response);
             });
@@ -379,24 +402,66 @@ mod tests {
         let first_id = first.host_id().clone();
         let second_id = second.host_id().clone();
         let mut directory = HostDirectory::default();
-        directory.register(first).unwrap(); directory.register(second).unwrap();
+        directory.register(first).unwrap();
+        directory.register(second).unwrap();
         directory.select_host(&first_id).unwrap();
         let (tx, rx) = std::sync::mpsc::channel();
         let mut app = MoteApp::default();
-        app.live = Some(crate::live::LiveRuntime { directory, rx, persist: tx.clone(), commands: Default::default(), status: Default::default(), approval_requests: Default::default() });
-        tx.send(HostUpdate::Frame { host_id: first_id.clone(), frame: HostFrame::Event { host_id: second_id.clone(), event: Event { seq: 1, ts: 0, scope_id: "main".into(), kind: "turn.user".into(), payload: serde_json::json!({"text":"Must not appear"}) } } }).unwrap();
+        app.live = Some(crate::live::LiveRuntime {
+            directory,
+            rx,
+            persist: tx.clone(),
+            commands: Default::default(),
+            status: Default::default(),
+            approval_requests: Default::default(),
+        });
+        tx.send(HostUpdate::Frame {
+            host_id: first_id.clone(),
+            frame: HostFrame::Event {
+                host_id: second_id.clone(),
+                event: Event {
+                    seq: 1,
+                    ts: 0,
+                    scope_id: "main".into(),
+                    kind: "turn.user".into(),
+                    payload: serde_json::json!({"text":"Must not appear"}),
+                },
+            },
+        })
+        .unwrap();
         app.live.as_mut().unwrap().drain();
         let ctx = egui::Context::default();
         frame(&mut app, &ctx, egui::vec2(834.0, 1210.0), vec![]);
         let output = frame(&mut app, &ctx, egui::vec2(834.0, 1210.0), vec![]);
         assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text().contains("Home"))));
         assert!(!output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Must not appear")));
-        assert_eq!(app.live.as_ref().unwrap().directory.state(&first_id).unwrap().connection(), &mote_host_client::ConnectionState::IdentityChanged);
-        tx.send(HostUpdate::Failed { host_id: second_id.clone(), error: mote_protocol::HostError::new(mote_protocol::HostErrorCode::Internal, "Office-only refusal") }).unwrap();
+        assert_eq!(
+            app.live
+                .as_ref()
+                .unwrap()
+                .directory
+                .state(&first_id)
+                .unwrap()
+                .connection(),
+            &mote_host_client::ConnectionState::IdentityChanged
+        );
+        tx.send(HostUpdate::Failed {
+            host_id: second_id.clone(),
+            error: mote_protocol::HostError::new(
+                mote_protocol::HostErrorCode::Internal,
+                "Office-only refusal",
+            ),
+        })
+        .unwrap();
         app.live.as_mut().unwrap().drain();
         let output = frame(&mut app, &ctx, egui::vec2(834.0, 1210.0), vec![]);
         assert!(!output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text().contains("Office-only refusal"))));
-        app.live.as_mut().unwrap().directory.select_host(&second_id).unwrap();
+        app.live
+            .as_mut()
+            .unwrap()
+            .directory
+            .select_host(&second_id)
+            .unwrap();
         let output = frame(&mut app, &ctx, egui::vec2(834.0, 1210.0), vec![]);
         assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text().contains("Office-only refusal"))));
     }

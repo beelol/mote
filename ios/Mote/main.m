@@ -5,6 +5,7 @@
 #include <dns_sd.h>
 #include <arpa/inet.h>
 #include <poll.h>
+#include <math.h>
 
 static NSDictionary *keychainQuery(const char *account) {
     return @{(__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
@@ -163,6 +164,88 @@ const char *mote_ios_documents(void) {
 
 static UIWindow *MoteWindow;
 static UIWindowScene *MoteWindowScene;
+static UIView *MoteAccessibilityView;
+@class MoteControlElement;
+static NSMutableDictionary<NSNumber *, MoteControlElement *> *MoteAccessibilityElements;
+
+@interface MoteControlElement : UIAccessibilityElement
+@property uint64_t controlID;
+@property uint8_t actionKind;
+@property BOOL controlEnabled;
+@property(nonatomic, copy) NSString *controlRole;
+@end
+
+@implementation MoteControlElement
+- (BOOL)accessibilityActivate {
+    if (!self.controlEnabled || self.actionKind == 255) return NO;
+    if (![MoteAccessibilityView.accessibilityElements containsObject:self]) return NO;
+    mote_ios_accessibility_action(self.controlID, self.actionKind);
+    if (self.actionKind == 3) [MoteAccessibilityView becomeFirstResponder];
+    return YES;
+}
+- (void)accessibilityIncrement {
+    if (self.controlEnabled && self.actionKind == 1 &&
+        [MoteAccessibilityView.accessibilityElements containsObject:self])
+        mote_ios_accessibility_action(self.controlID, 1);
+}
+- (void)accessibilityDecrement {
+    if (self.controlEnabled && self.actionKind == 1 &&
+        [MoteAccessibilityView.accessibilityElements containsObject:self])
+        mote_ios_accessibility_action(self.controlID, 2);
+}
+@end
+
+void mote_ios_accessibility_publish(const uint8_t *bytes, size_t length) {
+    @autoreleasepool {
+        if (!MoteAccessibilityView) return;
+        NSData *data = [NSData dataWithBytes:bytes length:length];
+        NSArray<NSDictionary *> *items = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        if (![items isKindOfClass:[NSArray class]]) return;
+        NSMutableArray<MoteControlElement *> *elements = [NSMutableArray arrayWithCapacity:items.count];
+        NSMutableDictionary<NSNumber *, MoteControlElement *> *current = [NSMutableDictionary dictionaryWithCapacity:items.count];
+        for (NSDictionary *item in items) {
+            if (![item isKindOfClass:[NSDictionary class]]) continue;
+            NSString *role = item[@"role"];
+            NSString *label = item[@"label"];
+            NSArray<NSNumber *> *rect = item[@"rect"];
+            if (![role isKindOfClass:[NSString class]] || ![label isKindOfClass:[NSString class]] ||
+                ![rect isKindOfClass:[NSArray class]] || rect.count != 4) continue;
+            CGRect frame = CGRectMake(rect[0].doubleValue, rect[1].doubleValue,
+                                      rect[2].doubleValue, rect[3].doubleValue);
+            if (CGRectIsEmpty(frame) || !isfinite(frame.origin.x) || !isfinite(frame.origin.y)) continue;
+            NSNumber *identity = item[@"id"];
+            if (![identity isKindOfClass:[NSNumber class]] || current[identity]) continue;
+            MoteControlElement *element = MoteAccessibilityElements[identity];
+            if (![element.controlRole isEqualToString:role]) element = nil;
+            if (!element) element = [[MoteControlElement alloc] initWithAccessibilityContainer:MoteAccessibilityView];
+            element.controlID = identity.unsignedLongLongValue;
+            element.controlRole = role;
+            element.controlEnabled = [item[@"enabled"] boolValue];
+            element.accessibilityLabel = label;
+            element.accessibilityValue = [item[@"value"] isKindOfClass:[NSString class]] ? item[@"value"] : nil;
+            element.accessibilityFrameInContainerSpace = frame;
+            element.actionKind = 255;
+            if ([role isEqualToString:@"button"] || [role isEqualToString:@"toggle"] ||
+                [role isEqualToString:@"select"]) {
+                element.accessibilityTraits = UIAccessibilityTraitButton;
+                element.actionKind = 0;
+            } else if ([role isEqualToString:@"slider"]) {
+                element.accessibilityTraits = UIAccessibilityTraitAdjustable;
+                element.actionKind = 1;
+            } else if ([role isEqualToString:@"text_field"]) {
+                element.actionKind = 3;
+            } else {
+                element.accessibilityTraits = UIAccessibilityTraitStaticText;
+            }
+            if (!element.controlEnabled) element.accessibilityTraits |= UIAccessibilityTraitNotEnabled;
+            [elements addObject:element];
+            current[identity] = element;
+        }
+        MoteAccessibilityElements = current;
+        MoteAccessibilityView.isAccessibilityElement = NO;
+        MoteAccessibilityView.accessibilityElements = elements;
+    }
+}
 
 static void attachWindowToScene(void) {
     if (MoteWindow == nil || MoteWindowScene == nil) {
@@ -174,7 +257,8 @@ static void attachWindowToScene(void) {
 }
 
 void mote_ios_attach_view(void *view) {
-    MoteWindow = ((__bridge UIView *)view).window;
+    MoteAccessibilityView = (__bridge UIView *)view;
+    MoteWindow = MoteAccessibilityView.window;
     dispatch_async(dispatch_get_main_queue(), ^{ attachWindowToScene(); });
 }
 
