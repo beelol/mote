@@ -1,6 +1,10 @@
 import datetime as dt
+import hashlib
 import importlib.util
 import json
+import os
+import plistlib
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -107,6 +111,106 @@ class DistributionPreflightTests(unittest.TestCase):
                 self.assertEqual(release.main(), 1)
                 preflight.assert_not_called()
                 archive.assert_not_called()
+
+    def test_xcode_entitlements_are_parsed_as_plist(self):
+        identity = self.valid()
+        entitlements = plistlib.dumps({
+            "application-identifier": "ABCDE12345.com.example.mote",
+            "get-task-allow": False,
+        })
+        results = [
+            subprocess.CompletedProcess([], 0, b"", b"TeamIdentifier=ABCDE12345\n"),
+            subprocess.CompletedProcess([], 0, entitlements, b""),
+        ]
+        with patch.object(release, "tool_output"), patch.object(release.subprocess, "run", side_effect=results) as run:
+            release.verify_signing(Path("/private/tmp/Mote.app"), identity)
+        self.assertEqual(run.call_args_list[1].args[0][3], ":-")
+
+    def test_archive_export_uses_internal_only_export_and_no_upload(self):
+        identity = self.valid()
+        commands = []
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "new-build"
+
+            def fake_mutation(command, label):
+                commands.append((command, label))
+                if label == "Archive":
+                    app = output / "Mote.xcarchive/Products/Applications/Mote.app"
+                    app.mkdir(parents=True)
+                    with (app / "Info.plist").open("wb") as target:
+                        plistlib.dump({"CFBundleIdentifier": identity["bundle_id"],
+                                      "CFBundleShortVersionString": identity["version"],
+                                      "CFBundleVersion": identity["build_number"],
+                                      "CFBundleDisplayName": identity["display_name"]}, target)
+                else:
+                    export = output / "export"
+                    export.mkdir()
+                    (export / "Mote.ipa").write_bytes(b"fixture ipa")
+
+            with patch.object(release, "run_mutation", side_effect=fake_mutation), \
+                    patch.object(release, "verify_signing"), patch.object(release, "verify_ipa"):
+                release.archive_export(identity, output)
+            self.assertEqual([label for _, label in commands], ["Archive", "IPA export"])
+            archive_command, export_command = [command for command, _ in commands]
+            self.assertIn("CODE_SIGNING_ALLOWED=YES", archive_command)
+            self.assertIn("DEVELOPMENT_TEAM=ABCDE12345", archive_command)
+            self.assertIn("PRODUCT_BUNDLE_IDENTIFIER=com.example.mote", archive_command)
+            self.assertIn("MARKETING_VERSION=0.1.0", archive_command)
+            self.assertIn("CURRENT_PROJECT_VERSION=7", archive_command)
+            self.assertIn("archive", archive_command)
+            self.assertIn("-exportArchive", export_command)
+            self.assertFalse(any("altool" in command for command in (archive_command, export_command)))
+            with (output / "ExportOptions.plist").open("rb") as source:
+                options = plistlib.load(source)
+            self.assertEqual(options["method"], "app-store-connect")
+            self.assertEqual(options["destination"], "export")
+            self.assertTrue(options["testFlightInternalTestingOnly"])
+            self.assertFalse(options["manageAppVersionAndBuildNumber"])
+            self.assertEqual(options["distributionBundleIdentifier"], identity["bundle_id"])
+            receipt = release.load_json(output / "receipt.json")
+            self.assertEqual(receipt["identity"], identity)
+            self.assertEqual(receipt["ipa_sha256"], hashlib.sha256(b"fixture ipa").hexdigest())
+
+    def test_upload_is_separate_and_refuses_a_changed_ipa(self):
+        identity = self.valid()
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            export = output / "export"
+            export.mkdir()
+            ipa = export / "Mote.ipa"
+            ipa.write_bytes(b"changed")
+            (output / "receipt.json").write_text(json.dumps({
+                "identity": identity, "ipa_sha256": hashlib.sha256(b"original").hexdigest()
+            }), encoding="utf-8")
+            with patch.object(release, "run_mutation") as run:
+                with self.assertRaises(release.ReleaseError):
+                    release.upload(identity, output)
+                run.assert_not_called()
+
+    def test_upload_uses_only_the_verified_ipa_and_explicit_key_directory(self):
+        identity = self.valid()
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "release"
+            export = output / "export"
+            export.mkdir(parents=True)
+            ipa = export / "Mote.ipa"
+            ipa.write_bytes(b"signed fixture")
+            (output / "receipt.json").write_text(json.dumps({
+                "identity": identity,
+                "ipa_sha256": hashlib.sha256(b"signed fixture").hexdigest(),
+            }), encoding="utf-8")
+            keys = Path(directory) / "keys"
+            keys.mkdir()
+            env = {"MOTE_ASC_API_KEY_ID": "TESTKEY123", "MOTE_ASC_ISSUER_ID": "test-issuer",
+                   "API_PRIVATE_KEYS_DIR": str(keys)}
+            with patch.dict(os.environ, env), patch.object(release, "verify_ipa"), \
+                    patch.object(release, "run_mutation") as run:
+                release.upload(identity, output)
+            command, label = run.call_args.args
+            self.assertEqual(label, "Upload")
+            self.assertEqual(command[:4], ["xcrun", "altool", "--upload-app", "-f"])
+            self.assertEqual(command[4], str(ipa))
+            self.assertNotIn(str(keys), command)
 
 
 if __name__ == "__main__":

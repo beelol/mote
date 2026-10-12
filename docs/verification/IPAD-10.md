@@ -8,7 +8,9 @@ The guarded script is `ios/Mote/distribute.py`. `ios/Mote/DISTRIBUTION.md` descr
 
 Command: `python3 -B -m unittest ios/Mote/test_distribute.py`.
 
-Output: eight tests passed. Missing identity, the Simulator bundle ID, colliding bundle ID or SKU, missing app record, stale inventory, duplicate version and build number, absent selected signing identity and invalid output paths all raised errors without invoking an Apple mutation command. Archive also refused missing inventory and physical-device confirmations before preflight or packaging.
+Output: twelve tests passed. Missing identity, the Simulator bundle ID, colliding bundle ID or SKU, missing app record, stale inventory, duplicate version and build number, absent selected signing identity and invalid output paths all raised errors without invoking an Apple mutation command. Archive refused missing inventory and physical-device confirmations before preflight or packaging. A simulated successful path asserted the exact signed archive overrides, internal-only export options and local receipt, with no upload command. A changed IPA was refused before upload. A separate simulated upload used only the receipt-matching IPA.
+
+The installed Xcode 27 `codesign -d --entitlements -` prints a human-readable summary. It did not yield a parseable plist. The verifier now requests `:-`, which the installed tool returned as XML plist with a deprecation warning. The signing parser test exercises that XML path. This is a local tooling compatibility check, not evidence of a real distribution signature.
 
 Command: `plutil -lint ios/Mote/Info.plist ios/Mote/Mote.xcodeproj/project.pbxproj`.
 

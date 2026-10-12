@@ -164,7 +164,7 @@ def verify_signing(app, identity):
     if details.returncode or f"TeamIdentifier={identity['team_id']}" not in (
             details.stdout + details.stderr).decode("utf-8", "replace"):
         raise ReleaseError("Code signature has the wrong team")
-    result = subprocess.run(["codesign", "-d", "--entitlements", "-", str(app)],
+    result = subprocess.run(["codesign", "-d", "--entitlements", ":-", str(app)],
                             capture_output=True, check=False)
     data = result.stdout + result.stderr
     begin = data.find(b"<plist")
