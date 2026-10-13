@@ -31,29 +31,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  distribute:
+  build:
     if: github.ref == 'refs/heads/main'
     runs-on: xcode-27
-    environment: mote-testflight
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Validate manual release request
+      - name: Validate manual build request
         env:
           MOTE_VERSION: ${{ inputs.version }}
           MOTE_BUILD_NUMBER: ${{ inputs.build_number }}
-          MOTE_UI_VERIFIED: ${{ inputs.native_ui_verified }}
         shell: bash
         run: |
           set -euo pipefail
           [[ "$MOTE_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]
           [[ "$MOTE_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]
-          [[ "$MOTE_UI_VERIFIED" == true ]]
           [[ "$(xcodebuild -version | head -n 1)" == Xcode\ 27* ]]
-          echo "MOTE_VERSION=$MOTE_VERSION" >> "$GITHUB_ENV"
-          echo "MOTE_BUILD_NUMBER=$MOTE_BUILD_NUMBER" >> "$GITHUB_ENV"
       - name: Install Rust for physical iPad
         shell: bash
         run: |
@@ -67,6 +62,51 @@ jobs:
           set -euo pipefail
           cargo test --workspace
           cargo clippy --workspace -- -D warnings
+          env -u SDKROOT cargo build --locked -p mote-ios --target aarch64-apple-ios --release
+      - name: Build unsigned Mote iPad client
+        env:
+          MOTE_VERSION: ${{ inputs.version }}
+          MOTE_BUILD_NUMBER: ${{ inputs.build_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project ios/Mote/Mote.xcodeproj -scheme Mote -configuration Release -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/MoteBuild" CODE_SIGNING_ALLOWED=NO DEVELOPMENT_TEAM=FQ6YGD7554 PRODUCT_BUNDLE_IDENTIFIER=com.beelol.mote MARKETING_VERSION="$MOTE_VERSION" CURRENT_PROJECT_VERSION="$MOTE_BUILD_NUMBER" build
+          info="$RUNNER_TEMP/MoteBuild/Build/Products/Release-iphoneos/Mote.app/Info.plist"
+          [[ "$(plutil -extract CFBundleIdentifier raw -o - "$info")" == com.beelol.mote ]]
+          [[ "$(plutil -extract CFBundleShortVersionString raw -o - "$info")" == "$MOTE_VERSION" ]]
+          [[ "$(plutil -extract CFBundleVersion raw -o - "$info")" == "$MOTE_BUILD_NUMBER" ]]
+          echo 'Unsigned Mote iPad build passed. This build is not installable through TestFlight.'
+
+  distribute:
+    if: github.ref == 'refs/heads/main' && inputs.upload == true
+    needs: build
+    runs-on: xcode-27
+    environment: mote-testflight
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate deliberate Mote upload
+        env:
+          MOTE_VERSION: ${{ inputs.version }}
+          MOTE_BUILD_NUMBER: ${{ inputs.build_number }}
+          MOTE_UI_VERIFIED: ${{ inputs.native_ui_verified }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$MOTE_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]
+          [[ "$MOTE_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          [[ "$MOTE_UI_VERIFIED" == true ]]
+          [[ "$(xcodebuild -version | head -n 1)" == Xcode\ 27* ]]
+          echo "MOTE_VERSION=$MOTE_VERSION" >> "$GITHUB_ENV"
+          echo "MOTE_BUILD_NUMBER=$MOTE_BUILD_NUMBER" >> "$GITHUB_ENV"
+      - name: Build Mote Rust library for signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.89.0 --profile minimal --target aarch64-apple-ios
+          rustup default 1.89.0
           env -u SDKROOT cargo build --locked -p mote-ios --target aarch64-apple-ios --release
       - name: Install Mote release credentials
         env:
@@ -123,7 +163,6 @@ jobs:
           set -euo pipefail
           python3 -B ios/Mote/distribute.py archive-export --manifest "$RUNNER_TEMP/mote-manifest.json" --inventory "$RUNNER_TEMP/mote-inventory.json" --output "$MOTE_OUTPUT" --signing-profile "$MOTE_SIGNING_PROFILE" --confirm-inventory-current --confirm-native-ui-verified
       - name: Recheck Mote build number before upload
-        if: inputs.upload == true
         env:
           MOTE_ASC_API_KEY_ID: ${{ secrets.MOTE_ASC_API_KEY_ID }}
           MOTE_ASC_ISSUER_ID: ${{ secrets.MOTE_ASC_ISSUER_ID }}
@@ -132,7 +171,6 @@ jobs:
           set -euo pipefail
           python3 -B ios/Mote/ci_inventory.py --version "$MOTE_VERSION" --build-number "$MOTE_BUILD_NUMBER" --output "$RUNNER_TEMP/mote-inventory.json"
       - name: Upload only to Mote internal TestFlight
-        if: inputs.upload == true
         env:
           MOTE_ASC_API_KEY_ID: ${{ secrets.MOTE_ASC_API_KEY_ID }}
           MOTE_ASC_ISSUER_ID: ${{ secrets.MOTE_ASC_ISSUER_ID }}
