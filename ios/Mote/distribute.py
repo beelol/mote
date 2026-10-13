@@ -258,17 +258,21 @@ def archive_app_digest(app):
     return digest.hexdigest()
 
 
-def archive_export(identity, output):
+def archive_export(identity, output, signing_profile=None):
     output.mkdir(parents=True, exist_ok=False)
     archive = output / "Mote.xcarchive"
     export = output / "export"
     options = output / "ExportOptions.plist"
     with options.open("wb") as target:
-        plistlib.dump(export_options(identity, "export"), target)
-    run_mutation(["xcodebuild", "-allowProvisioningUpdates", "-project", str(PROJECT), "-scheme", "Mote", "-configuration",
+        plistlib.dump(export_options(identity, "export", signing_profile), target)
+    signing = (["CODE_SIGN_STYLE=Manual", "CODE_SIGN_IDENTITY=Apple Distribution",
+                "PROVISIONING_PROFILE_SPECIFIER=" + signing_profile] if signing_profile else
+               ["CODE_SIGN_STYLE=Automatic"])
+    run_mutation(["xcodebuild", *([] if signing_profile else ["-allowProvisioningUpdates"]),
+                  "-project", str(PROJECT), "-scheme", "Mote", "-configuration",
                   "Release", "-destination", "generic/platform=iOS", "-derivedDataPath",
                   str(output / "DerivedData"), "-archivePath", str(archive),
-                  "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_STYLE=Automatic",
+                  "CODE_SIGNING_ALLOWED=YES", *signing,
                   "DEVELOPMENT_TEAM=" + identity["team_id"],
                   "PRODUCT_BUNDLE_IDENTIFIER=" + identity["bundle_id"],
                   "MARKETING_VERSION=" + identity["version"],
@@ -276,7 +280,8 @@ def archive_export(identity, output):
     app = archive / "Products/Applications/Mote.app"
     read_bundle_info(app / "Info.plist", identity)
     verify_signing(app, identity, require_distribution=False)
-    run_mutation(["xcodebuild", "-allowProvisioningUpdates", "-exportArchive", "-archivePath", str(archive),
+    run_mutation(["xcodebuild", *([] if signing_profile else ["-allowProvisioningUpdates"]),
+                  "-exportArchive", "-archivePath", str(archive),
                   "-exportPath", str(export), "-exportOptionsPlist", str(options)], "IPA export")
     ipa = export / "Mote.ipa"
     if not ipa.is_file():
@@ -288,15 +293,19 @@ def archive_export(identity, output):
     print(f"Signed archive and IPA verified at {output}. No upload was attempted.")
 
 
-def export_options(identity, destination):
-    return {"method": "app-store-connect", "destination": destination,
-            "signingStyle": "automatic", "teamID": identity["team_id"],
+def export_options(identity, destination, signing_profile=None):
+    options = {"method": "app-store-connect", "destination": destination,
+            "signingStyle": "manual" if signing_profile else "automatic", "teamID": identity["team_id"],
             "distributionBundleIdentifier": identity["bundle_id"],
             "manageAppVersionAndBuildNumber": False,
             "testFlightInternalTestingOnly": True}
+    if signing_profile:
+        options["provisioningProfiles"] = {identity["bundle_id"]: signing_profile}
+        options["signingCertificate"] = "Apple Distribution"
+    return options
 
 
-def upload(identity, output, use_xcode_account=False):
+def upload(identity, output, use_xcode_account=False, signing_profile=None):
     receipt = load_json(output / "receipt.json")
     if receipt.get("identity") != identity:
         raise ReleaseError("Export receipt does not match the approved identity")
@@ -336,12 +345,13 @@ def upload(identity, output, use_xcode_account=False):
         authentication = ["-authenticationKeyPath", str(key_file), "-authenticationKeyID", key,
                           "-authenticationKeyIssuerID", issuer]
     with upload_options.open("xb") as target:
-        plistlib.dump(export_options(identity, "upload"), target)
+        plistlib.dump(export_options(identity, "upload", signing_profile), target)
     with attempt.open("x", encoding="utf-8") as target:
         target.write(json.dumps({"identity": identity, "ipa_sha256": receipt["ipa_sha256"],
                                  "started_at": dt.datetime.now(dt.timezone.utc).isoformat()},
                                 indent=2) + "\n")
-    run_mutation(["xcodebuild", "-allowProvisioningUpdates", "-exportArchive", "-archivePath", str(output / "Mote.xcarchive"),
+    run_mutation(["xcodebuild", *([] if signing_profile else ["-allowProvisioningUpdates"]),
+                  "-exportArchive", "-archivePath", str(output / "Mote.xcarchive"),
                   "-exportPath", str(output / "upload"), "-exportOptionsPlist", str(upload_options),
                   *authentication], "Upload")
     print("Upload command succeeded. Confirm processing in App Store Connect before TestFlight testing.")
@@ -357,6 +367,7 @@ def main():
     parser.add_argument("--confirm-native-ui-verified", action="store_true")
     parser.add_argument("--confirm-upload", action="store_true")
     parser.add_argument("--use-xcode-account", action="store_true")
+    parser.add_argument("--signing-profile")
     args = parser.parse_args()
     try:
         identity = validate_identity(load_json(args.manifest), load_json(args.inventory),
@@ -370,11 +381,14 @@ def main():
             raise ReleaseError("Upload requires --confirm-upload")
         if args.use_xcode_account and args.action != "upload":
             raise ReleaseError("Xcode account selection applies only to upload")
+        if args.signing_profile and (not args.signing_profile.isascii() or
+                                     not re.fullmatch(r"[A-Za-z0-9 _.-]{1,128}", args.signing_profile)):
+            raise ReleaseError("Invalid signing profile name")
         preflight(identity)
         if args.action == "archive-export":
-            archive_export(identity, output)
+            archive_export(identity, output, args.signing_profile)
         elif args.action == "upload":
-            upload(identity, output, args.use_xcode_account)
+            upload(identity, output, args.use_xcode_account, args.signing_profile)
     except ReleaseError as error:
         print(f"Mote distribution stopped: {error}", file=sys.stderr)
         return 1

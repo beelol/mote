@@ -1,0 +1,151 @@
+name: Mote internal TestFlight
+
+'on':
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Mote marketing version
+        required: true
+        default: 0.1.0
+        type: string
+      build_number:
+        description: New Mote build number
+        required: true
+        type: string
+      native_ui_verified:
+        description: Final native iPad Simulator UI checks passed for this commit
+        required: true
+        default: false
+        type: boolean
+      upload:
+        description: Upload the signed internal-only build to Mote TestFlight
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mote-testflight
+  cancel-in-progress: false
+
+jobs:
+  distribute:
+    if: github.ref == 'refs/heads/main'
+    runs-on: xcode-27
+    environment: mote-testflight
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate manual release request
+        env:
+          MOTE_VERSION: ${{ inputs.version }}
+          MOTE_BUILD_NUMBER: ${{ inputs.build_number }}
+          MOTE_UI_VERIFIED: ${{ inputs.native_ui_verified }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$MOTE_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]
+          [[ "$MOTE_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          [[ "$MOTE_UI_VERIFIED" == true ]]
+          [[ "$(xcodebuild -version | head -n 1)" == Xcode\ 27* ]]
+          echo "MOTE_VERSION=$MOTE_VERSION" >> "$GITHUB_ENV"
+          echo "MOTE_BUILD_NUMBER=$MOTE_BUILD_NUMBER" >> "$GITHUB_ENV"
+      - name: Install Rust for physical iPad
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.89.0 --profile minimal --component clippy --target aarch64-apple-ios
+          rustup default 1.89.0
+          cargo --version
+      - name: Verify workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --workspace
+          cargo clippy --workspace -- -D warnings
+          env -u SDKROOT cargo build --locked -p mote-ios --target aarch64-apple-ios --release
+      - name: Install Mote release credentials
+        env:
+          MOTE_ASC_API_KEY_ID: ${{ secrets.MOTE_ASC_API_KEY_ID }}
+          MOTE_ASC_ISSUER_ID: ${{ secrets.MOTE_ASC_ISSUER_ID }}
+          MOTE_ASC_API_KEY_P8: ${{ secrets.MOTE_ASC_API_KEY_P8 }}
+          MOTE_CERT_P12_BASE64: ${{ secrets.MOTE_CERT_P12_BASE64 }}
+          MOTE_CERT_PASSWORD: ${{ secrets.MOTE_CERT_PASSWORD }}
+          MOTE_PROFILE_BASE64: ${{ secrets.MOTE_PROFILE_BASE64 }}
+          MOTE_KEYCHAIN_PASSWORD: ${{ secrets.MOTE_KEYCHAIN_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for value in MOTE_ASC_API_KEY_ID MOTE_ASC_ISSUER_ID MOTE_ASC_API_KEY_P8 MOTE_CERT_P12_BASE64 MOTE_CERT_PASSWORD MOTE_PROFILE_BASE64 MOTE_KEYCHAIN_PASSWORD; do
+            [[ -n "${!value:-}" ]] || { echo "Missing Mote release secret: $value" >&2; exit 1; }
+          done
+          umask 077
+          mkdir -p "$RUNNER_TEMP/mote-keys"
+          printf '%s' "$MOTE_ASC_API_KEY_P8" > "$RUNNER_TEMP/mote-keys/AuthKey_${MOTE_ASC_API_KEY_ID}.p8"
+          printf '%s' "$MOTE_CERT_P12_BASE64" | base64 -D > "$RUNNER_TEMP/mote-cert.p12"
+          printf '%s' "$MOTE_PROFILE_BASE64" | base64 -D > "$RUNNER_TEMP/Mote.mobileprovision"
+          security create-keychain -p "$MOTE_KEYCHAIN_PASSWORD" "$RUNNER_TEMP/mote.keychain-db"
+          security set-keychain-settings -lut 21600 "$RUNNER_TEMP/mote.keychain-db"
+          security unlock-keychain -p "$MOTE_KEYCHAIN_PASSWORD" "$RUNNER_TEMP/mote.keychain-db"
+          security import "$RUNNER_TEMP/mote-cert.p12" -k "$RUNNER_TEMP/mote.keychain-db" -P "$MOTE_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$MOTE_KEYCHAIN_PASSWORD" "$RUNNER_TEMP/mote.keychain-db"
+          security list-keychains -d user -s "$RUNNER_TEMP/mote.keychain-db"
+          security default-keychain -s "$RUNNER_TEMP/mote.keychain-db"
+          security cms -D -i "$RUNNER_TEMP/Mote.mobileprovision" -o "$RUNNER_TEMP/Mote.plist"
+          python3 -B ios/Mote/ci_profile.py --plist "$RUNNER_TEMP/Mote.plist" --output-directory "$HOME/Library/MobileDevice/Provisioning Profiles" --github-env "$GITHUB_ENV"
+          echo "API_PRIVATE_KEYS_DIR=$RUNNER_TEMP/mote-keys" >> "$GITHUB_ENV"
+      - name: Read current Mote app inventory
+        env:
+          MOTE_ASC_API_KEY_ID: ${{ secrets.MOTE_ASC_API_KEY_ID }}
+          MOTE_ASC_ISSUER_ID: ${{ secrets.MOTE_ASC_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B ios/Mote/ci_inventory.py --version "$MOTE_VERSION" --build-number "$MOTE_BUILD_NUMBER" --output "$RUNNER_TEMP/mote-inventory.json"
+          MOTE_MANIFEST="$RUNNER_TEMP/mote-manifest.json" MOTE_OUTPUT="$GITHUB_WORKSPACE/target/distribution/${MOTE_VERSION}-${MOTE_BUILD_NUMBER}-${GITHUB_RUN_ID}" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          manifest = {"display_name": "Mote", "bundle_id": "com.beelol.mote",
+                      "sku": "mote-ipad-001", "team_id": "FQ6YGD7554",
+                      "app_store_connect_id": "6822101041", "version": os.environ["MOTE_VERSION"],
+                      "build_number": os.environ["MOTE_BUILD_NUMBER"]}
+          Path(os.environ["MOTE_MANIFEST"]).write_text(json.dumps(manifest), encoding="utf-8")
+          PY
+          echo "MOTE_OUTPUT=$GITHUB_WORKSPACE/target/distribution/${MOTE_VERSION}-${MOTE_BUILD_NUMBER}-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+      - name: Archive and verify Mote IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B ios/Mote/distribute.py archive-export --manifest "$RUNNER_TEMP/mote-manifest.json" --inventory "$RUNNER_TEMP/mote-inventory.json" --output "$MOTE_OUTPUT" --signing-profile "$MOTE_SIGNING_PROFILE" --confirm-inventory-current --confirm-native-ui-verified
+      - name: Recheck Mote build number before upload
+        if: inputs.upload == true
+        env:
+          MOTE_ASC_API_KEY_ID: ${{ secrets.MOTE_ASC_API_KEY_ID }}
+          MOTE_ASC_ISSUER_ID: ${{ secrets.MOTE_ASC_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B ios/Mote/ci_inventory.py --version "$MOTE_VERSION" --build-number "$MOTE_BUILD_NUMBER" --output "$RUNNER_TEMP/mote-inventory.json"
+      - name: Upload only to Mote internal TestFlight
+        if: inputs.upload == true
+        env:
+          MOTE_ASC_API_KEY_ID: ${{ secrets.MOTE_ASC_API_KEY_ID }}
+          MOTE_ASC_ISSUER_ID: ${{ secrets.MOTE_ASC_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B ios/Mote/distribute.py upload --manifest "$RUNNER_TEMP/mote-manifest.json" --inventory "$RUNNER_TEMP/mote-inventory.json" --output "$MOTE_OUTPUT" --signing-profile "$MOTE_SIGNING_PROFILE" --confirm-inventory-current --confirm-native-ui-verified --confirm-upload
+      - name: Save signed Mote build for manual inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: mote-ipad-${{ inputs.version }}-${{ inputs.build_number }}
+          path: |
+            target/distribution/*/export/Mote.ipa
+            target/distribution/*/receipt.json
+          if-no-files-found: error
+          retention-days: 7

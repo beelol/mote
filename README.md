@@ -68,12 +68,12 @@ turn.
 
 ### Continue development
 
-Copy this goal into a driver. Current scope is the distinct device build and internal TestFlight phase.
+Copy this goal into a driver. Current scope is the distinct device build, internal TestFlight phase and manual Mote-only CI release path.
 
 ```text
 Continue mote from repository state at ~/projects/mote without relying on chat history.
 
-Read AGENTS.md, docs/rfcs/v0.md, docs/superpowers/specs/2026-10-11-ipad-host.md, root README.md -> Ready for Go, and docs/HANDOFF.md if present. Active ACs are IPAD-06 through IPAD-11 under Ready for Go -> Physical iPad and internal TestFlight. Deliver IPAD-11 before physical IPAD-06 and IPAD-08. HOST-05 under Native iPad Simulator host and V0-53 under v0 build list remain open for a later owner-present session. Do not mark them passed or remove their Verify clauses. IPAD-01 through IPAD-05 are verified; recheck affected behavior after distribution changes. Backlog, external testing, App Review, public release and cloud relay remain out of scope.
+Read AGENTS.md, docs/rfcs/v0.md, docs/superpowers/specs/2026-10-11-ipad-host.md, root README.md -> Ready for Go, and docs/HANDOFF.md if present. Active ACs are IPAD-06 through IPAD-12 under Ready for Go -> Physical iPad and internal TestFlight. IPAD-11 is verified. Complete the manual CI release path before physical IPAD-06 and IPAD-08. HOST-05 under Native iPad Simulator host and V0-53 under v0 build list remain open for a later owner-present session. Do not mark them passed or remove their Verify clauses. IPAD-01 through IPAD-05 are verified; recheck affected behavior after distribution changes. Backlog, external testing, App Review, public release and cloud relay remain out of scope.
 
 First deliver a separate Mote build processed and available to internal TestFlight testers. Physical iPad installation and the device journeys follow when hardware is available. The final outcome remains the same Rust immediate-mode Matrix UI, paired host gateway, inferred surfaces and browser approval on that iPad. It must not collide with any existing app. TestFlight does not make the Mac reachable from another city. Do not claim remote use without a separately verified route. Keep models.local_only true, use only the approved Ollama models, ledger every model call and redact stored events.
 
@@ -304,7 +304,13 @@ The separate App Store Connect listing is [Mote Agent](https://appstoreconnect.a
     absent signing, duplicate build number and bad output path fail closed without Apple mutation;
     inspect a real exported archive and IPA for exact identity and entitlements, prove no secrets
     entered Git or logs, and record one deliberate upload and processing outcome only after IPAD-07.
-  - [ ] **IPAD-11** The processed Mote build is available only to an internal TestFlight group before
+  - [x] **IPAD-11** The processed Mote build is available only to an internal TestFlight group before
     physical installation. **Verify:** record the build identifier and processing state in the separate
     Mote app, assign only an internal group with an eligible tester, and confirm external testing and
     App Review remain disabled. Physical installation is verified separately by IPAD-08.
+  - [ ] **IPAD-12** A GitHub Actions workflow can build Mote from `main` and optionally upload to its
+    internal TestFlight app only when manually dispatched. It never runs on push or a schedule.
+    **Verify:** inspect the dispatch trigger and branch guard, prove the live inventory, app identity,
+    Mote-only provisioning profile, duplicate-build, signed IPA and internal-only export checks fail
+    closed, configure isolated Mote release credentials, then run one build-only dispatch and one
+    deliberate upload dispatch. Record each run and confirm no other app or TestFlight group changed.
