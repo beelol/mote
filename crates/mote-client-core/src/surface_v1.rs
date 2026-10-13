@@ -65,11 +65,21 @@ struct State {
 }
 
 pub fn draw(ui: &mut egui::Ui, surface: &Surface, events: &mut Vec<Event>) {
+    draw_with_transition_namespace(ui, surface, events, ui.id().with("matrix-contract-1"));
+}
+
+pub fn draw_with_transition_namespace(
+    ui: &mut egui::Ui,
+    surface: &Surface,
+    events: &mut Vec<Event>,
+    transition_namespace: egui::Id,
+) {
     let namespace = ui.id().with("matrix-contract-1");
     let rect = egui::Rect::from_min_size(ui.cursor().min, ui.available_size());
     ui.allocate_rect(rect, egui::Sense::hover());
     let mut renderer = Renderer {
         namespace,
+        transition_namespace,
         events,
         live: HashSet::new(),
         strokes: crate::transition::StrokeRegistry::default(),
@@ -81,7 +91,7 @@ pub fn draw(ui: &mut egui::Ui, surface: &Surface, events: &mut Vec<Event>) {
         .unwrap_or_default();
     discard_controls(ui, previous.difference(&renderer.live).copied());
     ui.data_mut(|data| data.insert_temp(cache, renderer.live));
-    renderer.strokes.finish(ui, namespace);
+    renderer.strokes.finish(ui, transition_namespace);
 }
 
 pub fn discard(ui: &egui::Ui) {
@@ -117,6 +127,7 @@ fn discard_controls(ui: &egui::Ui, controls: impl IntoIterator<Item = egui::Id>)
 
 struct Renderer<'a> {
     namespace: egui::Id,
+    transition_namespace: egui::Id,
     events: &'a mut Vec<Event>,
     live: HashSet<egui::Id>,
     strokes: crate::transition::StrokeRegistry,
@@ -269,7 +280,7 @@ impl Renderer<'_> {
                             ui.visuals().widgets.noninteractive.bg_stroke,
                         );
                         self.strokes
-                            .capture(ui, self.namespace, path, "header-rule", start, true);
+                            .capture(ui, self.transition_namespace, path, "header-rule", start, true);
                         path.pop();
                     }
                     let body = egui::Rect::from_min_max(
@@ -342,7 +353,7 @@ impl Renderer<'_> {
                             ui.visuals().widgets.noninteractive.bg_stroke,
                         );
                         self.strokes
-                            .capture(ui, self.namespace, path, "footer-rule", start, true);
+                            .capture(ui, self.transition_namespace, path, "footer-rule", start, true);
                         path.pop();
                     }
                 });
@@ -786,7 +797,7 @@ impl Renderer<'_> {
         ) {
             self.strokes.capture(
                 &ui,
-                self.namespace,
+                self.transition_namespace,
                 path,
                 kind(node),
                 first_paint,

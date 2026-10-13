@@ -1,10 +1,10 @@
 # Current development handoff
 
-Updated 2026-10-12 in America/Los_Angeles. This file is a replacement snapshot.
+Updated 2026-10-13 in America/Los_Angeles. This file is a replacement snapshot.
 
 ## Contract and scope
 
-Read `AGENTS.md`, `docs/rfcs/v0.md`, the root README Ready for Go board and `docs/superpowers/specs/2026-10-11-ipad-host.md`. The owner moved internal TestFlight ahead of physical iPad checks and added a manual GitHub Actions release path. IPAD-11 is verified. IPAD-12 is open until a protected Mote release environment and credentials are configured and its hosted build and upload runs succeed. IPAD-06 and IPAD-08 still require physical iPad installation and journeys. HOST-05 and V0-53 remain for owner-present checks. External testing, App Review, public release and cloud relay remain out of scope.
+Read `AGENTS.md`, `docs/rfcs/v0.md`, the root README Ready for Go board and `docs/superpowers/specs/2026-10-11-ipad-host.md`. The owner moved internal TestFlight ahead of physical iPad checks and added a manual GitHub Actions release path. IPAD-11 is verified. IPAD-12 is open until a protected Mote release environment and credentials are configured and its hosted build and upload runs succeed. The owner also requested line materialization when the agent changes the layout. IPAD-13 is open for a paired Simulator transition capture and first-frame interaction. IPAD-06 and IPAD-08 still require physical iPad installation and journeys. HOST-05 and V0-53 remain for owner-present checks. External testing, App Review, public release and cloud relay remain out of scope.
 
 ## Verified state
 
@@ -18,6 +18,9 @@ The manual-only `.github/workflows/mote-testflight.yml` workflow is implemented.
 
 The configured origin is `https://github.com/beelol/mote.git`. Push each verified commit to `main`. Preserve unrelated `.DS_Store` and `.superpowers/` files. Run the Python release tests, `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` before committing.
 
+On 2026-10-13, the driver found that live iPad surface revisions changed the egui namespace and reset the red transition. The renderer now accepts a stable transition namespace separate from revision-specific control state. The live view keys it by host and thread. Header and footer rules and slider rails use the same materialization path as borders. A production-renderer regression switches revision identities, moves the header rule and slider rail, and observes square pixels at 0 and 60 ms but none at 120 ms. The focused test passed. `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` passed after the change. The full paired Simulator capture remains open. The change is recorded in `docs/verification/IPAD-13.md`.
+
 ## Next actions
 
 Complete the remaining Mote release credentials, then run one deliberate upload dispatch with a fresh Mote build number. Confirm only the Mote app and internal group changed. Do not enable automatic triggers. Physical iPad IPAD-06 and IPAD-08 remain open until hardware is available. TestFlight distribution does not make the local Mac reachable from another city; that route requires separate verification.
+Run the paired iPad Simulator IPAD-13 journey and capture the first, midpoint and settled frames for an agent-replaced layout. Check first-frame interaction and Reduce Motion before marking it complete. Do not use gallery-only captures to close it.

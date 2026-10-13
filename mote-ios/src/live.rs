@@ -760,7 +760,12 @@ impl LiveRuntime {
                         let mut events = Vec::new();
                         ui.push_id((&host, &surface.thread, surface.surface_seq), |ui| {
                             ui.add_enabled_ui(online, |ui| {
-                                mote_client_core::surface_v1::draw(ui, &surface_tree, &mut events)
+                                mote_client_core::surface_v1::draw_with_transition_namespace(
+                                    ui,
+                                    &surface_tree,
+                                    &mut events,
+                                    egui::Id::new(("live-surface-transition", &host, &surface.thread)),
+                                )
                             });
                         });
                         for event in events {

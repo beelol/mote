@@ -971,6 +971,46 @@ mod tests {
     }
 
     #[test]
+    fn live_surface_revision_materializes_rules_with_new_control_identity() {
+        let ctx = context();
+        let render = |time: f64, revision: u64, tall: bool| {
+            let surface = mote_ui::v1::validate(&serde_json::to_vec(&serde_json::json!({
+                "version": 1,
+                "root": {"type": "screen", "children": [
+                    {"type": "header", "children": [{"type": "text", "value":
+                        if tall { "First\nSecond\nThird" } else { "First" }}]},
+                    {"type": "slider", "label": "Level", "field": "level",
+                        "value": 4, "min": 0, "max": 10}
+                ]}
+            })).unwrap()).unwrap();
+            ctx.run(
+                egui::RawInput {
+                    time: Some(time),
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(834.0, 1194.0))),
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        ui.push_id(revision, |ui| {
+                            surface_v1::draw_with_transition_namespace(
+                                ui,
+                                &surface,
+                                &mut Vec::new(),
+                                egui::Id::new("live-surface-transition"),
+                            );
+                        });
+                    });
+                },
+            )
+        };
+        render(0.0, 1, false);
+        let changed = render(1.0, 2, true);
+        assert!(!particles(&changed.shapes).is_empty());
+        assert!(particles(&render(1.06, 2, true).shapes).len() > 0);
+        assert!(particles(&render(1.12, 2, true).shapes).is_empty());
+    }
+
+    #[test]
     fn moved_button_uses_new_bounds_and_never_fires_at_old_bounds() {
         let surface = |tall: bool| {
             mote_ui::v1::validate(&serde_json::to_vec(&serde_json::json!({"version":1,"root":{"type":"screen","children":[

@@ -68,12 +68,12 @@ turn.
 
 ### Continue development
 
-Copy this goal into a driver. Current scope is the distinct device build, internal TestFlight phase and manual Mote-only CI release path.
+Copy this goal into a driver. Current scope is the distinct device build, internal TestFlight phase, manual Mote-only CI release path and agent-layout transition verification.
 
 ```text
 Continue mote from repository state at ~/projects/mote without relying on chat history.
 
-Read AGENTS.md, docs/rfcs/v0.md, docs/superpowers/specs/2026-10-11-ipad-host.md, root README.md -> Ready for Go, and docs/HANDOFF.md if present. Active ACs are IPAD-06 through IPAD-12 under Ready for Go -> Physical iPad and internal TestFlight. IPAD-11 is verified. Complete the manual CI release path before physical IPAD-06 and IPAD-08. HOST-05 under Native iPad Simulator host and V0-53 under v0 build list remain open for a later owner-present session. Do not mark them passed or remove their Verify clauses. IPAD-01 through IPAD-05 are verified; recheck affected behavior after distribution changes. Backlog, external testing, App Review, public release and cloud relay remain out of scope.
+Read AGENTS.md, docs/rfcs/v0.md, docs/superpowers/specs/2026-10-11-ipad-host.md, root README.md -> Ready for Go, and docs/HANDOFF.md if present. Active ACs are IPAD-06 through IPAD-13 under Ready for Go. IPAD-11 is verified. Complete the manual CI release path before physical IPAD-06 and IPAD-08. Verify IPAD-13 on the paired Simulator. HOST-05 under Native iPad Simulator host and V0-53 under v0 build list remain open for a later owner-present session. Do not mark them passed or remove their Verify clauses. IPAD-01 through IPAD-05 are verified; recheck affected behavior after distribution changes. Backlog, external testing, App Review, public release and cloud relay remain out of scope.
 
 First deliver a separate Mote build processed and available to internal TestFlight testers. Physical iPad installation and the device journeys follow when hardware is available. The final outcome remains the same Rust immediate-mode Matrix UI, paired host gateway, inferred surfaces and browser approval on that iPad. It must not collide with any existing app. TestFlight does not make the Mac reachable from another city. Do not claim remote use without a separately verified route. Keep models.local_only true, use only the approved Ollama models, ledger every model call and redact stored events.
 
@@ -275,6 +275,13 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     injection refusal, redacted events, ledger and HAR, before and after commit screenshots and a
     final validated Matrix result card. The [verification record](docs/verification/IPAD-05.md)
     includes the headed fixture and paired native Simulator evidence.
+  - [ ] **IPAD-13** When an agent commits a replacement Matrix layout on the paired iPad, changed
+    red borders, header and footer rules, and slider rails materialize as square pixels within
+    120 ms. Unchanged strokes stay painted. New controls are interactive on the first frame and
+    retain revision-specific state. **Verify:** replace a live paired surface with a changed
+    layout in the iPad Simulator, capture the first, midpoint and settled frames, and exercise
+    a changed control immediately. Repeat with Reduce Motion, which must swap immediately with
+    a brief red outline pulse. [partial evidence](docs/verification/IPAD-13.md)
 
 ### Physical iPad and internal TestFlight
 
