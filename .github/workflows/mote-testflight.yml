@@ -135,7 +135,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$MOTE_KEYCHAIN_PASSWORD" "$RUNNER_TEMP/mote.keychain-db"
           security list-keychains -d user -s "$RUNNER_TEMP/mote.keychain-db"
           security default-keychain -s "$RUNNER_TEMP/mote.keychain-db"
-          security cms -D -i "$RUNNER_TEMP/Mote.mobileprovision" -o "$RUNNER_TEMP/Mote.plist"
+          openssl cms -verify -inform DER -noverify -in "$RUNNER_TEMP/Mote.mobileprovision" -out "$RUNNER_TEMP/Mote.plist"
           python3 -B ios/Mote/ci_profile.py --plist "$RUNNER_TEMP/Mote.plist" --output-directory "$HOME/Library/MobileDevice/Provisioning Profiles" --github-env "$GITHUB_ENV"
           echo "API_PRIVATE_KEYS_DIR=$RUNNER_TEMP/mote-keys" >> "$GITHUB_ENV"
       - name: Read current Mote app inventory
@@ -178,12 +178,10 @@ jobs:
         run: |
           set -euo pipefail
           python3 -B ios/Mote/distribute.py upload --manifest "$RUNNER_TEMP/mote-manifest.json" --inventory "$RUNNER_TEMP/mote-inventory.json" --output "$MOTE_OUTPUT" --signing-profile "$MOTE_SIGNING_PROFILE" --confirm-inventory-current --confirm-native-ui-verified --confirm-upload
-      - name: Save signed Mote build for manual inspection
+      - name: Save Mote release receipt
         uses: actions/upload-artifact@v4
         with:
-          name: mote-ipad-${{ inputs.version }}-${{ inputs.build_number }}
-          path: |
-            target/distribution/*/export/Mote.ipa
-            target/distribution/*/receipt.json
+          name: mote-release-receipt-${{ inputs.version }}-${{ inputs.build_number }}
+          path: target/distribution/*/receipt.json
           if-no-files-found: error
           retention-days: 7
