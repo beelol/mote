@@ -80,9 +80,88 @@ shape, and name the actions. matrix is the vocabulary for exactly that and nothi
 ## Status
 
 The grammar is frozen and owner-approved. `crates/matrix-lang` now lexes, parses, formats, resolves
-and lowers the supported subset into the unchanged compact v0 tree. `moted` owns the first trusted
+and lowers the supported subset into the version 1 consumer tree and a validated v0 fallback. `moted` owns the first trusted
 manifest and snapshot for configuration and pipeline data. `mote-client --matrix <path>` submits a
 source file and displays the compiled surface through the native immediate-mode renderer.
 
-The full catalog, streaming host, general action contracts, layout replacement and later device
-consumers remain open. The root README is the completion record.
+The full catalog and general action contracts remain open. The Mac host stream and iPad consumer
+exist for the version 1 slice. The root README is the completion record.
+
+## One working program, from source to pixels
+
+The checked-in [dashboard source](examples/mote-dashboard.matrix) is a runnable Matrix program:
+
+```matrix
+screen {
+  header {
+    row {
+      text "Agent dashboard" fill
+      button "Refresh" -> refresh
+    }
+  }
+  col {
+    col fill {
+      toggle "Local only" models.local_only
+      select "Talk model" models.talk options model_options
+      select "Router model" models.router options model_options
+      select "Think model" models.think options model_options
+    }
+    text "Changes apply on the next turn."
+  }
+  footer {
+    text "Local model settings"
+  }
+}
+```
+
+`screen`, `header`, `row` and `col` describe structure. `fill` gives a child the remaining space on its
+parent's main axis. `models.local_only` and `models.talk` are typed host-owned fields, not values
+supplied by the model. `model_options` is a host-owned list. `refresh` is a host-declared action.
+The agent does not specify pixel positions, colors, touch targets or arbitrary code.
+
+The compiler resolves that source against the daemon's manifest and current snapshot. For
+example, the toggle becomes this version 1 consumer node when `models.local_only` is true:
+
+```json
+{"type":"toggle","label":"Local only","field":"models.local_only","value":true}
+```
+
+The select becomes a node with a concrete `options` array and the current `value`. The complete
+checked-in [version 1 JSON result](examples/mote-dashboard.v1.json) shows the entire translation.
+It is an intermediate representation, not a second language that an agent must write. Its root
+is a `screen` with nested `header`, `row`, `col`, `toggle`, `select`, `text` and `footer` nodes.
+The daemon commits this validated tree in a `ui.surface` event. A version 1 client validates the
+tree again and draws it through the Rust immediate-mode renderer. The renderer computes geometry,
+scrolling, hit regions, focus and accessibility. It redraws from the current tree each frame.
+Changed structural strokes materialize as red square pixels. The checked-in JSON records the
+dashboard's example host values; a live compilation reads the current host values instead.
+
+The pipeline in code is:
+
+```text
+Matrix source (.matrix)
+  -> lexer and parser (crates/matrix-lang/src/lexer.rs, parser.rs)
+  -> typed resolver against host manifest and snapshot (resolve.rs)
+  -> version 1 lowering plus validated v0 fallback (lower_v1.rs, lower_v0.rs)
+  -> daemon commit and ui.surface event (moted/src/matrix.rs, moted/src/main.rs)
+  -> client validation and immediate-mode drawing (crates/mote-client-core/src/surface_v1.rs)
+  -> typed ui.event back to the daemon, checked against the committed surface
+```
+
+For example, changing the Talk model select sends a `change` event with
+`{"field":"models.talk","value":"qwen3:0.6b"}` and the control's structural path, contract
+version and committed surface sequence. The daemon checks those against the exact committed
+surface before accepting the change. See [consumer-contract-v1.md](consumer-contract-v1.md) for
+the wire format and [grammar.md](grammar.md) for the syntax. The larger
+[examples](examples.md) document contains proposed catalog forms too. Not every form in that
+design document is implemented in version 1.
+
+To try the actual dashboard, run these from the repository root in separate terminals:
+
+```sh
+cargo run -p moted
+cargo run -p mote-client -- --matrix matrix/examples/mote-dashboard.matrix
+```
+
+For an offline tour of the rendered controls, run
+`cargo run -p mote-client -- --gallery`. The gallery does not call the daemon or a model.

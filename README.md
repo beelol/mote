@@ -16,6 +16,7 @@ Working name. The owner may rename it.
 - [Renderer handoff](docs/handoff/generative-ui-renderer.md): notes for the agent that designs the pixel pipeline.
 - [Shared crates RFC](docs/rfcs/shared-crates.md): what moves out of Overseer into `crates/`, and how Overseer migrates later. Criteria CRATE-NN.
 - [UI language RFC](docs/rfcs/ui-language.md): research and the proposed generative UI language. Criteria UI-NN.
+- [Matrix walkthrough](matrix/README.md#one-working-program-from-source-to-pixels): the actual dashboard source, its compiled tree and the renderer path.
 - [Context layer RFC](docs/rfcs/context-layer.md): connectors, index, retrieval, coverage map, realms, and the storage decision. Criteria CTXL-NN.
 - [AGENTS.md](AGENTS.md): rules for every agent.
 
