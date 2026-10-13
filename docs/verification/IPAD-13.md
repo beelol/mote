@@ -26,3 +26,18 @@ exit 0
 ```
 
 The first sandboxed workspace test run failed because a browser fixture could not bind a localhost listener. The same command passed with local socket access outside the restricted sandbox. This was an environment permission failure, not a test assertion failure.
+
+The native iPad Pro 11-inch (M5), iOS 27.0 Simulator journey rebuilt and installed the current Rust and Xcode client, then paired it with a scripted local host. It passed generated UI success, one diagnostic retry, preservation of the prior surface on invalid output, a visible terminal diagnostic and prose fallback. The test reported 14 model calls, 14 ledger rows, 14 packs and three authenticated typed refusals.
+
+```text
+MOTE_LIVE=1 TMPDIR=/private/tmp \
+MOTE_SIMULATOR_ID=43F2F6ED-5C86-4121-B03F-40FE38891C4E \
+MOTE_ARTIFACTS=/private/tmp/mote-ipad13-native-20261013 \
+MOTE_SURFACE_ATTESTATION=/private/tmp/mote-surface-attested.8F07uH/surface-activation.json \
+cargo test -p mote-ios --test inferred_surface_simulator \
+native_inferred_success_retry_preservation_and_prose_fallback -- --ignored --nocapture
+test native_inferred_success_retry_preservation_and_prose_fallback ... ok
+test result: ok. 1 passed; 0 failed
+```
+
+The local build and XCUITest logs and result bundle are in `/private/tmp/mote-ipad13-native-20261013`. This journey verifies native integration after the transition fix but does not capture the 0, 60 and 120 ms transition frames or immediate interaction on the changed layout.

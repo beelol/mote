@@ -19,6 +19,7 @@ The manual-only `.github/workflows/mote-testflight.yml` workflow is implemented.
 The configured origin is `https://github.com/beelol/mote.git`. Push each verified commit to `main`. Preserve unrelated `.DS_Store` and `.superpowers/` files. Run the Python release tests, `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` before committing.
 
 On 2026-10-13, the driver found that live iPad surface revisions changed the egui namespace and reset the red transition. The renderer now accepts a stable transition namespace separate from revision-specific control state. The live view keys it by host and thread. Header and footer rules and slider rails use the same materialization path as borders. A production-renderer regression switches revision identities, moves the header rule and slider rail, and observes square pixels at 0 and 60 ms but none at 120 ms. The focused test passed. `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` passed after the change. The full paired Simulator capture remains open. The change is recorded in `docs/verification/IPAD-13.md`.
+The rebuilt native iPad Simulator app also passed the paired inferred-UI XCUITest against a scripted local host. It covered success, retry, prior-surface preservation and prose fallback. It did not capture timed transition frames. The local logs and result bundle are in `/private/tmp/mote-ipad13-native-20261013`.
 
 ## Next actions
 
