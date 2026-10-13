@@ -36,7 +36,7 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
       - name: Validate manual build request
@@ -84,7 +84,7 @@ jobs:
     environment: mote-testflight
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
       - name: Validate deliberate Mote upload
@@ -179,7 +179,7 @@ jobs:
           set -euo pipefail
           python3 -B ios/Mote/distribute.py upload --manifest "$RUNNER_TEMP/mote-manifest.json" --inventory "$RUNNER_TEMP/mote-inventory.json" --output "$MOTE_OUTPUT" --signing-profile "$MOTE_SIGNING_PROFILE" --confirm-inventory-current --confirm-native-ui-verified --confirm-upload
       - name: Save Mote release receipt
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mote-release-receipt-${{ inputs.version }}-${{ inputs.build_number }}
           path: target/distribution/*/receipt.json
