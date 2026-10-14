@@ -69,7 +69,7 @@ turn.
 
 ### Continue development
 
-Copy this goal into a driver. Current scope is the distinct device build, internal TestFlight phase, manual Mote-only CI release path and agent-layout transition verification.
+Copy this goal into a driver. Its current scope is the distinct device build, internal TestFlight phase, manual Mote-only CI release path and agent-layout transition verification. The separately activated memory goal and its criteria are below under Memory backend comparison.
 
 ```text
 Continue mote from repository state at ~/projects/mote without relying on chat history.
@@ -322,3 +322,35 @@ The separate App Store Connect listing is [Mote Agent](https://appstoreconnect.a
     Mote-only provisioning profile, duplicate-build, signed IPA and internal-only export checks fail
     closed, configure isolated Mote release credentials, then run one build-only dispatch and one
     deliberate upload dispatch. Record each run and confirm no other app or TestFlight group changed.
+
+### Memory backend comparison
+
+The owner activated this goal on 2026-10-13. It is independent of the remaining iPad and TestFlight checks. SQLite remains the production default. [The memory RFC](docs/rfcs/memory-backend-comparison.md) defines the boundary and the resource ceiling. This goal does not activate the full context-layer backlog or authorize a default backend switch.
+
+```text
+Continue Mote's owner-activated memory backend comparison from repository state. Do not rely on this chat.
+
+Read AGENTS.md, docs/rfcs/v0.md, root README.md -> Ready for Go -> Memory backend comparison -> the nested MBE checkboxes, docs/rfcs/memory-backend-comparison.md, docs/HANDOFF.md if present, relevant code and tests. Only the MBE criteria are authorized by this goal. The iPad goal is separate. The context-layer backlog, full Tencent proxy, Pi, cloud relay and automatic default switch remain out of scope. SQLite stays default. Keep models.local_only true, use only the three approved Ollama models, ledger every generative call and redact before storage.
+
+Pick the smallest actionable unchecked MBE criterion or coherent dependency set. Reproduce suspected defects before fixing them. If delegation is available and authorized, give a bounded task to the least costly capable subagent with AC IDs, owned files, constraints and evidence requirements. Inspect its result. Otherwise work directly. Keep candidate experiments isolated from personal data and production state.
+
+Implement and verify behavior, including failure, correction, deletion, restart and realm changes where relevant. Use the same synthetic fixtures and output budget for SQLite and Tencent. Respect the RFC ceiling of 100 memories, 30 queries and 100 optional local extraction calls; do not fetch large corpora or run an unattended service. Stop the experiment on an outbound non-loopback call, a cross-realm hit or a deletion leak. No paid model or new model pull is authorized.
+
+Record each fully verified AC in docs/verification/<ID>.md with command, output, environment, date, commit and limits. Recheck affected v0 evidence. Before every commit run cargo test --workspace and cargo clippy --workspace -- -D warnings. Inspect the diff. Commit small coherent Conventional Commits on main and push to the confirmed origin. Include evidence and checkbox changes in the verified delivery. An unpushed or unmerged change is not completed mainline work. Never infer permission to spend, deploy, publish or destroy unrelated data.
+
+Check the Memory backend comparison parent only when every MBE child is verified. If work reveals an in-scope gap, add a testable AC and reopen its parent. Never weaken an unmet Verify clause. After integration reread all MBE criteria, reconcile the next action and recheck affected completed ACs. A Tencent win may enable opt-in use only after its measured gate. Do not make it the default without a later owner decision and migration/rollback evidence.
+
+Replace docs/HANDOFF.md with current ACs, checkout, delegated work, unmerged changes, verified results and limits, blockers and exact next action. Checkpoint before delegation or long operations and after every edit batch, subtask, test run, commit, push or blocker, at most two minutes apart during active work. Record in-flight handles before blocking calls and checkpoint on return. Save before stopping. On resume reconcile files and commits with the handoff. Delete it only when nothing needs transfer. Keep durable facts in the RFC and evidence files, not a diary.
+
+Continue until all authorized MBE criteria are verified and pushed. If one is blocked, do independent work. Stop only for completion, an owner stop, a budget limit or when all remaining work requires unavailable input, access or authority. State exact blockers honestly.
+```
+
+- [ ] **[Reliable and replaceable memory](docs/rfcs/memory-backend-comparison.md)**
+  - [ ] **MBE-01** Memory writes are atomic and every indexed vector has a known embedding model that matches query embeddings, including a safe path for existing hash vectors. **Verify:** reproduce the current daemon and MCP paths, inject a failure between node, FTS and vector writes, test rollback and restart/migration, and inspect stored model IDs and search results.
+  - [ ] **MBE-02** The agent's `memory_search` tool and turn packs use the same scoped fused retrieval and return stable Mote source IDs within their budgets. **Verify:** queries that text matching misses return the labelled source through both paths, and limits, unavailable backend and malformed query cases are covered by tests.
+  - [ ] **MBE-03** Every memory write, query, graph expansion, correction and pack enforces explicit account and realm scope. **Verify:** same-name personal and work fixtures, a changed account, restart and a cross-realm edge produce zero unauthorized results in both backends.
+  - [ ] **MBE-04** Context assembly preserves the charter, pinned instructions and newest turn under a long history; older history is bounded or compacted without silently losing source coverage. **Verify:** a deterministic long-history test checks the newest turn and pinned instruction in the final pack, and tests malformed compaction and recovery with ledger counts.
+  - [ ] **MBE-05** The user can inspect why a memory exists, correct it and forget it through exposed controls, with authoritative source pointers and explicit partial-failure state. **Verify:** exercise the visible controls and backend contract; after correction or forget, old text is absent from both search and packs while the audit pointer remains and a failed candidate deletion is reported.
+  - [ ] **MBE-06** SQLite runs behind a narrow memory backend interface without changing its v0 default or event-log authority. **Verify:** backend-neutral contract tests cover write, retrieve, source lookup, correction, forget, scope refusal and unavailable backend; workspace tests and clippy pass.
+  - [ ] **MBE-07** A pinned TencentDB Agent Memory version runs as an opt-in local comparison adapter against only synthetic redacted fixtures, with extraction disabled unless calls pass Mote's local-model ledger. **Verify:** record version, license, setup, network destinations, model calls, teardown and failure behavior; prove no non-loopback call, new model pull or production-store access.
+  - [ ] **MBE-08** Both backends are scored on the same bounded labelled cases and a decision report applies the RFC gate. **Verify:** report recall@5, MRR, corrections, forgets, realm leaks, p50/p95 latency, tokens, model calls, wall time, peak memory and disk growth with commands, outputs and environment. Keep SQLite default unless an opt-in Tencent path passes every gate; do not claim unmeasured superiority.
