@@ -55,10 +55,34 @@ field. A long press exposed Paste and restored `pasted`. The result bundle conta
 Environment: iPad Pro 11-inch (M4), UDID `00008132-001104661AB9001C`, iPadOS 26.5, Xcode 27.0.
 
 The signed Debug app built successfully with team `FQ6YGD7554`, bundle ID `com.beelol.mote`, and the
-Mote development profile. `xcrun devicectl device install app` installed it successfully. A separate
-Mote-only test identity `com.beelol.mote.xctrunner` and development profile
-`Mote UI Tests Development`, profile ID `4DQ37J5P2N`, were created without changing another app.
-The signed physical UI test runner built successfully with that profile.
+Mote development profile. `xcrun devicectl device install app` installed it successfully. The UI
+test plug-in uses the Mote-only identity `com.beelol.mote.xctrunner` and profile
+`Mote UI Tests Development`, profile ID `4DQ37J5P2N`. Its XCTest runner host uses the separate
+Mote-only identity `com.beelol.mote.xctrunner.xctrunner` and profile
+`Mote UI Test Runner Host Development`, profile ID `3AXGT9Z9LM`. Both profiles contain only the
+connected iPad. No resource belonging to another app was changed or reused.
+
+Command:
+
+```text
+xcodebuild build-for-testing -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug -destination 'platform=iOS,id=00008132-001104661AB9001C' \
+  -derivedDataPath /private/tmp/mote-native-text-physical8
+```
+
+Output: `TEST BUILD SUCCEEDED`. The app and separately signed runner host both installed on the
+physical iPad. Their installed bundle IDs are `com.beelol.mote` and
+`com.beelol.mote.xctrunner.xctrunner`.
+
+Queued command:
+
+```text
+xcodebuild test-without-building \
+  -xctestrun /private/tmp/mote-native-text-physical8/Build/Products/Mote_iphoneos27.0-arm64.xctestrun \
+  -destination 'platform=iOS,id=00008132-001104661AB9001C' \
+  -resultBundlePath /private/tmp/mote-native-text-physical8.xcresult \
+  -only-testing:MoteUITests/MoteUITests/testNativeTextBridgeSupportsEdgeFocusHardwareEditingAndEditMenu
+```
 
 The physical test is waiting for the iPad to be unlocked. Marked-text composition and dictation
 still require observed runs on the physical device. IPAD-14 remains unchecked until those checks and

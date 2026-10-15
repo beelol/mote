@@ -26,9 +26,10 @@ the local daemon socket. `MOTE_GATEWAY_BIND` exists so isolated integration test
 ephemeral local port while the real daemon owns port 47810.
 
 The physical device is iPad Pro 11-inch (M4), UDID `00008132-001104661AB9001C`, iPadOS 26.5. The
-app bundle is `com.beelol.mote`. The Mote-only test runner bundle is `com.beelol.mote.xctrunner` and
-its development profile is `Mote UI Tests Development`. Do not reuse another app's provisioning
-resources.
+app bundle is `com.beelol.mote`. The Mote-only test plug-in bundle is
+`com.beelol.mote.xctrunner` with profile `Mote UI Tests Development`. The runner host bundle is
+`com.beelol.mote.xctrunner.xctrunner` with profile `Mote UI Test Runner Host Development`. The app
+and runner are installed on the iPad. Do not reuse another app's provisioning resources.
 
 The App Store Connect record remains Mote Agent, Apple ID `6822101041`. Build `0.1.0 (1)` is in the
 internal Testing group. The manual-only `.github/workflows/mote-testflight.yml` workflow remains
