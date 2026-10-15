@@ -30,7 +30,7 @@ pub fn prepare_identity(data: &std::path::Path) -> Result<mote_gateway::HostIden
 
 pub fn bind(daemon: Arc<Daemon>, config: GatewayConfig) -> Result<Arc<GatewayServer>, String> {
     let mut server =
-        GatewayServer::bind_loopback(config, daemon.clone()).map_err(|e| e.to_string())?;
+        GatewayServer::bind_local(config, daemon.clone()).map_err(|e| e.to_string())?;
     if let Err(error) = server.start_discovery(&mote_gateway::discovery::DnsSdAdvertiser) {
         eprintln!("moted: Bonjour unavailable: {error}; use explicit localhost");
     }

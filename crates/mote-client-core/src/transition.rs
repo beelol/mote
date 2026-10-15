@@ -1006,7 +1006,7 @@ mod tests {
         render(0.0, 1, false);
         let changed = render(1.0, 2, true);
         assert!(!particles(&changed.shapes).is_empty());
-        assert!(particles(&render(1.06, 2, true).shapes).len() > 0);
+        assert!(!particles(&render(1.06, 2, true).shapes).is_empty());
         assert!(particles(&render(1.12, 2, true).shapes).is_empty());
     }
 

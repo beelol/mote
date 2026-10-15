@@ -37,8 +37,8 @@ impl<S: CredentialStore<Credential = StoredCredential>> NetworkHost<S> {
         store: Arc<Mutex<S>>,
     ) -> Result<Self> {
         ensure!(
-            endpoint.ip().is_loopback(),
-            "Simulator endpoint must be loopback"
+            mote_gateway::net::is_local_range(endpoint.ip()),
+            "endpoint must be local"
         );
         let credential = ClientCredential::from_pairing_code(&config, offer)?;
         let connection = GatewayClient::pair(endpoint, &config, &credential, name, 1)?;
@@ -67,8 +67,8 @@ impl<S: CredentialStore<Credential = StoredCredential>> NetworkHost<S> {
         store: Arc<Mutex<S>>,
     ) -> Result<Self> {
         ensure!(
-            endpoint.ip().is_loopback(),
-            "Simulator endpoint must be loopback"
+            mote_gateway::net::is_local_range(endpoint.ip()),
+            "endpoint must be local"
         );
         let (credential, counter) = {
             let mut store = store
@@ -337,6 +337,7 @@ pub struct LiveRuntime {
     pub(crate) commands: BTreeMap<HostId, Sender<HostCommand>>,
     pub(crate) status: BTreeMap<HostId, String>,
     pub(crate) approval_requests: BTreeMap<(HostId, RequestId), RequestId>,
+    pub(crate) authenticated: bool,
 }
 
 fn live_label(ui: &mut egui::Ui, id: egui::Id, text: String) {
@@ -368,12 +369,28 @@ impl LiveRuntime {
         } else {
             return Ok(None);
         };
+        Ok(Some(Self::from_configs(ctx, configs, false)?))
+    }
+
+    pub fn from_first_pairing(ctx: egui::Context, config: HostConfig) -> Result<Self> {
+        ensure!(
+            config.offer.is_some(),
+            "first pairing requires a transient code"
+        );
+        Self::from_configs(ctx, vec![config], true)
+    }
+
+    fn from_configs(ctx: egui::Context, configs: Vec<HostConfig>, fresh: bool) -> Result<Self> {
+        let root = documents()?;
+        let config_path = root.join("live-hosts.json");
         ensure!(
             !configs.is_empty() && configs.len() <= 8,
             "invalid paired-host count"
         );
         let directory_path = root.join("live-state.json");
-        let directory = if directory_path.exists() {
+        let directory = if fresh {
+            HostDirectory::default()
+        } else if directory_path.exists() {
             HostDirectory::load(&directory_path)?
         } else {
             HostDirectory::default()
@@ -381,8 +398,9 @@ impl LiveRuntime {
         let mut ids = std::collections::BTreeSet::new();
         for config in &configs {
             ensure!(
-                config.endpoint.ip().is_loopback() && !config.name.trim().is_empty(),
-                "invalid Simulator host"
+                mote_gateway::net::is_local_range(config.endpoint.ip())
+                    && !config.name.trim().is_empty(),
+                "invalid local host"
             );
             ensure!(
                 ids.insert(HostId::from_public_key(&config.public_key)),
@@ -448,19 +466,29 @@ impl LiveRuntime {
                 .run();
             });
         }
-        Ok(Some(Self {
+        Ok(Self {
             directory,
             rx,
             persist,
             commands,
             status: BTreeMap::new(),
             approval_requests: BTreeMap::new(),
-        }))
+            authenticated: false,
+        })
     }
 
     pub fn drain(&mut self) {
         while let Ok(update) = self.rx.try_recv() {
             let host = update.host_id().clone();
+            if matches!(
+                &update,
+                HostUpdate::Connection {
+                    state: ConnectionState::Online,
+                    ..
+                }
+            ) {
+                self.authenticated = true;
+            }
             match &update {
                 HostUpdate::Frame {
                     frame: HostFrame::Result { .. },
@@ -591,11 +619,13 @@ impl LiveRuntime {
                     );
                 }
                 ui.horizontal(|ui| {
-                    let field = ui.add_sized(
-                        [ui.available_width() - 112.0, 48.0],
-                        egui::TextEdit::singleline(composer)
-                            .id(egui::Id::new("live-chat"))
-                            .hint_text("Message your Mote host"),
+                    let field = mote_client_core::native_text::singleline(
+                        ui,
+                        egui::Id::new("live-chat"),
+                        composer,
+                        egui::vec2(ui.available_width() - 112.0, 48.0),
+                        "Message your Mote host",
+                        false,
                     );
                     #[cfg(target_os = "ios")]
                     mote_client_core::native_accessibility::record(
@@ -606,12 +636,15 @@ impl LiveRuntime {
                         Some(composer.clone()),
                         &field,
                     );
-                    let send_response = ui.push_id(("live-send", &selected), |ui| {
-                        ui.add_enabled_ui(selected.is_some() && !composer.trim().is_empty(), |ui| {
-                            ui.add_sized([96.0, 48.0], egui::Button::new("Send"))
+                    let send_response = ui
+                        .push_id(("live-send", &selected), |ui| {
+                            ui.add_enabled_ui(
+                                selected.is_some() && !composer.trim().is_empty(),
+                                |ui| ui.add_sized([96.0, 48.0], egui::Button::new("Send")),
+                            )
+                            .inner
                         })
-                        .inner
-                    }).inner;
+                        .inner;
                     #[cfg(target_os = "ios")]
                     mote_client_core::native_accessibility::record(
                         ui,
@@ -684,7 +717,8 @@ impl LiveRuntime {
                 .max_height(ui.available_height() * 0.32)
                 .show(ui, |ui| {
                     for message in messages {
-                        let id = ui.make_persistent_id(("chat-message", &host, thread, &message.id));
+                        let id =
+                            ui.make_persistent_id(("chat-message", &host, thread, &message.id));
                         live_label(ui, id, format!("{:?}: {}", message.role, message.text));
                     }
                 });
@@ -764,7 +798,11 @@ impl LiveRuntime {
                                     ui,
                                     &surface_tree,
                                     &mut events,
-                                    egui::Id::new(("live-surface-transition", &host, &surface.thread)),
+                                    egui::Id::new((
+                                        "live-surface-transition",
+                                        &host,
+                                        &surface.thread,
+                                    )),
                                 )
                             });
                         });
@@ -988,7 +1026,7 @@ fn attach_host<S: CredentialStore<Credential = StoredCredential> + Send + 'stati
             config.endpoint,
             gateway_config.clone(),
             offer,
-            "Mote iPad Simulator",
+            "Mote iPad",
             store.clone(),
         )?
     } else {
@@ -1050,6 +1088,11 @@ fn attach_host<S: CredentialStore<Credential = StoredCredential> + Send + 'stati
     mote_host_client::command_worker(network, commands, command_updates, move || {
         repaint.request_repaint()
     });
+    updates.send(HostUpdate::Connection {
+        host_id: id.clone(),
+        state: ConnectionState::Online,
+    })?;
+    ctx.request_repaint();
     let mut cursor = resume_cursor;
     let mut stream = stream;
     loop {
@@ -1303,6 +1346,13 @@ mod recovery_tests {
                 break;
             }
         }
+        assert!(matches!(
+            received.recv_timeout(Duration::from_secs(5)).unwrap(),
+            HostUpdate::Connection {
+                state: ConnectionState::Online,
+                ..
+            }
+        ));
         commands
             .send(HostCommand {
                 host_id: id.clone(),

@@ -57,6 +57,14 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
         matchingPredicate:[NSPredicate predicateWithFormat:@"label == %@", label]] firstMatch];
 }
 
+- (void)assertValue:(NSString *)value element:(XCUIElement *)element {
+    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"value == %@", value];
+    XCTNSPredicateExpectation *expectation =
+        [[XCTNSPredicateExpectation alloc] initWithPredicate:predicate object:element];
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[expectation] timeout:5],
+                   XCTWaiterResultCompleted, @"Expected value %@, observed %@", value, element.value);
+}
+
 - (void)testMatrixControlsAppearAsIndividualNativeAccessibilityElements {
     XCUIApplication *app = [XCUIApplication new];
     app.launchArguments = @[@"--mote-offline", @"--mote-page", @"toggle"];
@@ -88,6 +96,56 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     [high tap];
     XCTAssertEqualObjects(select.value, @"High");
     XCTAssertFalse(toggle.exists);
+}
+
+- (void)testNativeTextBridgeSupportsEdgeFocusHardwareEditingAndEditMenu {
+    XCUIApplication *app = [XCUIApplication new];
+    app.launchArguments = @[@"--mote-offline"];
+    [app launch];
+    XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+
+    XCUIElement *field = [self nativeElement:@"Preview note" app:app];
+    XCTAssertTrue([field waitForExistenceWithTimeout:10]);
+    XCTAssertGreaterThanOrEqual(field.frame.size.height, 48.0);
+    XCUICoordinate *rightEdge = [field coordinateWithNormalizedOffset:CGVectorMake(0.98, 0.5)];
+    [rightEdge tap];
+    XCTAssertTrue([app.keyboards.firstMatch waitForExistenceWithTimeout:5]);
+
+    XCUIElement *editable = app.textFields[@"mote.native-text-input"];
+    XCTAssertTrue([editable waitForExistenceWithTimeout:5]);
+    [editable typeText:@"abcd"];
+    [editable typeKey:XCUIKeyboardKeyLeftArrow modifierFlags:0];
+    [editable typeText:@"X"];
+    [self assertValue:@"abcXd" element:editable];
+
+    UIPasteboard.generalPasteboard.string = @"pasted";
+    [editable doubleTap];
+    XCUIElement *paste = [self nativeElement:@"Paste" app:app];
+    XCTAssertTrue([paste waitForExistenceWithTimeout:5]);
+    [paste tap];
+    [self assertValue:@"pasted" element:editable];
+
+    [editable doubleTap];
+    XCUIElement *copy = [self nativeElement:@"Copy" app:app];
+    XCTAssertTrue([copy waitForExistenceWithTimeout:5]);
+    [copy tap];
+
+    [editable doubleTap];
+    XCUIElement *cut = [self nativeElement:@"Cut" app:app];
+    XCTAssertTrue([cut waitForExistenceWithTimeout:5]);
+    [cut tap];
+    NSPredicate *cleared = [NSPredicate predicateWithFormat:@"value == '' OR value == nil"];
+    XCTNSPredicateExpectation *clearExpectation =
+        [[XCTNSPredicateExpectation alloc] initWithPredicate:cleared object:editable];
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[clearExpectation] timeout:5],
+                   XCTWaiterResultCompleted);
+
+    [editable pressForDuration:1.0];
+    paste = [self nativeElement:@"Paste" app:app];
+    XCTAssertTrue([paste waitForExistenceWithTimeout:5]);
+    [paste tap];
+    [self assertValue:@"pasted" element:editable];
+    [self capture:@"native-text-edit-menu" app:app];
 }
 - (UIImage *)windowImage:(XCUIApplication *)app {
     UIImage *source = app.windows.firstMatch.screenshot.image;

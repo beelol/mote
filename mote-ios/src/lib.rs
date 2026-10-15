@@ -2,8 +2,11 @@
 mod accessibility;
 mod app;
 pub mod discovery;
+mod first_run;
 pub mod keychain;
 pub mod live;
+#[cfg(any(test, target_os = "ios"))]
+mod native_text;
 #[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]
 mod probe;
 mod simulator;
@@ -23,6 +26,8 @@ pub extern "C" fn mote_ios_main() -> ! {
             attach_scene(cc)?;
             #[cfg(target_os = "ios")]
             accessibility::install(&cc.egui_ctx);
+            #[cfg(target_os = "ios")]
+            native_text::install(&cc.egui_ctx);
             mote_client_core::install_theme(&cc.egui_ctx);
             let mut app = app::MoteApp::with_launch_options(simulator::LaunchOptions::parse(
                 std::env::args(),

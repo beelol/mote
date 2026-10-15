@@ -26,6 +26,14 @@ impl DaemonProcess {
         let child = Command::new(env!("CARGO_BIN_EXE_moted"))
             .env("MOTE_HOME", &data)
             .env("MOTE_DISCOVERY", if discovery { "1" } else { "0" })
+            .env(
+                "MOTE_GATEWAY_BIND",
+                if discovery {
+                    "0.0.0.0:47810"
+                } else {
+                    "127.0.0.1:0"
+                },
+            )
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())

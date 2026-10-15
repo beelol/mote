@@ -1,30 +1,51 @@
 # Current development handoff
 
-Updated 2026-10-13 in America/Los_Angeles. This file is a replacement snapshot.
+Updated 2026-10-14 in America/Los_Angeles. This file is a replacement snapshot.
 
-## Contract and scope
+## Current goal
 
-Read `AGENTS.md`, `docs/rfcs/v0.md`, the root README Ready for Go board and `docs/superpowers/specs/2026-10-11-ipad-host.md`. The owner moved internal TestFlight ahead of physical iPad checks and added a manual GitHub Actions release path. IPAD-11 is verified. IPAD-12 is open until a protected Mote release environment and credentials are configured and its hosted build and upload runs succeed. The owner also requested line materialization when the agent changes the layout. IPAD-13 is open for a paired Simulator transition capture and first-frame interaction. IPAD-06 and IPAD-08 still require physical iPad installation and journeys. HOST-05 and V0-53 remain for owner-present checks. External testing, App Review, public release and cloud relay remain out of scope.
+IPAD-14 adds one reusable UIKit text-input bridge beneath Matrix and egui fields. Egui remains the
+visual renderer. The bridge now covers generated fields, first-run pairing, offline preview and live
+chat. It exposes a 48-point native editing surface with the system keyboard, cursor and selection
+state, marked text, dictation, hardware-keyboard events and native copy, cut and paste menus.
 
-The owner separately activated the memory backend comparison in root README Ready for Go, Memory backend comparison. MBE-01 through MBE-08 are open. `docs/rfcs/memory-backend-comparison.md` holds its boundary, resource ceiling and Tencent decision gate. This planning change does not implement or verify memory behavior. SQLite remains the production default. The app goal for this thread is still the earlier iPad/TestFlight goal and is marked blocked. The goal tool refused a second active goal, so the copyable memory goal is in the README and has not been attached as a new app goal.
+The iPad Simulator UI test passes. The full Rust workspace suite and clippy pass. A signed Debug app
+is installed on the physical iPad. A Mote-only UI test runner App ID and development profile were
+created for physical automation. The physical UI test is waiting because the iPad is locked. After
+unlock, rerun or resume the selected UI test, then observe marked-text composition and dictation on
+the device. Keep IPAD-14 unchecked until those physical observations are recorded in
+`docs/verification/IPAD-14.md`.
 
-## Verified state
+## Current implementation state
 
-IPAD-01 through IPAD-05, IPAD-07, IPAD-09, IPAD-10 and IPAD-11 are checked with evidence in `docs/verification/`. The iPad Simulator passed the gallery, paired-host chat, typed Matrix interactions, inferred UI and browser approval journeys. The final native Simulator run passed the gallery and control checks, paired-host journey, inferred UI and browser approval XCUITests. `docs/verification/IPAD-06.md` records those results. Simulator evidence does not verify physical touch or VoiceOver gestures.
+The Mac daemon listens on local IPv4 interfaces and Bonjour advertises it on the LAN. Incoming
+gateway peers are restricted to loopback, private and link-local ranges. The iPad accepts only local
+discovery endpoints. First-run setup discovers hosts, validates the selected fingerprint against the
+pairing offer and waits for authenticated completion. Owner pairing commands are available through
+the local daemon socket. `MOTE_GATEWAY_BIND` exists so isolated integration tests can use an
+ephemeral local port while the real daemon owns port 47810.
 
-The distinct App Store Connect app is Mote Agent, Apple ID `6822101041`, bundle `com.beelol.mote`, SKU `mote-ipad-001`, team `FQ6YGD7554`. Its native display name is Mote. Build `0.1.0 (1)`, ID `e05b53e3-adf2-4c60-baa1-5f36034e8d69`, was uploaded from the locally verified signed archive. It is listed as `Testing` in the `Internal Testing` group with one account-holder tester invited. There is no external tester group or App Review submission. The public version remains `Prepare for Submission`. The group is https://appstoreconnect.apple.com/teams/c419168b-6bd1-4b72-bbed-78617b507726/apps/6822101041/testflight/groups/7d909949-bf8f-4f94-b475-261afc2e3b2f/builds. The upload attempt marker remains under `target/distribution/0.1.0-1c`. Do not retry that upload.
+The physical device is iPad Pro 11-inch (M4), UDID `00008132-001104661AB9001C`, iPadOS 26.5. The
+app bundle is `com.beelol.mote`. The Mote-only test runner bundle is `com.beelol.mote.xctrunner` and
+its development profile is `Mote UI Tests Development`. Do not reuse another app's provisioning
+resources.
 
-The app's Noise transport uses standard Curve25519, ChaChaPoly and SHA-256 outside Apple's OS. The owner said they added France. The export-compliance form was not observed being submitted in the agent session, but the build subsequently reached `Ready to Test` and internal `Testing`. Do not claim that a public App Store territory setting was changed. See `docs/verification/IPAD-11.md`.
+The App Store Connect record remains Mote Agent, Apple ID `6822101041`. Build `0.1.0 (1)` is in the
+internal Testing group. The manual-only `.github/workflows/mote-testflight.yml` workflow remains
+guarded and separate from other apps. Its Mote-specific App Store profile exists, but the App Store
+Connect API key and Apple Distribution certificate secrets are still absent.
 
-The manual-only `.github/workflows/mote-testflight.yml` workflow is implemented. Its build-only job requires `main`, checks Rust and builds an unsigned iPad client without Apple credentials. Its optional upload job requires explicit UI verification, a Mote-only provisioning profile, live App Store Connect inventory, a fresh build number and signed IPA verification. It uses the existing guarded `ios/Mote/distribute.py` and new `ci_inventory.py` and `ci_profile.py`. The `mote-testflight` GitHub environment allows only `main`. Two build-only dispatches from `main` succeeded. The latest, [run 38349927919](https://github.com/beelol/mote/actions/runs/38349927919), verified checkout `v5`, workspace checks and the unsigned iPad build from commit `2f861a5`; its upload job was skipped. The upload job's receipt artifact action has not run. A dedicated App Store profile `Mote iOS App Store Connect`, ID `3TG7MVG3GT`, was created for the exact Mote App ID and downloaded outside Git. The environment has the Mote profile and a generated runner keychain password. The App Store Connect API key and Apple Distribution certificate secrets remain absent, so an upload run is not yet possible. The repository is public, so the workflow retains only a receipt, not a signed IPA artifact. The live App Store Connect inventory has no Mote key, two other-app team keys and no individual keys. Apple team keys grant access across all apps. A new Mote-named team key would still be broad, so none was created or reused while the owner was unavailable. The distribution certificate is also team-wide even with the Mote-only provisioning profile. See `ios/Mote/DISTRIBUTION.md` and `docs/verification/IPAD-12.md`.
+## Verification and next actions
 
-The configured origin is `https://github.com/beelol/mote.git`. Push each verified commit to `main`. Preserve unrelated `.DS_Store` and `.superpowers/` files. Run the Python release tests, `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` before committing.
+`cargo test --workspace` and `cargo clippy --workspace -- -D warnings` passed after the LAN pairing,
+first-run setup and native text bridge changes. The selected Simulator test passed in 26.264 seconds
+with result bundle `/private/tmp/mote-native-text-test14.xcresult`. It covered edge focus, the system
+keyboard, a hardware cursor edit and native Copy, Cut and Paste.
 
-On 2026-10-13, the driver found that live iPad surface revisions changed the egui namespace and reset the red transition. The renderer now accepts a stable transition namespace separate from revision-specific control state. The live view keys it by host and thread. Header and footer rules and slider rails use the same materialization path as borders. A production-renderer regression switches revision identities, moves the header rule and slider rail, and observes square pixels at 0 and 60 ms but none at 120 ms. The focused test passed. `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` passed after the change. The full paired Simulator capture remains open. The change is recorded in `docs/verification/IPAD-13.md`.
-The rebuilt native iPad Simulator app also passed the paired inferred-UI XCUITest against a scripted local host. It covered success, retry, prior-surface preservation and prose fallback. It did not capture timed transition frames. The local logs and result bundle are in `/private/tmp/mote-ipad13-native-20261013`.
+Finish the physical IPAD-14 run after the owner unlocks the iPad. Then update the evidence, check the
+criterion, run the required workspace checks again, commit and push. IPAD-06, IPAD-08, IPAD-12 and
+IPAD-13 remain separate open criteria. The memory backend comparison remains a separate goal with
+SQLite as the production default. External testing, App Review, public release and cloud relay stay
+out of scope.
 
-## Next actions
-
-Complete the remaining Mote release credentials, then run one deliberate upload dispatch with a fresh Mote build number. Confirm only the Mote app and internal group changed. Do not enable automatic triggers. Physical iPad IPAD-06 and IPAD-08 remain open until hardware is available. TestFlight distribution does not make the local Mac reachable from another city; that route requires separate verification.
-Run the paired iPad Simulator IPAD-13 journey and capture the first, midpoint and settled frames for an agent-replaced layout. Check first-frame interaction and Reduce Motion before marking it complete. Do not use gallery-only captures to close it.
-For the independent memory goal, start with MBE-01 and reproduce the embedder and atomic-write defects before implementation. Keep the Tencent comparison synthetic, local and resource-capped. Do not mark any MBE criterion verified from this planning session.
+Preserve unrelated `.DS_Store` and `.superpowers/` files.

@@ -44,12 +44,15 @@ pub struct GatewayServer {
     advertisement: Option<Box<dyn crate::discovery::Advertisement>>,
 }
 impl GatewayServer {
-    pub fn bind_loopback<D: Dispatch>(mut config: GatewayConfig, dispatch: Arc<D>) -> Result<Self> {
-        config.validate()?;
+    pub fn bind_loopback<D: Dispatch>(config: GatewayConfig, dispatch: Arc<D>) -> Result<Self> {
         ensure!(
             config.bind.ip() == "127.0.0.1".parse::<std::net::IpAddr>()?,
             "gateway must bind IPv4 loopback"
         );
+        Self::bind_local(config, dispatch)
+    }
+    pub fn bind_local<D: Dispatch>(mut config: GatewayConfig, dispatch: Arc<D>) -> Result<Self> {
+        config.validate()?;
         let host = HostIdentity::load_or_create(&config.data_dir)?;
         let mut store = DeviceStore::open(&config.data_dir.join("mote.db"), host.host_id())?;
         let listener = TcpListener::bind(config.bind)?;
@@ -71,6 +74,13 @@ impl GatewayServer {
                     break;
                 }
                 if let Ok(stream) = stream {
+                    if stream
+                        .peer_addr()
+                        .map(|peer| !crate::net::is_allowed(peer.ip(), &[]))
+                        .unwrap_or(true)
+                    {
+                        continue;
+                    }
                     let state = state.clone();
                     let dispatch = dispatch.clone();
                     std::thread::spawn(move || {
@@ -106,11 +116,12 @@ impl GatewayServer {
         self.address
     }
     pub fn open_pairing(&self) -> Result<String> {
+        let addresses = crate::net::local_addresses();
         let offer = PairingOffer::open(
             &self.shared.config,
             &self.shared.host,
             Instant::now(),
-            &["127.0.0.1".into()],
+            &addresses,
         )?;
         let code = offer.code();
         *self.shared.offer.lock().unwrap() = Some(offer);

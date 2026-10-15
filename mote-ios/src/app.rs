@@ -9,6 +9,7 @@ pub struct MoteApp {
     last_event: String,
     reduced_motion: bool,
     live: Option<crate::live::LiveRuntime>,
+    first_run: Option<crate::first_run::FirstRun>,
     #[cfg(all(target_os = "ios", target_abi = "sim"))]
     probe: Option<crate::probe::native::Probe>,
 }
@@ -21,6 +22,7 @@ impl Default for MoteApp {
             last_event: "No interaction yet".into(),
             reduced_motion: false,
             live: None,
+            first_run: None,
             #[cfg(all(target_os = "ios", target_abi = "sim"))]
             probe: None,
         }
@@ -32,7 +34,9 @@ impl eframe::App for MoteApp {
         #[cfg(target_os = "ios")]
         {
             mote_client_core::native_accessibility::begin_frame();
+            mote_client_core::native_text::begin_frame();
             crate::accessibility::apply_pending(ctx);
+            crate::native_text::apply_pending(ctx);
         }
         let safe_area = crate::safe_area();
         #[cfg(all(target_os = "ios", target_abi = "sim"))]
@@ -44,6 +48,8 @@ impl eframe::App for MoteApp {
         self.draw(ctx, safe_area);
         #[cfg(target_os = "ios")]
         crate::accessibility::publish();
+        #[cfg(target_os = "ios")]
+        crate::native_text::publish();
         #[cfg(all(target_os = "ios", target_abi = "sim"))]
         if let Some(probe) = self.probe.as_mut() {
             probe.after_draw(ctx, safe_area);
@@ -56,6 +62,9 @@ impl MoteApp {
         match crate::live::LiveRuntime::from_environment(ctx.clone()) {
             Ok(runtime) => self.live = runtime,
             Err(error) => self.last_event = format!("Host setup failed: {error}"),
+        }
+        if self.live.is_none() && !std::env::args().any(|arg| arg == "--mote-offline") {
+            self.first_run = Some(crate::first_run::FirstRun::new(ctx));
         }
     }
     pub fn with_launch_options(options: crate::simulator::LaunchOptions) -> Self {
@@ -73,6 +82,17 @@ impl MoteApp {
     }
 
     fn draw(&mut self, ctx: &egui::Context, safe_area: egui::Margin) {
+        if let Some(first_run) = self.first_run.as_mut() {
+            if let Some(live) = first_run.poll() {
+                self.live = Some(live);
+                self.first_run = None;
+            } else {
+                if first_run.draw(ctx, safe_area) {
+                    self.first_run = None;
+                }
+                return;
+            }
+        }
         if let Some(live) = &mut self.live {
             live.drain();
             live.draw(ctx, safe_area, &mut self.composer);
@@ -88,6 +108,21 @@ impl MoteApp {
             .show(ctx, |ui| {
                 ui.heading("Mote");
                 ui.label("Offline gallery");
+                if !std::env::args().any(|arg| arg == "--mote-offline") {
+                    let connect = ui.add_sized([160.0, 48.0], egui::Button::new("Connect to host"));
+                    #[cfg(target_os = "ios")]
+                    mote_client_core::native_accessibility::record(
+                        ui,
+                        connect.id,
+                        mote_client_core::native_accessibility::Role::Button,
+                        "Connect to host",
+                        None,
+                        &connect,
+                    );
+                    if connect.clicked() {
+                        self.first_run = Some(crate::first_run::FirstRun::new(ctx));
+                    }
+                }
                 ui.horizontal_wrapped(|ui| {
                     for page in GalleryPage::ALL {
                         let response = ui.add_sized(
@@ -127,11 +162,13 @@ impl MoteApp {
                 ui.label(&self.last_event);
                 ui.label("Preview note");
                 let width = ui.available_width();
-                let response = ui.add_sized(
-                    [width, 48.0],
-                    egui::TextEdit::singleline(&mut self.composer)
-                        .id(egui::Id::new("preview-note"))
-                        .hint_text("Enter a preview note"),
+                let response = mote_client_core::native_text::singleline(
+                    ui,
+                    egui::Id::new("preview-note"),
+                    &mut self.composer,
+                    egui::vec2(width, 48.0),
+                    "Enter a preview note",
+                    false,
                 );
                 response.widget_info(|| {
                     egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Preview note")
@@ -205,15 +242,18 @@ mod tests {
         directory.apply_event(&id, &id, created).unwrap();
         let (persist, rx) = std::sync::mpsc::channel();
         let (commands, outgoing) = std::sync::mpsc::channel();
-        let mut app = MoteApp::default();
-        app.live = Some(crate::live::LiveRuntime {
-            directory,
-            rx,
-            persist,
-            commands: std::collections::BTreeMap::from([(id.clone(), commands)]),
-            status: Default::default(),
-            approval_requests: Default::default(),
-        });
+        let mut app = MoteApp {
+            live: Some(crate::live::LiveRuntime {
+                directory,
+                rx,
+                persist,
+                commands: std::collections::BTreeMap::from([(id.clone(), commands)]),
+                status: Default::default(),
+                approval_requests: Default::default(),
+                authenticated: false,
+            }),
+            ..Default::default()
+        };
         let ctx = egui::Context::default();
         let size = egui::vec2(834.0, 1210.0);
         frame(&mut app, &ctx, size, vec![]);
@@ -352,15 +392,18 @@ mod tests {
                 )
                 .unwrap();
             let (persist, rx) = std::sync::mpsc::channel();
-            let mut app = MoteApp::default();
-            app.live = Some(crate::live::LiveRuntime {
-                directory,
-                rx,
-                persist,
-                commands: Default::default(),
-                status: Default::default(),
-                approval_requests: Default::default(),
-            });
+            let mut app = MoteApp {
+                live: Some(crate::live::LiveRuntime {
+                    directory,
+                    rx,
+                    persist,
+                    commands: Default::default(),
+                    status: Default::default(),
+                    approval_requests: Default::default(),
+                    authenticated: false,
+                }),
+                ..Default::default()
+            };
             let ctx = egui::Context::default();
             frame(&mut app, &ctx, size, vec![]);
             let output = frame(&mut app, &ctx, size, vec![]);
@@ -406,15 +449,18 @@ mod tests {
         directory.register(second).unwrap();
         directory.select_host(&first_id).unwrap();
         let (tx, rx) = std::sync::mpsc::channel();
-        let mut app = MoteApp::default();
-        app.live = Some(crate::live::LiveRuntime {
-            directory,
-            rx,
-            persist: tx.clone(),
-            commands: Default::default(),
-            status: Default::default(),
-            approval_requests: Default::default(),
-        });
+        let mut app = MoteApp {
+            live: Some(crate::live::LiveRuntime {
+                directory,
+                rx,
+                persist: tx.clone(),
+                commands: Default::default(),
+                status: Default::default(),
+                approval_requests: Default::default(),
+                authenticated: false,
+            }),
+            ..Default::default()
+        };
         tx.send(HostUpdate::Frame {
             host_id: first_id.clone(),
             frame: HostFrame::Event {

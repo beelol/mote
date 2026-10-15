@@ -123,7 +123,7 @@ intptr_t mote_ios_discover(double timeout, uint8_t *output, size_t capacity) {
         if (status) return status;
         browser.connection = connection;
         DNSServiceRef browse = connection;
-        status = DNSServiceBrowse(&browse, kDNSServiceFlagsShareConnection, kDNSServiceInterfaceIndexLocalOnly,
+        status = DNSServiceBrowse(&browse, kDNSServiceFlagsShareConnection, kDNSServiceInterfaceIndexAny,
             "_mote._tcp", "local", foundService, (__bridge void *)browser);
         if (status) { DNSServiceRefDeallocate(connection); return status; }
         [browser.references addObject:[NSValue valueWithPointer:browse]];
@@ -162,11 +162,141 @@ const char *mote_ios_documents(void) {
     return documents.UTF8String;
 }
 
+@interface MoteTextInputProxy : UITextField <UITextFieldDelegate>
+@property uint64_t controlID;
+@property BOOL synchronizing;
+@end
+
+@implementation MoteTextInputProxy
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.delegate = self;
+        self.backgroundColor = UIColor.clearColor;
+        self.borderStyle = UITextBorderStyleNone;
+        self.textColor = UIColor.clearColor;
+        self.tintColor = [UIColor colorWithRed:0.95 green:0.12 blue:0.12 alpha:1.0];
+        self.font = [UIFont systemFontOfSize:14.0];
+        self.clearButtonMode = UITextFieldViewModeNever;
+        self.autocorrectionType = UITextAutocorrectionTypeDefault;
+        self.spellCheckingType = UITextSpellCheckingTypeDefault;
+        self.smartQuotesType = UITextSmartQuotesTypeDefault;
+        self.smartDashesType = UITextSmartDashesTypeDefault;
+        self.autocapitalizationType = UITextAutocapitalizationTypeSentences;
+        self.returnKeyType = UIReturnKeySend;
+        self.isAccessibilityElement = YES;
+        self.accessibilityIdentifier = @"mote.native-text-input";
+        [self addTarget:self action:@selector(textChanged:) forControlEvents:UIControlEventEditingChanged];
+    }
+    return self;
+}
+
+- (void)notifyRust {
+    if (self.synchronizing) return;
+    NSData *data = [self.text dataUsingEncoding:NSUTF8StringEncoding];
+    NSRange selection = [self selectedTextRange]
+        ? NSMakeRange([self offsetFromPosition:self.beginningOfDocument
+                                   toPosition:self.selectedTextRange.start],
+                      [self offsetFromPosition:self.selectedTextRange.start
+                                   toPosition:self.selectedTextRange.end])
+        : NSMakeRange(self.text.length, 0);
+    mote_ios_text_input_update(self.controlID, data.bytes, data.length,
+                               selection.location, NSMaxRange(selection));
+}
+
+- (void)textChanged:(UITextField *)field {
+    [self notifyRust];
+}
+
+- (void)textFieldDidChangeSelection:(UITextField *)textField {
+    [self notifyRust];
+}
+
+- (BOOL)textFieldShouldReturn:(UITextField *)textField {
+    mote_ios_text_input_return(self.controlID);
+    return NO;
+}
+@end
+
+static MoteTextInputProxy *MoteTextInput;
+static void refreshMoteAccessibilityElements(void);
+
+void mote_ios_text_input_publish(const uint8_t *bytes, size_t length) {
+    @autoreleasepool {
+        if (!MoteTextInput) return;
+        if (!bytes || length == 0) {
+            [MoteTextInput resignFirstResponder];
+            MoteTextInput.hidden = YES;
+            MoteTextInput.userInteractionEnabled = NO;
+            refreshMoteAccessibilityElements();
+            return;
+        }
+        NSData *data = [NSData dataWithBytes:bytes length:length];
+        id decoded = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        if (![decoded isKindOfClass:[NSDictionary class]]) return;
+        NSDictionary *item = decoded;
+        NSArray<NSNumber *> *rect = item[@"rect"];
+        NSNumber *identity = item[@"id"];
+        NSString *label = item[@"label"];
+        NSString *text = item[@"text"];
+        NSNumber *start = item[@"selection_start"];
+        NSNumber *end = item[@"selection_end"];
+        NSNumber *secure = item[@"secure"];
+        if (![identity isKindOfClass:[NSNumber class]] ||
+            ![label isKindOfClass:[NSString class]] ||
+            ![text isKindOfClass:[NSString class]] ||
+            ![start isKindOfClass:[NSNumber class]] ||
+            ![end isKindOfClass:[NSNumber class]] ||
+            ![secure isKindOfClass:[NSNumber class]] ||
+            ![rect isKindOfClass:[NSArray class]] || rect.count != 4) return;
+        NSUInteger lower = MIN(start.unsignedIntegerValue, text.length);
+        NSUInteger upper = MIN(MAX(end.unsignedIntegerValue, lower), text.length);
+        BOOL changedField = MoteTextInput.controlID != identity.unsignedLongLongValue;
+        MoteTextInput.synchronizing = YES;
+        MoteTextInput.controlID = identity.unsignedLongLongValue;
+        MoteTextInput.accessibilityLabel = label;
+        MoteTextInput.frame = CGRectMake(rect[0].doubleValue, rect[1].doubleValue,
+                                         rect[2].doubleValue, rect[3].doubleValue);
+        if (MoteTextInput.secureTextEntry != secure.boolValue) {
+            MoteTextInput.secureTextEntry = secure.boolValue;
+        }
+        BOOL composing = !changedField && MoteTextInput.markedTextRange != nil;
+        if (!composing) {
+            if (![MoteTextInput.text isEqualToString:text]) MoteTextInput.text = text;
+            UITextPosition *from = [MoteTextInput positionFromPosition:MoteTextInput.beginningOfDocument
+                                                                offset:(NSInteger)lower];
+            UITextPosition *to = [MoteTextInput positionFromPosition:MoteTextInput.beginningOfDocument
+                                                              offset:(NSInteger)upper];
+            if (from && to) {
+                UITextRange *current = MoteTextInput.selectedTextRange;
+                NSInteger currentLower = current
+                    ? [MoteTextInput offsetFromPosition:MoteTextInput.beginningOfDocument
+                                             toPosition:current.start]
+                    : NSNotFound;
+                NSInteger currentUpper = current
+                    ? [MoteTextInput offsetFromPosition:MoteTextInput.beginningOfDocument
+                                             toPosition:current.end]
+                    : NSNotFound;
+                if (currentLower != (NSInteger)lower || currentUpper != (NSInteger)upper) {
+                    MoteTextInput.selectedTextRange =
+                        [MoteTextInput textRangeFromPosition:from toPosition:to];
+                }
+            }
+        }
+        MoteTextInput.synchronizing = NO;
+        MoteTextInput.hidden = NO;
+        MoteTextInput.userInteractionEnabled = YES;
+        if (changedField || !MoteTextInput.isFirstResponder) [MoteTextInput becomeFirstResponder];
+        refreshMoteAccessibilityElements();
+    }
+}
+
 static UIWindow *MoteWindow;
 static UIWindowScene *MoteWindowScene;
 static UIView *MoteAccessibilityView;
 @class MoteControlElement;
 static NSMutableDictionary<NSNumber *, MoteControlElement *> *MoteAccessibilityElements;
+static NSArray<id> *MotePublishedAccessibilityElements;
 
 @interface MoteControlElement : UIAccessibilityElement
 @property uint64_t controlID;
@@ -175,12 +305,25 @@ static NSMutableDictionary<NSNumber *, MoteControlElement *> *MoteAccessibilityE
 @property(nonatomic, copy) NSString *controlRole;
 @end
 
+static void refreshMoteAccessibilityElements(void) {
+    if (!MoteAccessibilityView || !MotePublishedAccessibilityElements) return;
+    if (!MoteTextInput || MoteTextInput.hidden) {
+        MoteAccessibilityView.accessibilityElements = MotePublishedAccessibilityElements;
+        return;
+    }
+    NSMutableArray<id> *filtered = [NSMutableArray array];
+    for (MoteControlElement *element in MotePublishedAccessibilityElements) {
+        if (element.controlID != MoteTextInput.controlID) [filtered addObject:element];
+    }
+    [filtered addObject:MoteTextInput];
+    MoteAccessibilityView.accessibilityElements = filtered;
+}
+
 @implementation MoteControlElement
 - (BOOL)accessibilityActivate {
     if (!self.controlEnabled || self.actionKind == 255) return NO;
     if (![MoteAccessibilityView.accessibilityElements containsObject:self]) return NO;
     mote_ios_accessibility_action(self.controlID, self.actionKind);
-    if (self.actionKind == 3) [MoteAccessibilityView becomeFirstResponder];
     return YES;
 }
 - (void)accessibilityIncrement {
@@ -242,8 +385,9 @@ void mote_ios_accessibility_publish(const uint8_t *bytes, size_t length) {
             current[identity] = element;
         }
         MoteAccessibilityElements = current;
+        MotePublishedAccessibilityElements = elements;
         MoteAccessibilityView.isAccessibilityElement = NO;
-        MoteAccessibilityView.accessibilityElements = elements;
+        refreshMoteAccessibilityElements();
     }
 }
 
@@ -258,6 +402,13 @@ static void attachWindowToScene(void) {
 
 void mote_ios_attach_view(void *view) {
     MoteAccessibilityView = (__bridge UIView *)view;
+    if (!MoteTextInput) MoteTextInput = [[MoteTextInputProxy alloc] initWithFrame:CGRectZero];
+    if (MoteTextInput.superview != MoteAccessibilityView) {
+        [MoteTextInput removeFromSuperview];
+        [MoteAccessibilityView addSubview:MoteTextInput];
+    }
+    MoteTextInput.hidden = YES;
+    MoteTextInput.userInteractionEnabled = NO;
     MoteWindow = MoteAccessibilityView.window;
     dispatch_async(dispatch_get_main_queue(), ^{ attachWindowToScene(); });
 }

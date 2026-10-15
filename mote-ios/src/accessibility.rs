@@ -38,12 +38,7 @@ pub fn apply_pending(ctx: &egui::Context) {
     };
     for pending in actions {
         if pending.kind == 3 {
-            for composer in [egui::Id::new("preview-note"), egui::Id::new("live-chat")] {
-                if pending.id == composer.value() {
-                    ctx.memory_mut(|memory| memory.request_focus(composer));
-                    break;
-                }
-            }
+            mote_client_core::native_text::queue_focus(pending.id);
             continue;
         }
         let action = match pending.kind {
@@ -76,8 +71,16 @@ pub fn publish() {
 mod tests {
     use super::*;
 
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn clear_actions() {
+        ACTIONS.lock().unwrap().clear();
+    }
+
     #[test]
     fn native_click_is_consumed_once_by_the_matching_egui_control() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        clear_actions();
         let ctx = egui::Context::default();
         install(&ctx);
         let id = egui::Id::new("native-action-test");
@@ -103,5 +106,31 @@ mod tests {
             });
         }
         assert_eq!(clicks, 1);
+    }
+
+    #[test]
+    fn native_text_focus_targets_any_generated_field_id() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        clear_actions();
+        let ctx = egui::Context::default();
+        install(&ctx);
+        let id = egui::Id::new(("generated-field", vec![2_usize, 4]));
+        mote_ios_accessibility_action(id.value(), 3);
+
+        let mut text = String::new();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            apply_pending(ctx);
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let response = mote_client_core::native_text::singleline(
+                    ui,
+                    id,
+                    &mut text,
+                    egui::vec2(200.0, 48.0),
+                    "Generated field",
+                    false,
+                );
+                assert!(response.has_focus());
+            });
+        });
     }
 }

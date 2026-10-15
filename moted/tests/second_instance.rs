@@ -28,6 +28,7 @@ fn second_instance_exits_naming_socket() {
     let mut first = Command::new(bin)
         .env("MOTE_HOME", &home)
         .env("MOTE_DISCOVERY", "0")
+        .env("MOTE_GATEWAY_BIND", "127.0.0.1:0")
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
@@ -41,6 +42,7 @@ fn second_instance_exits_naming_socket() {
     let second = Command::new(bin)
         .env("MOTE_HOME", &home)
         .env("MOTE_DISCOVERY", "0")
+        .env("MOTE_GATEWAY_BIND", "127.0.0.1:0")
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();

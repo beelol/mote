@@ -200,9 +200,14 @@ fn draw_at(
             control(ui, |ui| {
                 let label_response = ui.label(label);
                 accessibility::hide(&label_response);
-                let response = ui.add_sized([ui.available_width().min(320.0), 36.0],
-                    egui::TextEdit::singleline(&mut edited).id(id));
-                let response = padded_response(ui, response);
+                let response = crate::native_text::singleline(
+                    ui,
+                    id,
+                    &mut edited,
+                    egui::vec2(ui.available_width().min(320.0), 36.0),
+                    label,
+                    false,
+                );
                 if ui.input(|input| input.has_accesskit_action_request(response.id, accesskit::Action::Click)) {
                     response.request_focus();
                 }
@@ -385,8 +390,14 @@ pub fn button(ui: &mut egui::Ui, label: &str) -> egui::Response {
 
 pub fn compose(ui: &mut egui::Ui, text: &mut String) -> egui::Response {
     control(ui, |ui| {
-        let response = ui.add_sized([280.0, 36.0], egui::TextEdit::singleline(text));
-        padded_response(ui, response)
+        crate::native_text::singleline(
+            ui,
+            ui.next_auto_id(),
+            text,
+            egui::vec2(280.0, 36.0),
+            "Message",
+            false,
+        )
     })
 }
 

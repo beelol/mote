@@ -176,19 +176,17 @@ impl Advertiser for DnsSdAdvertiser {
     fn start(&self, record: &DiscoveryRecord) -> Result<Box<dyn Advertisement>> {
         DiscoveryRecord::from_txt(record.endpoint, &record.txt())?;
         ensure!(
-            record.endpoint.ip() == "127.0.0.1".parse::<IpAddr>()?,
-            "discovery requires loopback"
+            record.endpoint.ip().is_unspecified()
+                || crate::net::is_local_range(record.endpoint.ip()),
+            "discovery requires a local endpoint"
         );
         let name = format!("mote-{}", &record.fingerprint[..24]);
         let mut args = vec![
-            "-lo".into(),
-            "-P".into(),
+            "-R".into(),
             name.clone(),
             SERVICE_TYPE.into(),
             "local".into(),
             record.endpoint.port().to_string(),
-            format!("{name}.local"),
-            "127.0.0.1".into(),
         ];
         args.extend(record.txt());
         let mut child = spawn(&args, false)?;
@@ -284,12 +282,7 @@ impl DiscoveryBrowser for DnsSdBrowser {
         );
         let deadline = Instant::now() + timeout;
         let zone = capture(
-            &[
-                "-lo".into(),
-                "-Z".into(),
-                SERVICE_TYPE.into(),
-                "local".into(),
-            ],
+            &["-Z".into(), SERVICE_TYPE.into(), "local".into()],
             timeout / 2,
         )?;
         let services = parse_zone(&zone);
@@ -300,10 +293,7 @@ impl DiscoveryBrowser for DnsSdBrowser {
             if remaining.is_zero() {
                 break;
             }
-            let addresses = capture(
-                &["-lo".into(), "-G".into(), "v4".into(), hostname.clone()],
-                remaining,
-            )?;
+            let addresses = capture(&["-G".into(), "v4".into(), hostname.clone()], remaining)?;
             for line in addresses.lines() {
                 let words: Vec<_> = line.split_whitespace().collect();
                 if words.len() >= 6 && words[1] == "Add" && words[4] == hostname {

@@ -42,8 +42,8 @@ pub fn decode_records(bytes: &[u8]) -> Result<Vec<DiscoveryRecord>> {
         .into_iter()
         .map(|record| {
             ensure!(
-                record.endpoint.ip().is_loopback(),
-                "Simulator discovery address is not loopback"
+                mote_gateway::net::is_local_range(record.endpoint.ip()),
+                "discovery address is not local"
             );
             DiscoveryRecord::from_txt(record.endpoint, &record.txt)
         })
@@ -53,4 +53,30 @@ pub fn decode_records(bytes: &[u8]) -> Result<Vec<DiscoveryRecord>> {
 #[cfg(target_os = "ios")]
 extern "C" {
     fn mote_ios_discover(timeout: f64, output: *mut u8, capacity: usize) -> isize;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn physical_ipad_accepts_private_discovery_and_rejects_public_addresses() {
+        let fingerprint = "a".repeat(64);
+        let record = |endpoint: &str| {
+            serde_json::to_vec(&serde_json::json!([{
+                "endpoint": endpoint,
+                "txt": ["protocol_major=1", format!("fingerprint={fingerprint}")]
+            }]))
+            .unwrap()
+        };
+        assert_eq!(
+            decode_records(&record("192.168.1.20:47810"))
+                .unwrap()
+                .first()
+                .unwrap()
+                .endpoint,
+            "192.168.1.20:47810".parse().unwrap()
+        );
+        assert!(decode_records(&record("8.8.8.8:47810")).is_err());
+    }
 }

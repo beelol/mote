@@ -69,6 +69,31 @@ impl GatewayConfig {
             self.max_message > 0 && self.max_message <= 16 << 20,
             "invalid message limit"
         );
+        anyhow::ensure!(
+            self.bind.is_ipv4()
+                && (self.bind.ip().is_unspecified() || crate::net::is_local_range(self.bind.ip())),
+            "gateway bind must stay on local IPv4 interfaces"
+        );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+
+    #[test]
+    fn lan_bind_is_allowed_but_public_bind_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        for address in ["0.0.0.0:47810", "192.168.1.20:47810", "127.0.0.1:47810"] {
+            let mut config = GatewayConfig::new(root.path());
+            config.bind = address.parse().unwrap();
+            assert!(config.validate().is_ok(), "{address}");
+        }
+        for address in ["8.8.8.8:47810", "[::]:47810"] {
+            let mut config = GatewayConfig::new(root.path());
+            config.bind = address.parse().unwrap();
+            assert!(config.validate().is_err(), "{address}");
+        }
     }
 }

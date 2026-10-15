@@ -4605,22 +4605,74 @@ mod turn_event_tests {
 }
 
 fn main() {
-    let result = match std::env::args().nth(1).as_deref() {
-        Some("mcp") => run_mcp(),
-        Some("bench") => run_bench(std::env::args().nth(2)),
-        Some("status") => run_status(),
-        Some("install") => service::install().map_err(|e| {
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    let result = match OwnerCommand::parse(&args) {
+        OwnerCommand::Mcp => run_mcp(),
+        OwnerCommand::Bench(name) => run_bench(name),
+        OwnerCommand::Status => run_status(),
+        OwnerCommand::Pair => run_gateway_command("gateway.pair", json!({})),
+        OwnerCommand::Pending => run_gateway_command("gateway.pending", json!({})),
+        OwnerCommand::Confirm { client_id, approved } => run_gateway_command(
+            "gateway.confirm",
+            json!({"client_id":client_id,"approved":approved}),
+        ),
+        OwnerCommand::Install => service::install().map_err(|e| {
             eprintln!("moted install: {e}");
             1
         }),
-        Some("uninstall") => service::uninstall().map_err(|e| {
+        OwnerCommand::Uninstall => service::uninstall().map_err(|e| {
             eprintln!("moted uninstall: {e}");
             1
         }),
-        _ => run(),
+        OwnerCommand::Run => run(),
+        OwnerCommand::Invalid(message) => {
+            eprintln!("moted: {message}");
+            Err(2)
+        }
     };
     if let Err(code) = result {
         std::process::exit(code);
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum OwnerCommand {
+    Run,
+    Mcp,
+    Bench(Option<String>),
+    Status,
+    Pair,
+    Pending,
+    Confirm { client_id: String, approved: bool },
+    Install,
+    Uninstall,
+    Invalid(String),
+}
+
+impl OwnerCommand {
+    fn parse(args: &[String]) -> Self {
+        match args {
+            [] => Self::Run,
+            [command] if command == "mcp" => Self::Mcp,
+            [command] if command == "bench" => Self::Bench(None),
+            [command, name] if command == "bench" => Self::Bench(Some(name.clone())),
+            [command] if command == "status" => Self::Status,
+            [command] if command == "pair" => Self::Pair,
+            [command] if command == "pending" => Self::Pending,
+            [command, client_id] if command == "confirm" => Self::Confirm {
+                client_id: client_id.clone(),
+                approved: true,
+            },
+            [command, client_id] if command == "deny" => Self::Confirm {
+                client_id: client_id.clone(),
+                approved: false,
+            },
+            [command] if command == "install" => Self::Install,
+            [command] if command == "uninstall" => Self::Uninstall,
+            _ => Self::Invalid(
+                "usage: moted [status|pair|pending|confirm CLIENT_ID|deny CLIENT_ID]".into(),
+            ),
+        }
     }
 }
 
@@ -4719,6 +4771,71 @@ fn run_status() -> Result<(), i32> {
             eprintln!("moted status: {}: {}", e.code, e.message);
             Err(1)
         }
+    }
+}
+
+fn run_gateway_command(method: &str, params: Value) -> Result<(), i32> {
+    let socket = mote_paths::socket_path();
+    let mut client = mote_ipc::Client::connect(&socket).map_err(|error| {
+        eprintln!("moted: cannot connect to {}: {error}", socket.display());
+        1
+    })?;
+    let value = client
+        .call(method, params)
+        .map_err(|error| {
+            eprintln!("moted: {error}");
+            1
+        })?
+        .map_err(|error| {
+            eprintln!("moted: {}: {}", error.code, error.message);
+            1
+        })?;
+    match method {
+        "gateway.pair" => {
+            println!("{}", value["code"].as_str().unwrap_or(""));
+            eprintln!("Enter this code in Mote on the iPad.");
+        }
+        "gateway.pending" => {
+            let devices = value["devices"].as_array().cloned().unwrap_or_default();
+            if devices.is_empty() {
+                println!("No iPad is waiting for approval.");
+            } else {
+                for device in devices {
+                    println!(
+                        "{}\t{}",
+                        device["client_id"].as_str().unwrap_or(""),
+                        device["name"].as_str().unwrap_or("Unnamed device")
+                    );
+                }
+            }
+        }
+        "gateway.confirm" => println!("Pairing decision recorded."),
+        _ => {}
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod owner_command_tests {
+    use super::OwnerCommand;
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_string()).collect()
+    }
+
+    #[test]
+    fn parses_owner_pairing_commands_without_exposing_remote_control() {
+        assert_eq!(OwnerCommand::parse(&args(&["pair"])), OwnerCommand::Pair);
+        assert_eq!(OwnerCommand::parse(&args(&["pending"])), OwnerCommand::Pending);
+        assert_eq!(
+            OwnerCommand::parse(&args(&["confirm", "ipad-1"])),
+            OwnerCommand::Confirm { client_id: "ipad-1".into(), approved: true }
+        );
+        assert_eq!(
+            OwnerCommand::parse(&args(&["deny", "ipad-1"])),
+            OwnerCommand::Confirm { client_id: "ipad-1".into(), approved: false }
+        );
+        assert!(matches!(OwnerCommand::parse(&args(&["confirm"])), OwnerCommand::Invalid(_)));
     }
 }
 
@@ -4881,9 +4998,16 @@ fn run() -> Result<(), i32> {
         }
     };
     let mut gateway_config = mote_gateway::GatewayConfig::new(data);
+    gateway_config.bind = std::env::var("MOTE_GATEWAY_BIND")
+        .unwrap_or_else(|_| "0.0.0.0:47810".into())
+        .parse()
+        .map_err(|error| {
+            eprintln!("moted: invalid MOTE_GATEWAY_BIND: {error}");
+            1
+        })?;
     gateway_config.discovery_enabled = std::env::var("MOTE_DISCOVERY").as_deref() != Ok("0");
     let _gateway = gateway::bind(daemon, gateway_config).map_err(|e| {
-        eprintln!("moted: cannot bind loopback gateway: {e}");
+        eprintln!("moted: cannot bind local gateway: {e}");
         1
     })?;
 
