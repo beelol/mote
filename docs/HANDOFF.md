@@ -24,6 +24,11 @@ code must wait for explicit owner approval of that short design.
 HOST-05 has complete automated reconnect, replay, resync, state and isolation coverage. Its live
 physical iPad connection-state journey now passes. The literal Mac sleep and wake run remains open.
 
+The foreground daemon has been replaced by the installed `com.mote.moted` LaunchAgent against the
+production Mote data directory. It is running from the repository debug binary. A controlled
+`SIGTERM` changed its launchd run count from 1 to 2 and retained event sequence 9. V0-53 still
+requires the literal logout and login check before uninstall.
+
 IPAD-06 now has a passing physical gallery run in portrait and landscape. Physical native
 accessibility elements, reduced-motion launch, foreground survival, native text input and a
 landscape Dashboard select also pass. Literal center and edge taps for every control, split view,
