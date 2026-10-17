@@ -8,14 +8,31 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 const MODELS: [&str; 3] = ["qwen3:4b", "qwen3:0.6b", "qwen3-coder:30b-64k"];
+const ROUTER_BUDGET_MIN: i64 = 50;
+const ROUTER_BUDGET_MAX: i64 = 1_000;
+const ROUTER_BUDGET_STEP: i64 = 10;
 
-pub fn accepts_change(field: &str, value: &Value) -> bool {
+pub fn canonical_change(field: &str, value: &Value) -> Option<Value> {
     match field {
-        "models.local_only" => value.is_boolean(),
+        "models.local_only" => value.is_boolean().then(|| value.clone()),
         "models.talk" | "models.router" | "models.think" => {
-            value.as_str().is_some_and(|model| MODELS.contains(&model))
+            value
+                .as_str()
+                .filter(|model| MODELS.contains(model))
+                .map(|_| value.clone())
         }
-        _ => false,
+        "budgets.router" => {
+            let number = value.as_f64()?;
+            if !number.is_finite() || number.fract() != 0.0 {
+                return None;
+            }
+            let integer = number as i64;
+            (integer as f64 == number
+                && (ROUTER_BUDGET_MIN..=ROUTER_BUDGET_MAX).contains(&integer)
+                && (integer - ROUTER_BUDGET_MIN) % ROUTER_BUDGET_STEP == 0)
+                .then(|| json!(integer))
+        }
+        _ => None,
     }
 }
 
@@ -208,6 +225,10 @@ pub fn compile_surface_contract(
 ) -> Result<CompiledSurface, Vec<Diagnostic>> {
     let resolved = resolve(parsed, &bindings.manifest, &bindings.snapshot)?;
     let matrix = lower_v1(&resolved);
+    if let Ok(matrix) = &matrix {
+        validate_router_budget_sliders(matrix, parsed.screen.span)
+            .map_err(|error| vec![error])?;
+    }
     let fallback = lower_v0(&resolved);
     let (fallback, matrix) = match (fallback, matrix) {
         (Ok(fallback), Ok(matrix)) => (fallback, Some(matrix)),
@@ -229,6 +250,71 @@ pub fn compile_surface_contract(
         hint: None,
     }])?;
     Ok(CompiledSurface { fallback, matrix })
+}
+
+pub(crate) fn has_exact_router_budget_slider(
+    matrix: &matrix_lang::lower_v1::LoweredSurface,
+) -> bool {
+    let mut found = false;
+    for control in matrix.controls.values() {
+        let matrix_lang::lower_v1::ControlContract::Slider {
+            field,
+            min,
+            max,
+            step,
+        } = control
+        else {
+            continue;
+        };
+        if field != "budgets.router" {
+            continue;
+        }
+        if *min != ROUTER_BUDGET_MIN as f64
+            || *max != ROUTER_BUDGET_MAX as f64
+            || *step != Some(ROUTER_BUDGET_STEP as f64)
+        {
+            return false;
+        }
+        found = true;
+    }
+    found
+}
+
+pub(crate) fn validate_router_budget_sliders(
+    matrix: &matrix_lang::lower_v1::LoweredSurface,
+    span: matrix_lang::Span,
+) -> Result<(), Diagnostic> {
+    for (path, control) in &matrix.controls {
+        let matrix_lang::lower_v1::ControlContract::Slider {
+            field,
+            min,
+            max,
+            step,
+        } = control
+        else {
+            continue;
+        };
+        if field == "budgets.router"
+            && (*min != ROUTER_BUDGET_MIN as f64
+                || *max != ROUTER_BUDGET_MAX as f64
+                || *step != Some(ROUTER_BUDGET_STEP as f64))
+        {
+            return Err(Diagnostic {
+                code: matrix_lang::DiagnosticCode::ResolveConstraint,
+                severity: matrix_lang::Severity::Error,
+                span,
+                declaration_path: std::iter::once("screen".into())
+                    .chain(path.iter().map(usize::to_string))
+                    .collect(),
+                message: "budgets.router requires min 50, max 1000 and step 10".into(),
+                hint: Some(
+                    "Use slider \"Router budget\" budgets.router min 50 max 1000 step 10"
+                        .into(),
+                ),
+            });
+        }
+    }
+    Ok(())
 }
 
 fn collect_controls(
@@ -391,6 +477,7 @@ pub fn host_bindings(
         ("models.talk", Type::Enum("Model".into())),
         ("models.router", Type::Enum("Model".into())),
         ("models.think", Type::Enum("Model".into())),
+        ("budgets.router", Type::Integer),
     ] {
         let initial = config.get(name).cloned().unwrap_or(Value::Null);
         manifest.fields.insert(
@@ -519,6 +606,88 @@ mod contract_tests {
         let (payload, mut committed) = compiled.prepare(&bindings.manifest).unwrap();
         committed.seq = 37;
         (payload, committed)
+    }
+
+    #[test]
+    fn host_router_budget_slider_compiles_with_integer_range_and_canonical_changes() {
+        let config = BTreeMap::from([
+            ("models.local_only".to_string(), json!(true)),
+            ("models.talk".to_string(), json!("qwen3:4b")),
+            ("models.router".to_string(), json!("qwen3:0.6b")),
+            ("models.think".to_string(), json!("qwen3-coder:30b-64k")),
+            ("budgets.router".to_string(), json!(150)),
+        ]);
+        let pipeline = PipelineSnapshot {
+            generated_at: 0,
+            event_limit: crate::pipeline::PIPELINE_EVENT_LIMIT,
+            request_limit: crate::pipeline::PIPELINE_REQUEST_LIMIT,
+            window_ms: 3_600_000,
+            config: config.clone(),
+            events: Vec::new(),
+            numbers: Vec::new(),
+            requests: Vec::new(),
+        };
+        let bindings = host_bindings(&config, &pipeline, &HostSnapshot::default()).unwrap();
+        let compiled = compile_contract(
+            "screen { slider \"Router budget\" budgets.router min 50 max 1000 step 10 }",
+            &bindings,
+        )
+        .unwrap();
+        let (payload, mut committed) = compiled.prepare(&bindings.manifest).unwrap();
+        committed.seq = 41;
+        assert_eq!(
+            payload["matrix_surface"]["root"]["children"][0],
+            json!({
+                "type":"slider",
+                "label":"Router budget",
+                "field":"budgets.router",
+                "value":150.0,
+                "min":50.0,
+                "max":1000.0,
+                "step":10.0
+            })
+        );
+        let params = json!({"surface_contract":1,"surface_seq":41,"node_path":[0]});
+        assert!(committed.accepts(
+            &params,
+            "change",
+            &json!({"field":"budgets.router","value":160.0})
+        ));
+        assert_eq!(canonical_change("budgets.router", &json!(160.0)), Some(json!(160)));
+        for value in [json!(49), json!(55), json!(1001), json!(150.5), json!("150")] {
+            assert!(canonical_change("budgets.router", &value).is_none(), "{value}");
+        }
+    }
+
+    #[test]
+    fn host_router_budget_slider_rejects_any_advertised_contract_drift() {
+        let config = BTreeMap::from([
+            ("models.local_only".to_string(), json!(true)),
+            ("models.talk".to_string(), json!("qwen3:4b")),
+            ("models.router".to_string(), json!("qwen3:0.6b")),
+            ("models.think".to_string(), json!("qwen3-coder:30b-64k")),
+            ("budgets.router".to_string(), json!(150)),
+        ]);
+        let pipeline = PipelineSnapshot {
+            generated_at: 0,
+            event_limit: crate::pipeline::PIPELINE_EVENT_LIMIT,
+            request_limit: crate::pipeline::PIPELINE_REQUEST_LIMIT,
+            window_ms: 3_600_000,
+            config: config.clone(),
+            events: Vec::new(),
+            numbers: Vec::new(),
+            requests: Vec::new(),
+        };
+        let bindings = host_bindings(&config, &pipeline, &HostSnapshot::default()).unwrap();
+        for source in [
+            "screen { slider \"Router budget\" budgets.router min 40 max 1000 step 10 }",
+            "screen { slider \"Router budget\" budgets.router min 50 max 1010 step 10 }",
+            "screen { slider \"Router budget\" budgets.router min 50 max 1000 step 5 }",
+            "screen { slider \"Router budget\" budgets.router min 50 max 1000 }",
+        ] {
+            let errors = compile_contract(source, &bindings).err().unwrap();
+            assert_eq!(errors[0].code, matrix_lang::DiagnosticCode::ResolveConstraint);
+        }
     }
 
     #[test]

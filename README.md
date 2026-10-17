@@ -286,7 +286,7 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     injection refusal, redacted events, ledger and HAR, before and after commit screenshots and a
     final validated Matrix result card. The [verification record](docs/verification/IPAD-05.md)
     includes the headed fixture and paired native Simulator evidence.
-  - [ ] **IPAD-13** When an agent commits a replacement Matrix layout on the paired iPad, changed
+  - [x] **IPAD-13** When an agent commits a replacement Matrix layout on the paired iPad, changed
     red borders, header and footer rules, and slider rails materialize as square pixels within
     120 ms. Unchanged strokes stay painted. New controls are interactive on the first frame and
     retain revision-specific state. **Verify:** replace a live paired surface with a changed

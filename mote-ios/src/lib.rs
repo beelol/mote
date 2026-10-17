@@ -1,6 +1,7 @@
 #[cfg(any(test, target_os = "ios"))]
 mod accessibility;
 mod app;
+mod appearance;
 pub mod discovery;
 mod first_run;
 pub mod keychain;

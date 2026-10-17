@@ -21,7 +21,7 @@ const RETRIES_PER_WINDOW: usize = 3;
 const SURFACE_PROMPT: &str = r#"You generate one compact Matrix interface for the request JSON in this conversation.
 Read request as the task. Prose is the completed answer, not a replacement task.
 Previous_surface and diagnostics are context for repairs, not requests.
-An explicit request to show a panel, form, list, progress, row, selection control, stack, table, text surface or toggle requires kind matrix.
+An explicit request to show a panel, form, list, progress, row, selection control, slider, stack, table, text surface or toggle requires kind matrix.
 Use kind none for a plain explanation that does not request an interface.
 Return only one JSON object. A matrix object has kind and source. A none object has only kind.
 Matrix is a declaration language, not JSON, HTML, JavaScript or a function call.
@@ -49,10 +49,13 @@ Literal text surface:
 {"kind":"matrix","source":"screen { text \"Requested text\" }"}
 Local-only toggle:
 {"kind":"matrix","source":"screen { toggle \"Local only\" models.local_only }"}
-Host-owned manifest: fields models.local_only:boolean, models.talk:Model, models.router:Model, models.think:Model.
+Router latency budget:
+{"kind":"matrix","source":"screen { slider \"Router budget\" budgets.router min 50 max 1000 step 10 }"}
+Slider min, max and step are unquoted numeric literals. Never quote 50, 1000 or 10.
+Host-owned manifest: fields models.local_only:boolean, models.talk:Model, models.router:Model, models.think:Model, budgets.router:integer.
 Values model_options:list Model, pipeline.stages:list PipelineStage(stage,calls,latency), host.progress:number, host.items:list HostItem(label).
 Only action refresh exists and takes no arguments. Do not create bindings or actions.
-Use only screen, col, row, text, progress value, toggle, select options, button ->, list from with item, and table from with column.
+Use only screen, col, row, text, progress value, toggle, select options, slider min max step, button ->, list from with item, and table from with column.
 Do not add selection, keys, overlays, pending states, failure states or action arguments.
 Now return the decision for request, even when prose is already complete or diagnostics is empty."#;
 
@@ -562,5 +565,12 @@ mod tests {
             messages.iter().map(|text| count_tokens(text) as i64).sum::<i64>()
         );
         assert!(accounted_tokens <= SURFACE_CONTEXT as i64);
+    }
+
+    #[test]
+    fn surface_prompt_requires_unquoted_numeric_slider_bounds() {
+        assert!(SURFACE_PROMPT.contains(
+            "Slider min, max and step are unquoted numeric literals. Never quote 50, 1000 or 10."
+        ));
     }
 }

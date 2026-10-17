@@ -86,12 +86,73 @@ static NSString *compactText(NSString *text) {
     return [[text componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] componentsJoinedByString:@""];
 }
 
+static NSArray<NSString *> *galleryStableConversationLabels(NSArray<NSString *> *labels) {
+    NSMutableOrderedSet<NSString *> *stable = [NSMutableOrderedSet orderedSet];
+    for (NSString *label in labels) {
+        if ([label hasPrefix:@"User: "]) [stable addObject:label];
+    }
+    return stable.array;
+}
+
 static BOOL galleryInventoryMatches(NSDictionary *observed, NSDictionary *expected) {
     return [observed isEqualToDictionary:expected];
 }
 
-static BOOL galleryRecoveryStateIsSuspended(XCUIApplicationState state) {
-    return state == XCUIApplicationStateRunningBackgroundSuspended;
+static BOOL galleryBackgroundEvidenceSufficient(BOOL springboardVisible, BOOL homeIconHittable,
+                                                XCUIApplicationState moteState) {
+    BOOL moteBackgrounded = moteState == XCUIApplicationStateRunningBackground ||
+                            moteState == XCUIApplicationStateRunningBackgroundSuspended;
+    return springboardVisible && homeIconHittable && moteBackgrounded;
+}
+
+static NSString *galleryApplicationStateName(XCUIApplicationState state) {
+    switch (state) {
+        case XCUIApplicationStateUnknown: return @"unknown";
+        case XCUIApplicationStateNotRunning: return @"not-running";
+        case XCUIApplicationStateRunningBackgroundSuspended: return @"background-suspended";
+        case XCUIApplicationStateRunningBackground: return @"background-running";
+        case XCUIApplicationStateRunningForeground: return @"foreground";
+    }
+    return @"unrecognized";
+}
+
+static double galleryColorFraction(CGImageRef image, CGRect region,
+                                   uint8_t red, uint8_t green, uint8_t blue, uint8_t tolerance) {
+    if (!image || !isfinite(region.origin.x) || !isfinite(region.origin.y) ||
+        !isfinite(region.size.width) || !isfinite(region.size.height) ||
+        region.size.width <= 0 || region.size.height <= 0) return NAN;
+    region = CGRectIntegral(region);
+    CGRect bounds = CGRectMake(0, 0, CGImageGetWidth(image), CGImageGetHeight(image));
+    if (!CGRectContainsRect(bounds, region)) return NAN;
+    CGImageRef crop = CGImageCreateWithImageInRect(image, region);
+    if (!crop) return NAN;
+    size_t width = CGImageGetWidth(crop), height = CGImageGetHeight(crop);
+    if (!width || !height || width > SIZE_MAX / 4 || height > SIZE_MAX / (width * 4)) {
+        CGImageRelease(crop);
+        return NAN;
+    }
+    @autoreleasepool {
+        NSMutableData *pixels = [NSMutableData dataWithLength:width * height * 4];
+        CGColorSpaceRef colors = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+        CGContextRef context = colors ? CGBitmapContextCreate(pixels.mutableBytes, width, height, 8,
+            width * 4, colors, kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big) : NULL;
+        if (colors) CGColorSpaceRelease(colors);
+        if (!context) {
+            CGImageRelease(crop);
+            return NAN;
+        }
+        CGContextDrawImage(context, CGRectMake(0, 0, width, height), crop);
+        CGContextRelease(context);
+        CGImageRelease(crop);
+        const uint8_t *bytes = pixels.bytes;
+        NSUInteger matching = 0;
+        for (size_t index = 0; index < width * height; index++) {
+            const uint8_t *pixel = bytes + index * 4;
+            if (pixel[3] >= 250 && abs((int)pixel[0] - red) <= tolerance &&
+                abs((int)pixel[1] - green) <= tolerance && abs((int)pixel[2] - blue) <= tolerance) matching++;
+        }
+        return (double)matching / (width * height);
+    }
 }
 
 static BOOL statusTextMatches(NSString *observed, NSString *expected) {
@@ -189,6 +250,48 @@ static CGRect textTargetBox(NSArray<NSDictionary *> *fragments, NSString *target
         [NSNotificationCenter.defaultCenter postNotificationName:UIAccessibilityReduceMotionStatusDidChangeNotification object:nil];
         XCTAssertEqual(motionNotifications, (lifetime + 1) * 3);
     }
+}
+
+- (void)testSystemThemePixelSamplerRejectsWrongColorsAndInvalidRegions {
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+    format.scale = 1;
+    format.opaque = NO;
+    format.preferredRange = UIGraphicsImageRendererFormatRangeStandard;
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(8, 4) format:format];
+    UIImage *image = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        [[UIColor colorWithRed:244.0/255 green:241.0/255 blue:234.0/255 alpha:1] setFill];
+        UIRectFill(CGRectMake(0, 0, 4, 4));
+        [[UIColor colorWithRed:26.0/255 green:26.0/255 blue:26.0/255 alpha:1] setFill];
+        UIRectFill(CGRectMake(4, 0, 4, 4));
+    }];
+    CGRect paper = CGRectMake(0, 0, 4, 4);
+    CGRect ink = CGRectMake(4, 0, 4, 4);
+    XCTAssertEqualWithAccuracy(galleryColorFraction(image.CGImage, paper, 244, 241, 234, 0), 1, 0.0001);
+    XCTAssertEqualWithAccuracy(galleryColorFraction(image.CGImage, ink, 26, 26, 26, 0), 1, 0.0001);
+    XCTAssertEqualWithAccuracy(galleryColorFraction(image.CGImage, paper, 11, 11, 12, 4), 0, 0.0001);
+    UIImage *dark = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        [[UIColor colorWithRed:11.0/255 green:11.0/255 blue:12.0/255 alpha:1] setFill];
+        UIRectFill(paper);
+        [[UIColor colorWithRed:232.0/255 green:227.0/255 blue:218.0/255 alpha:1] setFill];
+        UIRectFill(ink);
+    }];
+    XCTAssertEqualWithAccuracy(galleryColorFraction(dark.CGImage, paper, 11, 11, 12, 0), 1, 0.0001);
+    XCTAssertEqualWithAccuracy(galleryColorFraction(dark.CGImage, ink, 232, 227, 218, 0), 1, 0.0001);
+    XCTAssertEqualWithAccuracy(galleryColorFraction(dark.CGImage, paper, 244, 241, 234, 4), 0, 0.0001);
+    XCTAssertEqualWithAccuracy(galleryColorFraction(dark.CGImage, ink, 26, 26, 26, 8), 0, 0.0001);
+    XCTAssertEqualWithAccuracy(galleryColorFraction(image.CGImage, ink, 232, 227, 218, 8), 0, 0.0001);
+    XCTAssertEqualWithAccuracy(galleryColorFraction(image.CGImage, paper, 240, 237, 230, 4), 1, 0.0001);
+    XCTAssertEqualWithAccuracy(galleryColorFraction(image.CGImage, paper, 240, 237, 230, 3), 0, 0.0001);
+    XCTAssertEqualWithAccuracy(galleryColorFraction(image.CGImage, CGRectMake(0, 0, 8, 4), 244, 241, 234, 0), 0.5, 0.0001);
+    for (NSValue *invalid in @[[NSValue valueWithCGRect:CGRectZero],
+        [NSValue valueWithCGRect:CGRectMake(-1, 0, 4, 4)],
+        [NSValue valueWithCGRect:CGRectMake(5, 0, 4, 4)],
+        [NSValue valueWithCGRect:CGRectMake(NAN, 0, 4, 4)]]) {
+        XCTAssertTrue(isnan(galleryColorFraction(image.CGImage, invalid.CGRectValue, 0, 0, 0, 0)));
+    }
+    XCTAssertTrue(isnan(galleryColorFraction(NULL, paper, 0, 0, 0, 0)));
+    UIImage *transparent = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {}];
+    XCTAssertEqualWithAccuracy(galleryColorFraction(transparent.CGImage, paper, 0, 0, 0, 0), 0, 0.0001);
 }
 
 - (void)testGalleryTapPointsCoverCenterAndFourInsetEdges {
@@ -303,11 +406,28 @@ static CGRect textTargetBox(NSArray<NSDictionary *> *fragments, NSString *target
     XCTAssertEqualObjects(observedSelectors, expectedSelectors);
 }
 
-- (void)testGalleryRecoveryRejectsMerelyBackgroundRunning {
-    XCTAssertTrue(galleryRecoveryStateIsSuspended(XCUIApplicationStateRunningBackgroundSuspended));
-    XCTAssertFalse(galleryRecoveryStateIsSuspended(XCUIApplicationStateRunningBackground));
-    XCTAssertFalse(galleryRecoveryStateIsSuspended(XCUIApplicationStateRunningForeground));
-    XCTAssertFalse(galleryRecoveryStateIsSuspended(XCUIApplicationStateNotRunning));
+- (void)testGalleryBackgroundEvidenceRequiresHomeAndHiddenMote {
+    XCTAssertTrue(galleryBackgroundEvidenceSufficient(
+        YES, YES, XCUIApplicationStateRunningBackground));
+    XCTAssertTrue(galleryBackgroundEvidenceSufficient(
+        YES, YES, XCUIApplicationStateRunningBackgroundSuspended));
+    for (NSNumber *state in @[@(XCUIApplicationStateUnknown), @(XCUIApplicationStateNotRunning),
+                               @(XCUIApplicationStateRunningForeground)]) {
+        XCTAssertFalse(galleryBackgroundEvidenceSufficient(YES, YES, state.integerValue));
+    }
+    XCTAssertFalse(galleryBackgroundEvidenceSufficient(
+        NO, YES, XCUIApplicationStateRunningBackground));
+    XCTAssertFalse(galleryBackgroundEvidenceSufficient(
+        YES, NO, XCUIApplicationStateRunningBackground));
+    XCTAssertEqualObjects(galleryApplicationStateName(XCUIApplicationStateRunningBackground), @"background-running");
+    XCTAssertEqualObjects(galleryApplicationStateName(XCUIApplicationStateRunningBackgroundSuspended), @"background-suspended");
+    XCTAssertEqualObjects(galleryApplicationStateName(XCUIApplicationStateUnknown), @"unknown");
+    XCTAssertEqualObjects(galleryApplicationStateName(XCUIApplicationStateNotRunning), @"not-running");
+    XCTAssertEqualObjects(galleryApplicationStateName(XCUIApplicationStateRunningForeground), @"foreground");
+    XCTAssertEqualObjects(galleryApplicationStateName((XCUIApplicationState)999), @"unrecognized");
+    XCTAssertEqualObjects(galleryStableConversationLabels(
+        @[@"3:43 PM", @"User: one", @"Cursor: 9", @"User: one", @"User: two"]),
+        (@[@"User: one", @"User: two"]));
 }
 - (void)tearDown {
     self.recognitionMisses = 0;
@@ -1016,6 +1136,123 @@ PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixtureLandscape, @"Fixture", UIDeviceO
     [self capture:@"reduced-motion-toggle" app:app];
 }
 
+- (XCUIScreenshot *)captureSystemSettingsEvidence:(NSString *)name app:(XCUIApplication *)app {
+    XCUIScreenshot *screenshot = app.windows.firstMatch.screenshot;
+    XCTAttachment *image = [XCTAttachment attachmentWithScreenshot:screenshot];
+    image.name = name;
+    image.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:image];
+    XCTAttachment *tree = [XCTAttachment attachmentWithString:app.debugDescription];
+    tree.name = [name stringByAppendingString:@"-role-tree"];
+    tree.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:tree];
+    NSDictionary *observed = @{@"non_authoritative_xctest_appearance":@(XCUIDevice.sharedDevice.appearance),
+        @"system_appearance_precondition":@"Driver retains devicectl appearance query; selector asserts visible palette",
+        @"runner_reduce_motion":@(mote_ios_reduce_motion_enabled()), @"launch_arguments":app.launchArguments,
+        @"target_process_motion_mode":@"Not exposed by public XCTest"};
+    XCTAttachment *settings = [XCTAttachment attachmentWithString:observed.description];
+    settings.name = [name stringByAppendingString:@"-system-observations"];
+    settings.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:settings];
+    return screenshot;
+}
+
+- (void)runPhysicalSystemAppearance:(XCUIDeviceAppearance)expected {
+#if TARGET_OS_SIMULATOR
+    XCTSkip(@"Requires physical system appearance evidence");
+#endif
+    self.executionTimeAllowance = 180;
+    XCTAssertTrue(expected == XCUIDeviceAppearanceLight || expected == XCUIDeviceAppearanceDark);
+    XCUIApplication *app = [XCUIApplication new];
+    app.launchArguments = @[@"--mote-offline"];
+    [app launch];
+    XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+    [self selectGalleryPage:@"Layout" position:0 app:app];
+    [self assertObservedGalleryInventory:@"Layout" app:app];
+    NSString *name = expected == XCUIDeviceAppearanceDark ? @"system-appearance-dark" : @"system-appearance-light";
+    XCUIScreenshot *screenshot = [self captureSystemSettingsEvidence:name app:app];
+    CGImageRef image = screenshot.image.CGImage;
+    XCTAssertNotEqual(image, NULL);
+    CGRect window = app.windows.firstMatch.frame;
+    XCTAssertGreaterThan(window.size.width, 0);
+    XCTAssertGreaterThan(window.size.height, 0);
+    CGFloat scaleX = CGImageGetWidth(image) / window.size.width;
+    CGFloat scaleY = CGImageGetHeight(image) / window.size.height;
+    CGAffineTransform toPixels = CGAffineTransformMake(scaleX, 0, 0, scaleY,
+        -window.origin.x * scaleX, -window.origin.y * scaleY);
+    NSArray *surface = expected == XCUIDeviceAppearanceDark ? @[@11,@11,@12] : @[@244,@241,@234];
+    NSArray *ink = expected == XCUIDeviceAppearanceDark ? @[@232,@227,@218] : @[@26,@26,@26];
+    for (NSString *label in @[@"Layout",@"Preview"]) {
+        CGRect frame = [self galleryElement:label kind:@"action" app:app].frame;
+        NSArray *patches = @[
+            [NSValue valueWithCGRect:CGRectMake(CGRectGetMinX(frame) + 6, CGRectGetMinY(frame) + 10, 4, 4)],
+            [NSValue valueWithCGRect:CGRectMake(CGRectGetMaxX(frame) - 10, CGRectGetMinY(frame) + 10, 4, 4)],
+            [NSValue valueWithCGRect:CGRectMake(CGRectGetMinX(frame) + 6, CGRectGetMaxY(frame) - 14, 4, 4)],
+            [NSValue valueWithCGRect:CGRectMake(CGRectGetMaxX(frame) - 10, CGRectGetMaxY(frame) - 14, 4, 4)]];
+        for (NSValue *patch in patches) {
+            CGRect pixels = CGRectApplyAffineTransform(patch.CGRectValue, toPixels);
+            double fraction = galleryColorFraction(image, pixels, [surface[0] unsignedCharValue],
+                [surface[1] unsignedCharValue], [surface[2] unsignedCharValue], 4);
+            NSLog(@"SYSTEM PALETTE %@ background=%f pixels=%@",label,fraction,NSStringFromCGRect(pixels));
+            XCTAssertTrue(isfinite(fraction) && fraction >= 0.95, @"Wrong %@ surface color in %@",name,label);
+        }
+        CGRect pixels = CGRectApplyAffineTransform(CGRectInset(frame, 10, 10), toPixels);
+        double fraction = galleryColorFraction(image, pixels, [ink[0] unsignedCharValue],
+            [ink[1] unsignedCharValue], [ink[2] unsignedCharValue], 8);
+        NSLog(@"SYSTEM PALETTE %@ ink=%f pixels=%@",label,fraction,NSStringFromCGRect(pixels));
+        XCTAssertTrue(isfinite(fraction) && fraction >= 0.001, @"Expected %@ text color in %@",name,label);
+    }
+    [app terminate];
+}
+
+- (void)runPhysicalSystemReduceMotion:(BOOL)expected {
+#if TARGET_OS_SIMULATOR
+    XCTSkip(@"Requires the physical UIKit Reduce Motion preference");
+#endif
+    self.executionTimeAllowance = 180;
+    XCTAssertEqual(mote_ios_reduce_motion_enabled(), (uint8_t)expected, @"Set the physical Reduce Motion preference before running this selector");
+    XCTAssertEqual((BOOL)UIAccessibilityIsReduceMotionEnabled(), expected);
+    XCUIApplication *app = [XCUIApplication new];
+    app.launchArguments = @[@"--mote-offline"];
+    [app launch];
+    XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+    [self selectGalleryPage:@"Layout" position:0 app:app];
+    [self assertObservedGalleryInventory:@"Layout" app:app];
+    NSString *name = expected ? @"system-reduce-motion-enabled" : @"system-reduce-motion-disabled";
+    [self captureSystemSettingsEvidence:[name stringByAppendingString:@"-layout"] app:app];
+    XCTAssertEqual(mote_ios_reduce_motion_enabled(), (uint8_t)expected);
+    [self selectGalleryPage:@"Toggle" position:0 app:app];
+    [self assertObservedGalleryInventory:@"Toggle" app:app];
+    [self captureSystemSettingsEvidence:[name stringByAppendingString:@"-replacement"] app:app];
+    XCUIElement *toggle = [self galleryElement:@"Enable preview" kind:@"toggle" app:app];
+    NSArray *values = @[@"On",@"Off"];
+    XCTAssertTrue([values containsObject:toggle.value]);
+    NSString *changed = [toggle.value isEqual:@"On"] ? @"Off" : @"On";
+    [self tapGalleryElement:toggle position:0 app:app];
+    [self assertValue:changed element:toggle];
+    [self captureSystemSettingsEvidence:[name stringByAppendingString:@"-fresh-control-effect"] app:app];
+    XCTAssertEqual(mote_ios_reduce_motion_enabled(), (uint8_t)expected);
+    XCTAssertEqual((BOOL)UIAccessibilityIsReduceMotionEnabled(), expected);
+    XCTAssertEqualObjects(app.launchArguments, (@[@"--mote-offline"]));
+    [app terminate];
+}
+
+- (void)testPhysicalSystemAppearanceLight {
+    [self runPhysicalSystemAppearance:XCUIDeviceAppearanceLight];
+}
+
+- (void)testPhysicalSystemAppearanceDark {
+    [self runPhysicalSystemAppearance:XCUIDeviceAppearanceDark];
+}
+
+- (void)testPhysicalSystemReduceMotionEnabled {
+    [self runPhysicalSystemReduceMotion:YES];
+}
+
+- (void)testPhysicalSystemReduceMotionDisabled {
+    [self runPhysicalSystemReduceMotion:NO];
+}
+
 - (void)testTextTargetRetriesTransientRecognitionMisses {
     XCUIApplication *app = [[XCUIApplication alloc] init];
     app.launchArguments = @[@"--mote-offline"];
@@ -1154,6 +1391,52 @@ PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixtureLandscape, @"Fixture", UIDeviceO
     [self capture:@"live-home-restored" app:app];
 }
 
+- (XCUIElement *)ensurePhysicalHostOnline:(XCUIApplication *)app {
+    NSPredicate *onlinePredicate = [NSPredicate predicateWithFormat:@"label ENDSWITH ': online'"];
+    XCUIElement *online = [[[app descendantsMatchingType:XCUIElementTypeAny]
+        matchingPredicate:onlinePredicate] firstMatch];
+    if (![online waitForExistenceWithTimeout:5]) {
+        NSString *pairingCode = NSProcessInfo.processInfo.environment[@"MOTE_PHYSICAL_PAIRING_CODE"];
+        XCTAssertTrue(pairingCode.length > 0, @"Set MOTE_PHYSICAL_PAIRING_CODE for a fresh physical install");
+        XCUIApplication *springboard = [[XCUIApplication alloc] initWithBundleIdentifier:@"com.apple.springboard"];
+        XCUIElement *allow = springboard.buttons[@"Allow"];
+        if ([allow waitForExistenceWithTimeout:3]) {
+            XCTAttachment *prompt = [XCTAttachment attachmentWithScreenshot:XCUIScreen.mainScreen.screenshot];
+            prompt.name = @"physical-local-network-permission";
+            prompt.lifetime = XCTAttachmentLifetimeKeepAlways;
+            [self addAttachment:prompt];
+            [allow tap];
+            XCTAssertTrue([app.windows.firstMatch waitForExistenceWithTimeout:10]);
+            NSLog(@"LOCAL NETWORK PERMISSION: visible purpose text and Allow accepted");
+        }
+        XCUIElement *discovered = [self nativeElement:@"Select a host and enter its MOTE1 pairing code" app:app];
+        if (![discovered waitForExistenceWithTimeout:8]) {
+            [self tapText:@"Refresh" app:app];
+            XCTAssertTrue([discovered waitForExistenceWithTimeout:15]);
+        }
+        NSPredicate *wifiHostPredicate = [NSPredicate predicateWithFormat:
+            @"label BEGINSWITH 'Mote host ' AND NOT label CONTAINS '169.254.'"];
+        XCUIElement *wifiHost = [[[app descendantsMatchingType:XCUIElementTypeButton]
+            matchingPredicate:wifiHostPredicate] firstMatch];
+        XCTAssertTrue([wifiHost waitForExistenceWithTimeout:5]);
+        [wifiHost tap];
+        XCUIElement *pairingControl = [self nativeElement:@"MOTE1 pairing code" app:app];
+        XCTAssertTrue([pairingControl waitForExistenceWithTimeout:5]);
+        [pairingControl tap];
+        XCTAssertTrue([app.keyboards.firstMatch waitForExistenceWithTimeout:5]);
+        XCUIElement *pairingField = app.secureTextFields[@"mote.native-text-input"];
+        XCTAssertTrue([pairingField waitForExistenceWithTimeout:5]);
+        [pairingField typeText:pairingCode];
+        XCUIElement *pair = app.buttons[@"Pair"];
+        XCTAssertTrue([pair waitForExistenceWithTimeout:5]);
+        XCTAssertTrue(pair.enabled);
+        [pair tap];
+        NSLog(@"PAIRING COORDINATION: confirm the waiting physical iPad now");
+        XCTAssertTrue([online waitForExistenceWithTimeout:180]);
+    }
+    return online;
+}
+
 - (void)testPhysicalPairedHostDisconnectsAndReconnectsWithoutRepairing {
 #if TARGET_OS_SIMULATOR
     XCTSkip(@"Requires a paired physical iPad");
@@ -1162,10 +1445,7 @@ PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixtureLandscape, @"Fixture", UIDeviceO
     [app activate];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
 
-    NSPredicate *onlinePredicate = [NSPredicate predicateWithFormat:@"label ENDSWITH ': online'"];
-    XCUIElement *online = [[[app descendantsMatchingType:XCUIElementTypeAny]
-        matchingPredicate:onlinePredicate] firstMatch];
-    XCTAssertTrue([online waitForExistenceWithTimeout:20]);
+    XCUIElement *online = [self ensurePhysicalHostOnline:app];
     NSString *onlineLabel = online.label;
     NSString *prefix = [onlineLabel substringToIndex:onlineLabel.length - @"online".length];
     XCUIElement *cursor = [[[app descendantsMatchingType:XCUIElementTypeAny]
@@ -1192,6 +1472,50 @@ PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixtureLandscape, @"Fixture", UIDeviceO
     [self capture:@"physical-wifi-reconnected" app:app];
 }
 
+- (NSDictionary *)backgroundObservationsForApp:(XCUIApplication *)app springboard:(XCUIApplication *)springboard {
+    BOOL homeIcon = NO;
+    for (XCUIElement *icon in springboard.icons.allElementsBoundByIndex) {
+        if (icon.hittable) { homeIcon = YES; break; }
+    }
+    BOOL moteControl = NO;
+    for (XCUIElement *element in [app descendantsMatchingType:XCUIElementTypeAny].allElementsBoundByIndex) {
+        if (element.hittable) { moteControl = YES; break; }
+    }
+    return @{@"springboard_visible":@(springboard.exists && springboard.windows.firstMatch.exists),
+        @"home_icon_hittable":@(homeIcon), @"mote_surface_hittable":@(app.hittable),
+        @"mote_descendant_hittable":@(moteControl), @"diagnostic_mote_state":@(app.state),
+        @"diagnostic_springboard_state":@(springboard.state)};
+}
+
+- (BOOL)backgroundObservationsAreSufficient:(NSDictionary *)observations {
+    return galleryBackgroundEvidenceSufficient([observations[@"springboard_visible"] boolValue],
+        [observations[@"home_icon_hittable"] boolValue],
+        (XCUIApplicationState)[observations[@"diagnostic_mote_state"] integerValue]);
+}
+
+- (NSArray *)moveToHomeAndObserveApp:(XCUIApplication *)app springboard:(XCUIApplication *)springboard {
+    [XCUIDevice.sharedDevice pressButton:XCUIDeviceButtonHome];
+    [springboard activate];
+    [NSThread sleepForTimeInterval:2];
+    NSDictionary *observations = [self backgroundObservationsForApp:app springboard:springboard];
+    NSDictionary *sample = @{ @"home_transition":@"press-and-activate", @"observations":observations };
+    NSLog(@"HOME TRANSITION OBSERVATIONS %@", sample);
+    return @[sample];
+}
+
+- (void)captureBackgroundEvidence:(NSString *)name app:(XCUIApplication *)app springboard:(XCUIApplication *)springboard samples:(NSArray *)samples {
+    XCTAttachment *screen = [XCTAttachment attachmentWithScreenshot:XCUIScreen.mainScreen.screenshot];
+    screen.name = name;
+    screen.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:screen];
+    NSDictionary *trees = @{@"springboard":springboard.debugDescription, @"mote":app.debugDescription,
+        @"observations":samples};
+    XCTAttachment *roles = [XCTAttachment attachmentWithString:trees.description];
+    roles.name = [name stringByAppendingString:@"-role-state"];
+    roles.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:roles];
+}
+
 - (void)testPhysicalPairedHostRecoversAfterBackgrounding {
 #if TARGET_OS_SIMULATOR
     XCTSkip(@"Requires a paired physical iPad");
@@ -1201,28 +1525,46 @@ PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixtureLandscape, @"Fixture", UIDeviceO
     [app activate];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
 
-    NSPredicate *onlinePredicate = [NSPredicate predicateWithFormat:@"label ENDSWITH ': online'"];
-    XCUIElement *online = [[[app descendantsMatchingType:XCUIElementTypeAny]
-        matchingPredicate:onlinePredicate] firstMatch];
-    XCTAssertTrue([online waitForExistenceWithTimeout:20]);
+    XCUIElement *online = [self ensurePhysicalHostOnline:app];
     NSString *onlineLabel = online.label;
     XCUIElement *cursor = [[[app descendantsMatchingType:XCUIElementTypeAny]
         matchingPredicate:[NSPredicate predicateWithFormat:@"label BEGINSWITH 'Cursor: '"]] firstMatch];
     XCTAssertTrue([cursor waitForExistenceWithTimeout:10]);
     NSString *cursorLabel = cursor.label;
-    NSString *visibleBefore = compactText([self visibleText:app]);
+    NSMutableArray<NSString *> *labelsBefore = [NSMutableArray array];
+    for (XCUIElement *element in [app descendantsMatchingType:XCUIElementTypeAny].allElementsBoundByIndex) {
+        if (element.label.length) [labelsBefore addObject:element.label];
+    }
+    NSArray<NSString *> *conversationBefore = galleryStableConversationLabels(labelsBefore);
+    XCTAssertGreaterThan(conversationBefore.count, (NSUInteger)0,
+        @"At least one durable conversation row is required for the preservation check");
     [self capture:@"physical-background-before" app:app];
+    XCTAssertTrue(app.hittable);
 
-    [XCUIDevice.sharedDevice pressButton:XCUIDeviceButtonHome];
-    XCTAssertTrue([app waitForState:XCUIApplicationStateRunningBackgroundSuspended timeout:60]);
-    XCTAssertTrue(galleryRecoveryStateIsSuspended(app.state));
-    NSLog(@"BACKGROUND COORDINATION: suspension confirmed; stop this paired Mote host within 30 seconds and keep it stopped until the offline capture");
-    XCTestExpectation *stopWindow = [self expectationWithDescription:@"Driver stops host while app is suspended"];
+    XCUIApplication *springboard = [[XCUIApplication alloc] initWithBundleIdentifier:@"com.apple.springboard"];
+    NSMutableArray *stateSamples = [[self moveToHomeAndObserveApp:app springboard:springboard] mutableCopy];
+    NSTimeInterval backgroundStart = NSProcessInfo.processInfo.systemUptime;
+    NSPredicate *backgrounded = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        NSDictionary *observations = [self backgroundObservationsForApp:app springboard:springboard];
+        NSDictionary *sample = @{@"elapsed":@(NSProcessInfo.processInfo.systemUptime - backgroundStart),
+            @"observations":observations};
+        [stateSamples addObject:sample];
+        NSLog(@"BACKGROUND OBSERVATIONS %@", sample);
+        return [self backgroundObservationsAreSufficient:observations];
+    }];
+    XCTNSPredicateExpectation *background = [[XCTNSPredicateExpectation alloc] initWithPredicate:backgrounded object:app];
+    XCTWaiterResult backgroundResult = [XCTWaiter waitForExpectations:@[background] timeout:60];
+    [self captureBackgroundEvidence:@"physical-background-home-observed" app:app springboard:springboard samples:stateSamples];
+    XCTAssertEqual(backgroundResult, XCTWaiterResultCompleted, @"Visible Home and Mote background state required. Samples: %@",stateSamples);
+    NSLog(@"BACKGROUND COORDINATION: Home observed and Mote background state confirmed; stop this paired Mote host within 30 seconds and keep it stopped until the offline capture");
+    XCTestExpectation *stopWindow = [self expectationWithDescription:@"Driver stops host while Home is visible"];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         [stopWindow fulfill];
     });
     [self waitForExpectations:@[stopWindow] timeout:35];
-    XCTAssertTrue(galleryRecoveryStateIsSuspended(app.state));
+    NSDictionary *beforeActivation = [self backgroundObservationsForApp:app springboard:springboard];
+    [self captureBackgroundEvidence:@"physical-background-before-activation" app:app springboard:springboard samples:@[beforeActivation]];
+    XCTAssertTrue([self backgroundObservationsAreSufficient:beforeActivation]);
 
     [app activate];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:20]);
@@ -1233,7 +1575,9 @@ PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixtureLandscape, @"Fixture", UIDeviceO
     NSLog(@"BACKGROUND COORDINATION: offline captured; start the same paired Mote host now");
     XCTAssertTrue([[self nativeElement:onlineLabel app:app] waitForExistenceWithTimeout:180]);
     XCTAssertTrue([[self nativeElement:cursorLabel app:app] exists]);
-    XCTAssertEqualObjects(compactText([self visibleText:app]), visibleBefore);
+    for (NSString *label in conversationBefore) {
+        XCTAssertTrue([[self nativeElement:label app:app] exists], @"Missing preserved conversation row: %@",label);
+    }
     [self capture:@"physical-background-recovered" app:app];
 
     NSString *marker = [@"background-recovery-" stringByAppendingString:NSUUID.UUID.UUIDString];

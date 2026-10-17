@@ -196,7 +196,7 @@ Before exercising a page, the physical journey now independently enumerates nati
 
 The paired background test now requires `RunningBackgroundSuspended` within 60 seconds. RunningBackground is not accepted. After confirmed suspension, the test logs `BACKGROUND COORDINATION` and leaves Mote backgrounded for 30 seconds. The driver must run `moted host stop` for the paired host during that window. On activation, the test requires the exact paired host label to reach offline within 30 seconds and retains a screenshot. Connecting does not satisfy this assertion. Only after offline is observed does it log the second coordination marker. The driver must run `moted host start` for the same host. The test requires that exact host online within 180 seconds, the previous cursor and the previous visible content. It sends one unique user message, requires that native message exactly once and a higher event cursor, then relaunches to require persisted cursor replay and that same message exactly once. New host events may advance the cursor further. The replay cursor must not regress.
 
-This path is implemented but physically unrun. Run the physical method without `-quiet` and watch the live XCTest output for both coordination markers. The disconnected iPad cannot establish whether iPadOS exposes suspension within the strict timeout. If it does not, this test fails and needs an explicit controlled-interruption alternative. There is no background-running fallback. The driver must retain stop/start command output alongside the result bundle. A run without the required host interruption cannot pass its offline assertion. Simulator skip results are not recovery evidence.
+This path was later attempted physically and failed at the strict suspension boundary, as recorded below. Run the physical method without `-quiet` and watch the live XCTest output for both coordination markers. If iPadOS does not expose suspension within the strict timeout, this test fails and needs an explicit controlled-interruption alternative. There is no background-running fallback. The driver must retain stop/start command output alongside the result bundle. A run without the required host interruption cannot pass its offline assertion. Simulator skip results are not recovery evidence.
 
 The inventory mismatch and suspension-state helpers were first observed failing in `/private/tmp/mote-ipad06-review-red.xcresult`. The first corrected Simulator run exited 0 with four passed tests, zero failures and two physical skips in `/private/tmp/mote-ipad06-review-green.xcresult`. That run covered the native page inventory, all five fresh text focus/editing positions and both negative helpers. The final combined rerun also includes the opened-option inventory and existing native control smoke journey:
 
@@ -335,7 +335,7 @@ printf 'Evidence: %s\n' "$MOTE_GALLERY_ARTIFACTS"
 test "$gallery_failed" -eq 0
 ```
 
-All 32 bounded cases remain physically unrun. The older monolithic commands above are historical and are not the current exhaustive-suite command. No physical pass or README acceptance checkbox is claimed.
+At this implementation checkpoint the 32 cases were physically unrun. Their later complete physical run is recorded below. The older monolithic commands above are historical and are not the current exhaustive-suite command. No README acceptance checkbox is changed.
 
 The Simulator partition/guard command was:
 
@@ -376,3 +376,255 @@ cargo clippy -p mote-ios --target aarch64-apple-ios --target aarch64-apple-ios-s
 ```
 
 All commands exited 0. The focused motion command passed four tests after the test-only read-count adapter's needless-return lint was fixed. The corresponding logs are `/private/tmp/mote-motion-final-workspace-tests.log`, `/private/tmp/mote-motion-workspace-clippy.log`, `/private/tmp/mote-motion-final-focused-tests.log`, `/private/tmp/mote-motion-final-host-clippy.log`, `/private/tmp/mote-motion-final-apple-build.log` and `/private/tmp/mote-motion-final-apple-clippy.log`. The documented shell blocks passed `bash -n` without execution. `git diff --check` passed. No physical system preference toggle or bounded gallery case pass is claimed.
+
+## Physical system-setting selectors prepared
+
+Date: 2026-10-17, America/Los_Angeles. Build environment: macOS 26.6.2, Xcode 27.1 and SDK 27.1. Focused helper execution uses the iPad Pro 11-inch (M5) Simulator on iOS 27.0, device `43F2F6ED-5C86-4121-B03F-40FE38891C4E`. Light was attempted physically and failed in the pre-launch harness check described below. The corrected four system-setting journeys have no physical pass yet. No setting is changed by XCTest.
+
+`testPhysicalSystemAppearanceLight` and `testPhysicalSystemAppearanceDark` require the driver to select and independently query the corresponding physical system appearance first. The public `devicectl device info appearance` result is the authoritative system precondition. XCTest's appearance getter is retained only as explicitly non-authoritative diagnostic metadata. The app is launched with only `--mote-offline`. The test selects Layout and verifies its full native actionable inventory. It retains the checked window screenshot, native role tree and observed settings before pixel assertions, including on an assertion failure. Selector-specific exact paper and ink checks remain fail-closed for the wrong theme.
+
+The physical RED result `/private/tmp/mote-system-appearance-light.xcresult` reports zero passed, one failed and zero skipped on iPad Pro 11-inch (M4), iPadOS 26.5. The failure at the former line 1115 was `XCUIDevice.appearance` equal to 0 rather than expected 1, before app launch. The independent `/private/tmp/mote-ipad-appearance-before.json` reports `info.outcome=success`, `result.userInterfaceStyle=light` and `result.reduceMotion.enabled=false`. This establishes an unreliable XCTest getter gate, not a product theme failure. The correction removes both getter equality gates, retains the real launch and palette assertions, and adds symmetric Light/Dark helper fixtures rejecting the opposite paper and ink. Physical rerun is still required.
+
+Light requires the renderer's paper RGB `(244, 241, 234)` and ink RGB `(26, 26, 26)`. Dark requires paper RGB `(11, 11, 12)` and ink RGB `(232, 227, 218)`. Native hit-target geometry locates the Layout navigation button and Preview action. Each control has four interior background patches. At least 95 percent of each patch must match the expected paper within four RGB levels. At least 0.1 percent of each inset control interior must match the expected ink within eight RGB levels. The screenshot is converted to sRGB. Only each small crop is decoded. Invalid, empty or clipped regions fail closed. Transparent pixels are never counted as palette evidence. The log retains sampled pixel rectangles and match fractions. These are visible theme assertions, not an average-brightness guess or an appearance override.
+
+`testPhysicalSystemReduceMotionEnabled` and `testPhysicalSystemReduceMotionDisabled` require the corresponding real `mote_ios_reduce_motion_enabled()` result and UIKit preference before launching Mote. They read the preference again while the app is in use and at the end. They launch with only `--mote-offline`, with no `--mote-reduced-motion`. They verify Layout inventory, replace it with Toggle, verify the replacement inventory and require a fresh native toggle-value change. Layout, replacement and post-interaction screenshots, role trees and preference observations are retained. Each physical setting selector requests a 180-second execution allowance. Simulator skips occur before constructing or launching Mote.
+
+The native preference getter runs inside the XCTest runner process. Public XCTest does not expose Mote's internal transition setting. Per-app Accessibility overrides could make the app's preference differ from the runner's preference. The driver must leave Mote and the test runner on default per-app settings. The observation attachment explicitly marks the target-process motion mode as not exposed. Passing these selectors establishes the real runner preference, real no-override app launch, completed layout replacement and continued interaction. It does not by itself prove the physical renderer used the expected animation mode.
+
+Animation-video observation remains required. Public XCTest tap and screenshot synchronization can outlast the 120 ms transition. The retained settled images are not first-frame or midpoint animation evidence. Record the physical replacement in each system preference mode. Confirm the enabled mode has no spatial particle travel and the disabled mode retains normal materialization. Retain the settings evidence, recording and observed result before treating physical Reduce Motion as verified. No production test flag, product preference override or renderer shortcut was added.
+
+### Driver commands
+
+Use a freshly signed device manifest containing the four new selectors. Set `MOTE_SYSTEM_XCTESTRUN` to that manifest. This helper requires `jq`, retains one result bundle and log per selector, and rejects skipped or empty runs:
+
+```sh
+: "${MOTE_SYSTEM_XCTESTRUN:?Set the freshly signed system-setting xctestrun path}"
+MOTE_SYSTEM_DEVICE=00008132-001104661AB9001C
+MOTE_SYSTEM_ARTIFACTS=$(mktemp -d /private/tmp/mote-system-settings.XXXXXX) || exit 1
+mote_system_case() {
+  mote_system_selector=$1
+  xcodebuild test-without-building \
+    -xctestrun "$MOTE_SYSTEM_XCTESTRUN" \
+    -destination "platform=iOS,id=$MOTE_SYSTEM_DEVICE" \
+    -destination-timeout 45 -collect-test-diagnostics never \
+    -only-testing:"MoteUITests/MoteUITests/$mote_system_selector" \
+    -resultBundlePath "$MOTE_SYSTEM_ARTIFACTS/$mote_system_selector.xcresult" \
+    > "$MOTE_SYSTEM_ARTIFACTS/$mote_system_selector.log" 2>&1 &&
+  xcrun xcresulttool get test-results summary \
+    --path "$MOTE_SYSTEM_ARTIFACTS/$mote_system_selector.xcresult" \
+    > "$MOTE_SYSTEM_ARTIFACTS/$mote_system_selector.summary.json" &&
+  jq -e '.passedTests == 1 and .failedTests == 0 and .skippedTests == 0' \
+    "$MOTE_SYSTEM_ARTIFACTS/$mote_system_selector.summary.json"
+}
+```
+
+Disable Automatic in Settings so the appearance cannot change during a selector. The following public device commands set and independently query the system mode. Retain both JSON files. The query and its exact value are required before the corresponding test, regardless of the informational XCTest getter:
+
+```sh
+xcrun devicectl device settings appearance --device "$MOTE_SYSTEM_DEVICE" --mode light \
+  --json-output "$MOTE_SYSTEM_ARTIFACTS/light-set.json" &&
+xcrun devicectl device info appearance --device "$MOTE_SYSTEM_DEVICE" \
+  --json-output "$MOTE_SYSTEM_ARTIFACTS/light-before.json" &&
+jq -e '.info.outcome == "success" and .result.userInterfaceStyle == "light"' \
+  "$MOTE_SYSTEM_ARTIFACTS/light-before.json" &&
+mote_system_case testPhysicalSystemAppearanceLight
+```
+
+Select and query Dark, then run its exact-palette selector:
+
+```sh
+xcrun devicectl device settings appearance --device "$MOTE_SYSTEM_DEVICE" --mode dark \
+  --json-output "$MOTE_SYSTEM_ARTIFACTS/dark-set.json" &&
+xcrun devicectl device info appearance --device "$MOTE_SYSTEM_DEVICE" \
+  --json-output "$MOTE_SYSTEM_ARTIFACTS/dark-before.json" &&
+jq -e '.info.outcome == "success" and .result.userInterfaceStyle == "dark"' \
+  "$MOTE_SYSTEM_ARTIFACTS/dark-before.json" &&
+mote_system_case testPhysicalSystemAppearanceDark
+```
+
+Leave Mote and its runner without per-app Accessibility overrides. In Accessibility, Motion, enable Reduce Motion. Retain the settings screenshot and record the app replacement journey, then run:
+
+```sh
+mote_system_case testPhysicalSystemReduceMotionEnabled
+```
+
+Disable the same system preference. Retain its settings screenshot and record the replacement journey, then run:
+
+```sh
+mote_system_case testPhysicalSystemReduceMotionDisabled
+```
+
+Retain the device, iPadOS version, authoritative appearance query JSON, result bundles, observations, role trees, checked screenshots and both motion recordings. A successful command is evidence for its implemented assertions only. The corrected commands have not been run on the physical iPad. IPAD-06 remains open.
+
+### Focused automated verification
+
+The deterministic pixel test was first observed failing against a sampler that returned zero. The implemented sampler then passed exact colors, mixed-region fractions, tolerance boundaries, wrong-theme rejection, transparency rejection and invalid-region checks. One Objective-C XCTest macro compile error in the new physical toggle assertion was corrected before the final run. It did not involve product code.
+
+```text
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,id=43F2F6ED-5C86-4121-B03F-40FE38891C4E' \
+  -derivedDataPath /private/tmp/mote-ipad06-exhaustive-sim \
+  -resultBundlePath /private/tmp/mote-system-settings-final.xcresult \
+  -collect-test-diagnostics never \
+  -only-testing:MoteUITests/MoteUITests/testSystemThemePixelSamplerRejectsWrongColorsAndInvalidRegions \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalSystemAppearanceLight \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalSystemAppearanceDark \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalSystemReduceMotionEnabled \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalSystemReduceMotionDisabled test
+```
+
+Output: exited 0. The final result reports one passed helper test, zero failures and four physical skips. The four physical selectors skipped before Mote launch. The result bundle does not supply physical system-setting evidence.
+
+Both final unsigned bundles compiled:
+
+```text
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug -destination 'generic/platform=iOS' \
+  -derivedDataPath /private/tmp/mote-system-settings-device \
+  CODE_SIGNING_ALLOWED=NO build-for-testing
+
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /private/tmp/mote-system-settings-sim \
+  CODE_SIGNING_ALLOWED=NO build-for-testing
+```
+
+Output: both exited 0. Logs are `/private/tmp/mote-system-settings-final-device-build.log` and `/private/tmp/mote-system-settings-final-sim-build.log`. Existing XCTest deployment-target linker warnings remain. The new device manifest is `/private/tmp/mote-system-settings-device/Build/Products/Mote_iphoneos27.1-arm64.xctestrun`. The new Simulator manifest is `/private/tmp/mote-system-settings-sim/Build/Products/Mote_iphonesimulator27.1-arm64.xctestrun`. They are unsigned build artifacts, not physical execution evidence.
+
+The seven documented shell blocks passed `bash -n` without execution. `git diff --check` passed. A workspace verification attempt was stopped with exit 143 at the driver's request because another agent was actively editing daemon files. That interrupted attempt is not cited as verification. Final workspace tests and clippy await the coordinated stable-source check.
+
+## Bounded physical gallery result
+
+Date: 2026-10-17. Environment: iPad Pro 11-inch (M4), UDID `00008132-001104661AB9001C`, iPadOS 26.5 build 23F77. The corrected independently selected cases total 32 passed, zero failed and zero skipped. Layout portrait is `/private/tmp/mote-layout-portrait-bounded2.xcresult`. The other 31 result bundles, logs and summary JSON files are under `/private/tmp/mote-gallery-physical.kIkGji`. Every summary reports exactly one passed, zero failed and zero skipped. This covers the declared exhaustive center-and-four-inset-edge gallery journey in both orientations, including all list batches, Dashboard selects and separate Preview note cases. It does not establish system appearance, VoiceOver, system Reduce Motion, split view or background recovery.
+
+The preceding `/private/tmp/mote-layout-portrait-bounded.xcresult` failed during installation because the preserve-only resign omitted `application-identifier`. It is packaging-only incomplete evidence and supplies no control result. The corrected bundle `/private/tmp/mote-motion-signed.LDFheG` was signed with explicit entitlements extracted from Mote's own embedded provisioning profile into `/private/tmp/mote-base-profile-entitlements.plist`. The driver verified `application-identifier=FQ6YGD7554.com.beelol.mote`, team `FQ6YGD7554`, `get-task-allow=true` and the Mote team keychain groups before the successful run.
+
+The evidence was checked with:
+
+```sh
+xcrun xcresulttool get test-results summary \
+  --path /private/tmp/mote-layout-portrait-bounded2.xcresult
+node -e 'const fs=require("fs"); const p="/private/tmp/mote-gallery-physical.kIkGji"; const files=fs.readdirSync(p).filter(f=>f.endsWith(".summary.json")); const invalid=files.filter(f=>{const j=JSON.parse(fs.readFileSync(p+"/"+f)); return j.passedTests!==1||j.failedTests!==0||j.skippedTests!==0}); console.log(JSON.stringify({summaries:files.length,invalid})); if(files.length!==31||invalid.length) process.exit(1)'
+```
+
+Output: first summary `passedTests=1`, `failedTests=0`, `skippedTests=0`; aggregate `{"summaries":31,"invalid":[]}`. IPAD-06 remains open.
+
+## Physical background suspension RED and diagnostic correction
+
+Date: 2026-10-17. The same M4 iPad on iPadOS 26.5 ran `testPhysicalPairedHostRecoversAfterBackgrounding` in `/private/tmp/mote-background-physical-current.xcresult`. The summary reports zero passed, one failed and zero skipped. After Home, `waitForState:RunningBackgroundSuspended timeout:60` failed at the former line 1217. The driver did not stop the host because the required suspension coordination marker was not reached. This is no recovery pass and supplies no stop/start evidence.
+
+The original result does not identify which alternate application state persisted. The diagnostic correction polls the same public `app.state`, logs monotonic elapsed time, raw state and exact state name, and retains `physical-background-suspension-state-samples` before asserting the wait result. The timeout remains 60 seconds. Only `RunningBackgroundSuspended` satisfies the predicate. It still rechecks exact suspension before and after the driver's 30-second stop window. There is no acceptance of merely background-running or not-running. Deterministic helper assertions distinguish all five public states and an unrecognized value. A physical rerun is required to determine whether this iPad reports persistent background-running or another state. No product background mode or recovery shortcut was added.
+
+### Post-correction focused verification
+
+The final owned-source Simulator execution used:
+
+```text
+xcodebuild -quiet test-without-building \
+  -xctestrun /private/tmp/mote-ipad06-exhaustive-sim/Build/Products/Mote_iphonesimulator27.1-arm64.xctestrun \
+  -destination 'platform=iOS Simulator,id=43F2F6ED-5C86-4121-B03F-40FE38891C4E' \
+  -resultBundlePath /private/tmp/mote-system-settings-diagnostic-final.xcresult \
+  -collect-test-diagnostics never \
+  -only-testing:MoteUITests/MoteUITests/testSystemThemePixelSamplerRejectsWrongColorsAndInvalidRegions \
+  -only-testing:MoteUITests/MoteUITests/testGalleryRecoveryRejectsMerelyBackgroundRunning \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalSystemAppearanceLight \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalSystemAppearanceDark \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalSystemReduceMotionEnabled \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalSystemReduceMotionDisabled \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalPairedHostRecoversAfterBackgrounding
+```
+
+Output: exited 0, two passed helpers, zero failed and five physical skips. Log: `/private/tmp/mote-system-settings-diagnostic-final-tests.log`. The compiled XCTest binary timestamp was later than the final source edit. The pixel helper covers exact Light/Dark colors and symmetric opposite-theme rejection. The state helper rejects background-running and tests exact diagnostic state names. None of the five physical selectors launched Mote on Simulator.
+
+The final device build repeated the unsigned `generic/platform=iOS` build-for-testing command above. It exited 0, with log `/private/tmp/mote-system-settings-diagnostic-final-device-build.log` and manifest `/private/tmp/mote-system-settings-device/Build/Products/Mote_iphoneos27.1-arm64.xctestrun`. A concurrent initial Simulator build exited 65 because another agent's in-progress `mote-ios/src/probe.rs` called color component methods on `ColorMode`. That unrelated compile failure is retained in `/private/tmp/mote-system-settings-appearance-corrected-sim-build.log`. It is not an XCTest assertion failure. The owner corrected that file separately.
+
+Repeating the unsigned `generic/platform=iOS Simulator` build-for-testing command after that correction exited 0. Log: `/private/tmp/mote-system-settings-diagnostic-final-sim-build.log`. Manifest: `/private/tmp/mote-system-settings-sim/Build/Products/Mote_iphonesimulator27.1-arm64.xctestrun`. Existing XCTest deployment-target linker warnings and three Rust probe dead-code warnings are recorded in that build log. Eight documented shell blocks passed `bash -n`. `git diff --check` passed. No final workspace test or clippy result is claimed while coordinated daemon edits remain active. The corrected appearance selectors and background diagnostic still require physical reruns. No checkbox is changed.
+
+## Physical Light product RED
+
+Date: 2026-10-17. The corrected Light selector ran on the M4 iPad with the authoritative device appearance still Light. Result: `/private/tmp/mote-system-appearance-light2.xcresult`. Mote launched and its full Layout native inventory passed. The selector then failed the unchanged exact Light palette assertion at the former line 1175. The log reports `SYSTEM PALETTE Layout background=0.000000 pixels={{28, 192}, {8, 8}}`.
+
+The retained `system-appearance-light` screenshot is visibly dark. This is a real iOS system-theme propagation defect, not a sampler-coordinate failure. The exported PNG is 1668 by 2420 pixels. The retained role tree reports an 834 by 1210 point window and Layout frame `{{8, 90}, {96, 48}}`. The first four-point patch begins six points inside that frame at `(14, 96)`. Its exact two-times pixel mapping is the reported `(28, 192)` with size eight by eight. Independent sRGB reads at pixels `(28,192)`, `(32,196)`, `(40,200)`, `(100,200)` and `(1000,1000)` all returned opaque `(11,11,13)`. These are dark pixels, not the required Light paper `(244,241,234)`.
+
+The failure attachments were exported with:
+
+```text
+xcrun xcresulttool export attachments \
+  --path /private/tmp/mote-system-appearance-light2.xcresult \
+  --output-path /private/tmp/mote-appearance-light2-export
+sips -g pixelWidth -g pixelHeight -g orientation \
+  /private/tmp/mote-appearance-light2-export/EEE0BA09-11E5-4AC1-A57D-AD5BAA78B847.png
+```
+
+The checked screenshot is `/private/tmp/mote-appearance-light2-export/EEE0BA09-11E5-4AC1-A57D-AD5BAA78B847.png`. Its native role tree is `/private/tmp/mote-appearance-light2-export/D792CB44-C221-410B-A24A-B1888217D903.txt`. No sampler, coordinate, palette, tolerance or product code was changed in response to this RED. No coordinate regression is asserted because the observed mapping is correct. A product fix and a new physical Light run are required. IPAD-06 remains open.
+
+## Physical background state API RED
+
+Date: 2026-10-17. `/private/tmp/mote-background-state-diagnostic.xcresult` reports zero passed, one failed and zero skipped on the M4 iPad, iPadOS 26.5. All 60 timestamped samples after Home report raw state 4, `foreground`, from elapsed 1.042 through 60.004 seconds. The independent device screenshot `/private/tmp/mote-after-home-diagnostic.png` visibly shows SpringBoard's Home Screen, including application icons and the dock. Home succeeded. This physical XCTest state getter is not reliable evidence of foreground or suspension on this device. The driver did not reach the host-stop coordination window. No recovery pass is claimed.
+
+The owner approved using observable background evidence instead of that unreliable getter. This does not claim OS suspension. IPAD-06 requires recovery after backgrounding. The controlled host interruption remains the required recovery boundary. The corrected journey must observe SpringBoard with a hittable Home icon, no hittable Mote application surface and no hittable Mote control before the stop marker and again before activation. `app.state` remains diagnostic only. SpringBoard and Mote role trees, raw state observations and a full-device screenshot must be retained. The exact paired-host offline assertion must still pass before the start marker, followed by exact-host online recovery, prior cursor/content, one new cursor-backed event and exactly-once replay after relaunch. Neither a reported background state alone nor a Home press alone supplies sufficient observable evidence.
+
+### Observable background correction
+
+`testPhysicalPairedHostRecoversAfterBackgrounding` keeps its physical-only pre-launch Simulator skip. It first requires Mote's surface hittable while foregrounded. After Home it polls for at most 60 seconds. Success requires SpringBoard's native window, at least one hittable native Home icon, a non-hittable Mote application surface and no hittable Mote native descendant. The raw states of both applications are retained but do not decide success. A full-device screenshot and both native role trees are attached before asserting success, including on timeout. The first coordination marker is now `BACKGROUND COORDINATION: Home observed and Mote hidden`. The driver stops the same paired host within the following 30 seconds and leaves it stopped until the offline capture. The exact observable Home/Mote boundary is checked and attached again before activation. The offline, start marker, online, cursor, new-event and exactly-once replay assertions are unchanged.
+
+This supersedes the earlier strict-suspension implementation and its helper selector. It does not infer suspension from Home or from the unreliable state API. There is no product background mode, app-state override or alternate host connection added. The real host interruption remains necessary because the test cannot progress past its exact offline assertion if the host never stops.
+
+The new deterministic `testGalleryBackgroundEvidenceRequiresHomeAndHiddenMote` checks all 16 combinations of the four observable conditions. Only native Home visibility with a hittable Home icon and both Mote visibility signals false is accepted. Background and foreground state names are still tested as diagnostics. The RED run `/private/tmp/mote-background-observable-red.xcresult` exited 65 with one failed test because an intentionally rejecting helper returned false for otherwise sufficient observable evidence. That stub was then replaced with the four-condition conjunction. No physical pass is claimed for this correction.
+
+The focused command for the corrected source is:
+
+```text
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,id=43F2F6ED-5C86-4121-B03F-40FE38891C4E' \
+  -derivedDataPath /private/tmp/mote-ipad06-exhaustive-sim \
+  -resultBundlePath /private/tmp/mote-background-observable-final.xcresult \
+  -collect-test-diagnostics never \
+  -only-testing:MoteUITests/MoteUITests/testGalleryBackgroundEvidenceRequiresHomeAndHiddenMote \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalPairedHostRecoversAfterBackgrounding test
+```
+
+The final command exited 0 with one passed helper, zero failures and one physical pre-launch skip. Log: `/private/tmp/mote-background-observable-final-tests.log`. Both unsigned `generic/platform=iOS` and `generic/platform=iOS Simulator` build-for-testing commands above were repeated against the final source and exited 0. Logs: `/private/tmp/mote-background-observable-final-device-build.log` and `/private/tmp/mote-background-observable-final-sim-build.log`. Manifests remain `/private/tmp/mote-system-settings-device/Build/Products/Mote_iphoneos27.1-arm64.xctestrun` and `/private/tmp/mote-system-settings-sim/Build/Products/Mote_iphonesimulator27.1-arm64.xctestrun`. The earlier GREEN attempt and both initial builds failed to compile because the harness requested a screenshot from `XCUIDevice`. This was corrected to the public `XCUIScreen.mainScreen.screenshot` before these final passes. Existing XCTest deployment-target linker warnings remain. No physical observable-background or host-recovery pass is claimed.
+
+## Physical background recovery pass
+
+Date: 2026-10-17. Environment: iPad Pro 11-inch (M4), UDID
+`00008132-001104661AB9001C`, iPadOS 26.5 build 23F77, and the installed
+`com.mote.moted` LaunchAgent on the paired Mac Wi-Fi host. Result bundle:
+`/private/tmp/mote-background-state-gate-green2.xcresult`.
+
+This run supersedes the observable-background claims above. Physical evidence showed that iPadOS
+26.5 retained stale Mote hit-test values after SpringBoard became visible. The public Mote process
+state was `RunningBackground`, SpringBoard was foreground, its window was visible and a native Home
+icon was hittable. The fail-closed gate now requires the visible SpringBoard window, the hittable
+Home icon and either `RunningBackground` or `RunningBackgroundSuspended`. It rejects unknown,
+not-running and foreground states. Stale Mote hit-test values remain in the retained diagnostics but
+do not decide the result.
+
+The driver stopped only `com.mote.moted` after the first coordination marker. Mote then displayed
+the exact paired host as offline. The driver restarted the same LaunchAgent after the second marker.
+Mote returned online with `Cursor: 9` and the pre-existing `User: whats good?` row. The journey sent
+a fresh UUID-backed message, observed the cursor advance to 12, terminated and relaunched Mote, and
+found exactly one copy of the new message with the advanced cursor. The durable content check uses
+native `User:` rows instead of full-screen OCR because the preceding run correctly exposed the
+unrelated system clock changing from 3:43 PM to 3:44 PM.
+
+Command:
+
+```text
+xcodebuild test-without-building \
+  -xctestrun /private/tmp/mote-background-state-gate-device/Build/Products/Mote_iphoneos27.1-arm64.xctestrun \
+  -destination 'id=00008132-001104661AB9001C' \
+  -resultBundlePath /private/tmp/mote-background-state-gate-green2.xcresult \
+  -collect-test-diagnostics never \
+  -only-testing:MoteUITests/MoteUITests/testGalleryBackgroundEvidenceRequiresHomeAndHiddenMote \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalPairedHostRecoversAfterBackgrounding
+```
+
+Output: two tests passed, zero failed and zero skipped in 75.205 seconds. The preceding
+`/private/tmp/mote-background-state-gate-green.xcresult` is retained as a harness RED. It reached
+successful offline and online recovery but failed only because full-screen OCR included the changing
+status-bar clock. Background recovery is complete. Split view and actual VoiceOver remain open, so
+IPAD-06 remains unchecked.

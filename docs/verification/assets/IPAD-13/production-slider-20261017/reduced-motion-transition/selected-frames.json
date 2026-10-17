@@ -1,0 +1,643 @@
+{
+  "before": {
+    "changed_button": {
+      "painted": true,
+      "particle_count": 0,
+      "path": [
+        1
+      ],
+      "points": [
+        [
+          8.0,
+          683.1875
+        ],
+        [
+          826.0,
+          683.1875
+        ],
+        [
+          826.0,
+          719.1875
+        ],
+        [
+          8.0,
+          719.1875
+        ],
+        [
+          8.0,
+          683.1875
+        ]
+      ],
+      "previous_points": null
+    },
+    "emitted_events": [],
+    "footer_rule": {
+      "painted": true,
+      "particle_count": 0,
+      "path": [
+        3
+      ],
+      "points": [
+        [
+          8.0,
+          1153.5
+        ],
+        [
+          826.0,
+          1153.5
+        ]
+      ],
+      "previous_points": null
+    },
+    "header_rule": {
+      "painted": true,
+      "particle_count": 0,
+      "path": [
+        0
+      ],
+      "points": [
+        [
+          8.0,
+          677.1875
+        ],
+        [
+          826.0,
+          677.1875
+        ]
+      ],
+      "previous_points": null
+    },
+    "immediate_action_target": null,
+    "line_segments": [
+      [
+        8.0,
+        677.1875,
+        826.0,
+        677.1875
+      ],
+      [
+        8.0,
+        1153.5,
+        826.0,
+        1153.5
+      ]
+    ],
+    "marker_origin": [
+      1447,
+      84
+    ],
+    "marker_stride": 6,
+    "paint_start": 16,
+    "particle_count": 0,
+    "pulse_count": 0,
+    "rectangles": [
+      [
+        24.0,
+        594.6875,
+        83.03125,
+        36.0
+      ],
+      [
+        8.0,
+        683.1875,
+        818.0,
+        36.0
+      ],
+      [
+        8.0,
+        739.1875,
+        818.0,
+        36.0
+      ]
+    ],
+    "revision": 3,
+    "sequence": 162,
+    "slider_target": null,
+    "time": 2.753806042
+  },
+  "first": {
+    "changed_button": {
+      "painted": true,
+      "particle_count": 0,
+      "path": [
+        1
+      ],
+      "points": [
+        [
+          8.0,
+          732.1875
+        ],
+        [
+          826.0,
+          732.1875
+        ],
+        [
+          826.0,
+          768.1875
+        ],
+        [
+          8.0,
+          768.1875
+        ],
+        [
+          8.0,
+          732.1875
+        ]
+      ],
+      "previous_points": [
+        [
+          8.0,
+          683.1875
+        ],
+        [
+          826.0,
+          683.1875
+        ],
+        [
+          826.0,
+          719.1875
+        ],
+        [
+          8.0,
+          719.1875
+        ],
+        [
+          8.0,
+          683.1875
+        ]
+      ]
+    },
+    "emitted_events": [],
+    "footer_rule": {
+      "painted": true,
+      "particle_count": 0,
+      "path": [
+        3
+      ],
+      "points": [
+        [
+          8.0,
+          1104.5
+        ],
+        [
+          826.0,
+          1104.5
+        ]
+      ],
+      "previous_points": [
+        [
+          8.0,
+          1153.5
+        ],
+        [
+          826.0,
+          1153.5
+        ]
+      ]
+    },
+    "header_rule": {
+      "painted": true,
+      "particle_count": 0,
+      "path": [
+        0
+      ],
+      "points": [
+        [
+          8.0,
+          726.1875
+        ],
+        [
+          826.0,
+          726.1875
+        ]
+      ],
+      "previous_points": [
+        [
+          8.0,
+          677.1875
+        ],
+        [
+          826.0,
+          677.1875
+        ]
+      ]
+    },
+    "immediate_action_target": null,
+    "line_segments": [
+      [
+        8.0,
+        726.1875,
+        826.0,
+        726.1875
+      ],
+      [
+        16.0,
+        816.1875,
+        818.0,
+        816.1875
+      ],
+      [
+        8.0,
+        1104.5,
+        826.0,
+        1104.5
+      ]
+    ],
+    "marker_origin": [
+      1447,
+      84
+    ],
+    "marker_stride": 6,
+    "paint_start": 16,
+    "particle_count": 0,
+    "pulse_count": 4,
+    "rectangles": [
+      [
+        24.0,
+        594.6875,
+        83.03125,
+        36.0
+      ],
+      [
+        8.0,
+        732.1875,
+        818.0,
+        36.0
+      ],
+      [
+        96.42105102539062,
+        806.4375,
+        8.0,
+        19.5
+      ]
+    ],
+    "revision": 14,
+    "sequence": 163,
+    "slider_rail": {
+      "painted": true,
+      "particle_count": 0,
+      "path": [
+        2
+      ],
+      "points": [
+        [
+          16.0,
+          816.1875
+        ],
+        [
+          818.0,
+          816.1875
+        ]
+      ],
+      "previous_points": null
+    },
+    "slider_target": {
+      "field": "budgets.router",
+      "path": [
+        2
+      ],
+      "surface_value": 150.0,
+      "value": 160.0
+    },
+    "time": 2.770707
+  },
+  "midpoint": {
+    "changed_button": {
+      "painted": true,
+      "particle_count": 0,
+      "path": [
+        1
+      ],
+      "points": [
+        [
+          8.0,
+          732.1875
+        ],
+        [
+          826.0,
+          732.1875
+        ],
+        [
+          826.0,
+          768.1875
+        ],
+        [
+          8.0,
+          768.1875
+        ],
+        [
+          8.0,
+          732.1875
+        ]
+      ],
+      "previous_points": [
+        [
+          8.0,
+          683.1875
+        ],
+        [
+          826.0,
+          683.1875
+        ],
+        [
+          826.0,
+          719.1875
+        ],
+        [
+          8.0,
+          719.1875
+        ],
+        [
+          8.0,
+          683.1875
+        ]
+      ]
+    },
+    "emitted_events": [],
+    "footer_rule": {
+      "painted": true,
+      "particle_count": 0,
+      "path": [
+        3
+      ],
+      "points": [
+        [
+          8.0,
+          1104.5
+        ],
+        [
+          826.0,
+          1104.5
+        ]
+      ],
+      "previous_points": [
+        [
+          8.0,
+          1153.5
+        ],
+        [
+          826.0,
+          1153.5
+        ]
+      ]
+    },
+    "header_rule": {
+      "painted": true,
+      "particle_count": 0,
+      "path": [
+        0
+      ],
+      "points": [
+        [
+          8.0,
+          726.1875
+        ],
+        [
+          826.0,
+          726.1875
+        ]
+      ],
+      "previous_points": [
+        [
+          8.0,
+          677.1875
+        ],
+        [
+          826.0,
+          677.1875
+        ]
+      ]
+    },
+    "immediate_action_target": null,
+    "line_segments": [
+      [
+        8.0,
+        726.1875,
+        826.0,
+        726.1875
+      ],
+      [
+        16.0,
+        816.1875,
+        818.0,
+        816.1875
+      ],
+      [
+        8.0,
+        1104.5,
+        826.0,
+        1104.5
+      ]
+    ],
+    "marker_origin": [
+      1447,
+      84
+    ],
+    "marker_stride": 6,
+    "paint_start": 16,
+    "particle_count": 0,
+    "pulse_count": 4,
+    "rectangles": [
+      [
+        24.0,
+        594.6875,
+        83.03125,
+        36.0
+      ],
+      [
+        8.0,
+        732.1875,
+        818.0,
+        36.0
+      ],
+      [
+        96.42105102539062,
+        806.4375,
+        8.0,
+        19.5
+      ]
+    ],
+    "revision": 14,
+    "sequence": 166,
+    "slider_rail": {
+      "painted": true,
+      "particle_count": 0,
+      "path": [
+        2
+      ],
+      "points": [
+        [
+          16.0,
+          816.1875
+        ],
+        [
+          818.0,
+          816.1875
+        ]
+      ],
+      "previous_points": null
+    },
+    "slider_target": {
+      "field": "budgets.router",
+      "path": [
+        2
+      ],
+      "surface_value": 150.0,
+      "value": 160.0
+    },
+    "time": 2.820470708
+  },
+  "settled": {
+    "changed_button": {
+      "painted": true,
+      "particle_count": 0,
+      "path": [
+        1
+      ],
+      "points": [
+        [
+          8.0,
+          732.1875
+        ],
+        [
+          826.0,
+          732.1875
+        ],
+        [
+          826.0,
+          768.1875
+        ],
+        [
+          8.0,
+          768.1875
+        ],
+        [
+          8.0,
+          732.1875
+        ]
+      ],
+      "previous_points": null
+    },
+    "emitted_events": [],
+    "footer_rule": {
+      "painted": true,
+      "particle_count": 0,
+      "path": [
+        3
+      ],
+      "points": [
+        [
+          8.0,
+          1104.5
+        ],
+        [
+          826.0,
+          1104.5
+        ]
+      ],
+      "previous_points": null
+    },
+    "header_rule": {
+      "painted": true,
+      "particle_count": 0,
+      "path": [
+        0
+      ],
+      "points": [
+        [
+          8.0,
+          726.1875
+        ],
+        [
+          826.0,
+          726.1875
+        ]
+      ],
+      "previous_points": null
+    },
+    "immediate_action_target": null,
+    "line_segments": [
+      [
+        8.0,
+        726.1875,
+        826.0,
+        726.1875
+      ],
+      [
+        16.0,
+        816.1875,
+        818.0,
+        816.1875
+      ],
+      [
+        8.0,
+        1104.5,
+        826.0,
+        1104.5
+      ]
+    ],
+    "marker_origin": [
+      1447,
+      84
+    ],
+    "marker_stride": 6,
+    "paint_start": 16,
+    "particle_count": 0,
+    "pulse_count": 0,
+    "rectangles": [
+      [
+        24.0,
+        594.6875,
+        83.03125,
+        36.0
+      ],
+      [
+        8.0,
+        732.1875,
+        818.0,
+        36.0
+      ],
+      [
+        96.42105102539062,
+        806.4375,
+        8.0,
+        19.5
+      ]
+    ],
+    "revision": 14,
+    "sequence": 171,
+    "slider_rail": {
+      "painted": true,
+      "particle_count": 0,
+      "path": [
+        2
+      ],
+      "points": [
+        [
+          16.0,
+          816.1875
+        ],
+        [
+          818.0,
+          816.1875
+        ]
+      ],
+      "previous_points": null
+    },
+    "slider_target": {
+      "field": "budgets.router",
+      "path": [
+        2
+      ],
+      "surface_value": 150.0,
+      "value": 160.0
+    },
+    "time": 2.903982
+  },
+  "unchanged_rectangle": [
+    24.0,
+    594.6875,
+    83.03125,
+    36.0
+  ]
+}

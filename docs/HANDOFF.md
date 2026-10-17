@@ -12,8 +12,8 @@ resources isolated from every other app.
 ## Current state
 
 IPAD-14 is complete and pushed at `b729d37`. The physical M4 iPad is paired over Wi-Fi as
-`00008132-001104661AB9001C` on iPadOS 26.5. Xcode can see it without a cable. The current Mote-only
-signed closeout test bundle is `/private/tmp/mote-ipad06-final-signed.MxNtEH`.
+`00008132-001104661AB9001C` on iPadOS 26.5. Auto-lock is disabled. The current Mote-only signed
+closeout test bundle is `/private/tmp/mote-physical-theme-signed.5gKQa2`.
 
 The host lifecycle command is implemented as `moted host start|status|restart|stop`. It manages
 only `com.mote.moted`, preserves configuration and data on stop, and retains
@@ -29,26 +29,74 @@ production Mote data directory. It is running from the repository debug binary. 
 `SIGTERM` changed its launchd run count from 1 to 2 and retained event sequence 9. V0-53 still
 requires the literal logout and login check before uninstall.
 
-IPAD-06 now has a passing physical gallery run in portrait and landscape. Physical native
-accessibility elements, reduced-motion launch, foreground survival, native text input and a
-landscape Dashboard select also pass. Literal center and edge taps for every control, split view,
-paired background recovery, the local-network privacy prompt, system light and dark appearance,
-the system Reduce Motion setting and actual VoiceOver navigation remain open.
+IPAD-06 now has 32 passing bounded physical gallery cases covering every page, every control at
+the center and four inset edges, both orientations, native text input, all list actions and all
+select options. Exact physical Light and Dark palette checks pass in
+`/private/tmp/mote-theme-light-green2.xcresult` and `/private/tmp/mote-theme-dark-green.xcresult`.
+System Reduce Motion enabled and disabled journeys pass in
+`/private/tmp/mote-reduce-motion-on-green.xcresult` and
+`/private/tmp/mote-reduce-motion-off-green3.xcresult`. Split view, paired background recovery, the
+local-network privacy prompt and actual VoiceOver navigation remain open.
 
-A reviewed physical-only exhaustive journey now covers all eight pages, an independently observed
+A reviewed physical-only exhaustive journey covers all eight pages, an independently observed
 native control and dropdown inventory, all 20 list actions, every select option, every control at
-center and four inset edges, the Preview note field, and both orientations. Its Simulator helpers
-report seven passes and two expected physical skips. The paired background journey requires actual
-suspension, driver-coordinated Mote host stop and start, exact offline and online states, cursor
-advancement and exactly-once replay. Both device and Simulator bundles compile. Physical execution
-is still pending because Xcode reaches the iPad over Wi-Fi but reports `Unlock iPad to Continue`.
+center and four inset edges, the Preview note field and both orientations. The first
+driver-coordinated paired background rerun failed before the host stop marker. Its retained
+screenshot shows Mote still full-screen. SpringBoard exposed only system and app-switcher backing
+layers, including `AppSwitcherContentView` and Mote's card, with no Home icons. The harness
+correctly left the host running and did not claim a background pass. The reviewed correction keeps
+the exact observable gate and explicitly activates SpringBoard after the Home action. Rebuild and
+rerun the exact stop, offline, restart and recovery sequence. The first rebuilt attempt then
+stopped before backgrounding because the fresh install had no selected host. The next attempt
+exposed the real iPad local-network privacy sheet. Its retained recording visibly includes Mote's
+purpose text and the native Don't Allow and Allow actions. The harness now captures that sheet,
+accepts Allow and repairs the fresh-install pairing before entering the unchanged recovery journey.
+The repaired setup now selects the non-link-local Wi-Fi advertisement, focuses the native secure
+pairing field, enters the fresh code and activates the enabled native Pair button. The host never
+reports a pending request, so the iPad has not yet completed the first TCP pairing handshake. The
+background stop and recovery phase has therefore not started. Trace port 47810 at the client and
+server boundary with a newly generated code before changing pairing behavior.
+The first boundary trace used a code generated immediately before the run. The app selected
+`192.168.50.184:47810`, entered all 155 code characters and tapped Pair. Repeated socket snapshots
+showed no new TCP connection after that tap, while three older authenticated iPad connections
+remained established. This localizes the current failure to the client before `Socket::connect`,
+most likely the first-run validation path. The in-flight result bundle is
+`/private/tmp/mote-background-autolock-off-trace.xcresult`. Inspect its final visible status before
+changing product behavior.
+The final device screenshot is `/private/tmp/mote-pairing-final-status.png`. It shows the generic
+pairing failure after the code field was cleared. Source inspection found the first-run worker
+preferred a Keychain credential whenever one survived reinstall, even when the owner supplied a
+fresh pairing offer. That path attempted a normal session instead of `/pair`. A regression test
+first failed because no precedence rule existed. The implementation now selects the explicit
+owner-present offer before any saved credential, and the focused Rust test passes. Rebuild and
+sign the physical app and runner, then repeat pairing with a new code.
+The rebuilt binary was explicitly installed because `test-without-building` had only activated the
+already installed process. The replacement launched online immediately with its preserved valid
+credential, proving the rebuilt client and local Wi-Fi connection. The corrected physical
+background journey passes in `/private/tmp/mote-background-state-gate-green2.xcresult`. It observed
+visible SpringBoard, a hittable Home icon and Mote in the public `RunningBackground` state. It then
+stopped only `com.mote.moted`, captured the exact host offline, restarted the same LaunchAgent,
+recovered online with cursor 9 and the prior conversation, created a new event at cursor 12 and
+proved exactly-once replay after relaunch. Stale post-Home Mote hit-test values are retained only as
+diagnostics. A preceding run exposed and corrected a harness-only full-screen OCR comparison that
+included the changing iPad status-bar clock.
 
-IPAD-13 has headless transition timing and paired Simulator integration evidence. Its live paired
-replacement captures and immediate changed-control action remain open. A UI audit found a real
-Reduce Motion gap. `MoteApp::draw` applies the transition setting only on the offline gallery path.
-First-run and live paired rendering return before it is applied. The iOS system Reduce Motion
-preference is also not bridged into Rust. Fix this before claiming physical Reduce Motion or paired
-IPAD-13 evidence.
+IPAD-13 now has a production numeric `budgets.router` slider binding. The corrected live benchmark
+passed activation with 197 of 200 first try, 198 after retry and 3 of 3 sliders first try. Its
+activation file is `/private/tmp/mote-ipad13-attestation-20261017.JRF2iJ/surface-activation.json`.
+The reviewed harness uses four fresh production hosts so untouched timing evidence is separate from
+immediate first-frame action evidence. One live attempt failed before launch because the sandbox
+could not reach CoreSimulator. Later attempts exposed a generation-status transition and proved
+that the live chat viewport grew as messages arrived, translating every surface stroke. The prime
+is restored with an explicit refreshed-surface wait and 500 ms settlement window. The production
+chat viewport now reserves its existing 32 percent maximum height and disables vertical auto-shrink
+so generated surfaces keep stable absolute geometry. The independent unchanged-stroke and
+replacement timing assertions remain strict. The final four-host run passed in 62.43 seconds with
+zero failures. Normal transition captured 2,297 particles on the first frame, 2,289 at the midpoint
+and zero at 133 ms. Reduced Motion captured zero particles, four outline pulses on the first and
+midpoint frames and zero at 133 ms. Both action paths passed immediate slider interaction, integer
+persistence, refreshed state, no-repeat and stale-revision rejection. Durable frames and traces are
+under `docs/verification/assets/IPAD-13/production-slider-20261017`. IPAD-13 is checked complete.
 
 Mote Agent is App Store Connect app `6822101041`, bundle ID `com.beelol.mote`, SKU
 `mote-ipad-001`, team `FQ6YGD7554`. Build `0.1.0 (1)` is processed and assigned only to the internal
@@ -80,14 +128,13 @@ The physical reconnect observer then passed in 56.175 seconds. It captured the s
 offline after stopping only the Mote daemon, and online again with the same cursor after restarting
 the daemon. The result bundle is `/private/tmp/mote-physical-reconnect1.xcresult`.
 
-The physical timing probe is invalid because `--mote-timing-probe` is intentionally Simulator-only.
-Do not include it in physical selections. The separate physical reduced-motion launch test already
-passed, but it is not proof of the iPad system preference.
+The native system appearance bridge is implemented but uncommitted. The system Reduce Motion bridge
+is committed at `0a703d2`. The iPad setting was independently queried before both physical motion
+runs and is currently off.
 
-Next unlock the Wi-Fi-paired iPad and let the waiting exhaustive journey run. Then run the
-driver-coordinated background journey. Physical appearance, split-view, local-network permission,
-system Reduce Motion and VoiceOver evidence remain. Fix Reduce Motion propagation, complete the
-live paired transition capture, then finish TestFlight and the hosted upload.
+Next complete split-view and actual VoiceOver evidence. The local-network privacy prompt is already
+retained from the physical first-run journey. Update the evidence before committing. Finish literal Mac sleep and wake,
+logout and login, isolated TestFlight credentials, a manual upload and TestFlight device journeys.
 
 ## Required delivery loop
 

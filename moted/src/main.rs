@@ -943,16 +943,16 @@ impl Dispatch for Daemon {
                     let value = args.get("value").ok_or_else(|| {
                         RpcError::invalid_params("change needs a value")
                     })?;
-                    if !matrix::accepts_change(field, value) {
-                        return Err(RpcError::invalid_params(
+                    let value = matrix::canonical_change(field, value).ok_or_else(|| {
+                        RpcError::invalid_params(
                             "change does not match an exposed field contract",
-                        ));
-                    }
+                        )
+                    })?;
                     let seq = self
                         .config
                         .lock()
                         .unwrap()
-                        .set_json(field, value)
+                        .set_json(field, &value)
                         .map_err(|error| RpcError::invalid_params(error.to_string()))?;
                     self.log
                         .append(thread, "ui.event", &json!({ "event": event, "args": args }))
@@ -1360,7 +1360,22 @@ mod approval_dispatch_tests {
         assert_eq!(children[1]["children"][0]["fill"], true);
         assert_eq!(kinds, ["screen", "header", "row", "text", "button", "col", "col", "toggle", "select", "select", "select", "text", "footer", "text"]);
         let (_, bindings) = daemon.compile_matrix_with_host(source, &matrix::HostSnapshot::default()).unwrap();
-        assert!(bindings.manifest.fields.values().all(|field| field.binding.ty != matrix_lang::Type::Number && field.binding.ty != matrix_lang::Type::Integer));
+        let numeric_fields: Vec<_> = bindings
+            .manifest
+            .fields
+            .iter()
+            .filter(|(_, field)| {
+                matches!(
+                    &field.binding.ty,
+                    matrix_lang::Type::Number | matrix_lang::Type::Integer
+                )
+            })
+            .map(|(name, field)| (name.as_str(), field.binding.ty.clone()))
+            .collect();
+        assert_eq!(
+            numeric_fields,
+            [("budgets.router", matrix_lang::Type::Integer)]
+        );
         let mut legacy = mote_client::ObservationHarness::legacy();
         legacy.event(&event);
         assert_eq!(legacy.surface().unwrap().1, mote_ui::validate(&serde_json::to_vec(&event.payload["surface"]).unwrap()).unwrap());
@@ -1713,12 +1728,9 @@ mod approval_dispatch_tests {
     const INFERRED_DASHBOARD: &str = r#"screen {
   col {
     text "Agent dashboard"
-    progress value host.progress
+    slider "Router budget" budgets.router min 50 max 1000 step 10
     toggle "Local only" models.local_only
     select "Talk model" models.talk options model_options
-    list from pipeline.stages {
-      item { row { text .stage text .latency } }
-    }
     button "Refresh" -> refresh
   }
 }"#;
@@ -2430,7 +2442,7 @@ mod approval_dispatch_tests {
     }
 
     #[test]
-    fn inferred_host_subset_accepts_controls_data_progress_and_refresh() {
+    fn inferred_host_subset_accepts_slider_controls_and_refresh() {
         let (data, _) = dirs("inferred-host-subset");
         let daemon = daemon(&data);
         daemon.matrix_snapshots.lock().unwrap().insert(
@@ -2458,10 +2470,118 @@ mod approval_dispatch_tests {
             .unwrap()
             .pop()
             .unwrap();
-        let rendered = event.payload["surface"].to_string();
-        for expected in ["progress", "toggle", "select", "list", "action"] {
+        let rendered = event.payload["matrix_surface"].to_string();
+        for expected in ["slider", "toggle", "select", "button"] {
             assert!(rendered.contains(expected), "missing {expected}: {rendered}");
         }
+    }
+
+    #[test]
+    fn inferred_router_budget_slider_persists_integer_refreshes_and_rejects_stale_revision() {
+        let (data, _) = dirs("inferred-router-budget-slider");
+        let daemon = daemon(&data);
+        let outcome = daemon
+            .infer_surface_after_answer_with(
+                "main",
+                7,
+                "show a configuration dashboard with a router budget slider",
+                AnswerCompletion::TalkDone("Configuration is ready."),
+                std::time::Instant::now(),
+                decisions([Ok(inferred_ui::SurfaceDecision::Matrix {
+                    source: INFERRED_DASHBOARD.into(),
+                })]),
+            )
+            .unwrap();
+        assert_eq!(outcome, SurfaceInferenceOutcome::Committed);
+        let first_seq = daemon.log.max_seq().unwrap();
+        let changed = daemon
+            .call(
+                "ui.event",
+                json!({
+                    "thread":"main",
+                    "surface_contract":1,
+                    "surface_seq":first_seq,
+                    "node_path":[0,1],
+                    "event":"change",
+                    "args":{"field":"budgets.router","value":160.0}
+                }),
+            )
+            .unwrap();
+        assert_eq!(changed["rendered"]["ok"], true);
+        let refreshed = daemon
+            .log
+            .recent_kind_since("ui.surface", first_seq, 1)
+            .unwrap()
+            .pop()
+            .unwrap();
+        let refreshed_seq = refreshed.seq;
+        assert!(refreshed_seq > first_seq);
+        assert_eq!(daemon.config.lock().unwrap().get_json("budgets.router"), Some(json!(160)));
+        assert!(std::fs::read_to_string(data.join("config.toml"))
+            .unwrap()
+            .contains("router = 160"));
+        assert_eq!(
+            refreshed.payload["matrix_surface"]["root"]["children"][0]["children"][1]["value"],
+            160.0
+        );
+        let event_count = daemon.log.max_seq().unwrap();
+        let stale = daemon.call(
+            "ui.event",
+            json!({
+                "thread":"main",
+                "surface_contract":1,
+                "surface_seq":first_seq,
+                "node_path":[0,1],
+                "event":"change",
+                "args":{"field":"budgets.router","value":170.0}
+            }),
+        );
+        assert_eq!(stale.unwrap_err().code, codes::INVALID_PARAMS);
+        assert_eq!(daemon.config.lock().unwrap().get_json("budgets.router"), Some(json!(160)));
+        assert_eq!(daemon.log.max_seq().unwrap(), event_count);
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn altered_router_budget_slider_contracts_preserve_prior_surface_and_config() {
+        let (data, _) = dirs("router-budget-contract-drift");
+        let daemon = daemon(&data);
+        daemon
+            .render_matrix("main", "screen { text \"Prior\" }", true)
+            .unwrap();
+        let prior_seq = daemon.log.max_seq().unwrap();
+        let prior_surface = daemon.matrix_surfaces.lock().unwrap().clone();
+        let prior_source = daemon.matrix_sources.lock().unwrap().clone();
+        let prior_config = std::fs::read(data.join("config.toml")).unwrap();
+        for source in [
+            "screen { slider \"Router budget\" budgets.router min 40 max 1000 step 10 }",
+            "screen { slider \"Router budget\" budgets.router min 50 max 1010 step 10 }",
+            "screen { slider \"Router budget\" budgets.router min 50 max 1000 step 5 }",
+        ] {
+            let response = daemon.render_matrix("main", source, true).unwrap();
+            assert_eq!(response["ok"], false, "{source}");
+            assert_eq!(response["diagnostics"][0]["code"], "E_RESOLVE_CONSTRAINT");
+            assert_eq!(*daemon.matrix_surfaces.lock().unwrap(), prior_surface);
+            assert_eq!(*daemon.matrix_sources.lock().unwrap(), prior_source);
+            assert_eq!(std::fs::read(data.join("config.toml")).unwrap(), prior_config);
+            assert_eq!(
+                daemon
+                    .log
+                    .recent_kind_since("config.changed", i64::MIN, usize::MAX)
+                    .unwrap()
+                    .len(),
+                0
+            );
+        }
+        assert_eq!(
+            daemon
+                .log
+                .recent_kind_since("ui.surface", i64::MIN, 1)
+                .unwrap()[0]
+                .seq,
+            prior_seq
+        );
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
     }
 
     #[test]

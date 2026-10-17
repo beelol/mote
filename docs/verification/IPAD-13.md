@@ -171,3 +171,90 @@ The final draw-path assertion also counts native reads with the explicit overrid
 The fresh post-correction `cargo test --workspace -- --test-threads=4` run exited 0 in `/private/tmp/mote-motion-final-workspace-tests.log`. Its suite summaries total 748 passed, zero failed and 21 ignored. Workspace clippy exited 0 in `/private/tmp/mote-motion-workspace-clippy.log`. The final focused motion rerun passed four tests in `/private/tmp/mote-motion-final-focused-tests.log`. Host all-target clippy and both Apple target builds and clippy checks exited 0. Their exact commands and logs are recorded in [IPAD-06](IPAD-06.md#final-automated-source-verification). Ignored journeys are not acceptance evidence.
 
 The former live-branch override omission and missing system bridge are implemented. The production numeric-binding limitation and the remaining literal IPAD-13 journey requirements above remain open. No acceptance checkbox is changed.
+
+## Production numeric slider journey prepared
+
+Date: 2026-10-17, America/Los_Angeles.
+
+The ignored Simulator journey now replaces the typed slider fixture with four independent real daemon hosts. Each host starts with a trusted baseline that has a `models.local_only` toggle at path `[2]` and no slider. Each host then receives a fresh activation file and an actual scripted surface-model response through the production `turn` inference path. The response replaces that toggle with an exact `budgets.router` slider at path `[2]`.
+
+Each motion mode has separate transition and action runs. The transition run leaves the inferred replacement untouched and supplies the first, midpoint and settled timing evidence. The action run adds the explicit `--mote-live-transition-action` launch argument. The native probe then sends AccessKit `SetValue(160)` to the newly introduced control on its first replacement frame. The action run requires one accepted typed change on the replacement revision. It checks the exact generated node, replacement sequence, node path, field and value. It checks integer `config.changed` persistence from 150 to 160. It checks a later refreshed surface and rendered revision both carry 160. It checks that the later revision emits no stale local edit. It then sends 170 against the replaced revision through another authenticated paired client and requires an `InvalidParams` response with no new event and no config mutation.
+
+The transition run executes once normally and once with `--mote-reduced-motion`. Both preserve external Simulator video recording, binary frame-marker decoding and extraction of the before, first, midpoint and settled PNGs. The baseline has two measured line strokes. The replacement has three because it adds the slider rail. Normal mode requires the changed button border, moved header and footer rules, and newly introduced slider rail to own square particles on the first and midpoint frames, and no particles after 120 ms. The rail observation must have no prior geometry. Reduced motion requires zero particles, immediate changed solid strokes, red two-point pulse paths on the first and midpoint frames, and no pulse after settlement. Both modes require an unchanged stroke throughout. The separate action runs retain external video plus literal before and first-frame PNGs. They do not claim that the superseded first transition settles by 120 ms.
+
+The first live combined run in `/private/tmp/mote-ipad13-slider-20261017.VlCIuN` was red. Its first-frame change immediately committed a refreshed surface revision. That valid second revision restarted changed geometry, leaving 2,179 particles at 133 ms and reaching zero at 150 ms. The failure showed that one host run cannot prove both an untouched 120 ms replacement and first-frame mutation. It is diagnostic evidence only. The split four-host journey has not been run live yet.
+
+Focused non-live verification passed. These commands do not invoke a model or claim the literal Simulator evidence:
+
+```text
+cargo test -p mote-ios --lib probe::tests
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 30 filtered out
+
+cargo test -p mote-ios --test live_transition_simulator --no-run
+exit 0
+
+cargo check -p mote-ios --target aarch64-apple-ios-sim
+exit 0
+
+cargo clippy -p mote-ios --test live_transition_simulator -- -D warnings
+exit 0
+
+cargo clippy -p mote-ios --target aarch64-apple-ios-sim -- -D warnings
+exit 0
+```
+
+The remaining prerequisite is one live local surface benchmark to issue an activation file whose corpus and model digest match the current tree. This command is intentionally not run as part of the non-live implementation check:
+
+```text
+MOTE_HOME=/private/tmp/mote-ipad13-attestation-20261017 \
+MOTE_LIVE=1 \
+cargo run -p moted -- bench surface
+```
+
+After that prerequisite succeeds, the evidence journey itself invokes only the scripted local model server. It does not call a live model:
+
+```text
+MOTE_LIVE=1 \
+MOTE_SIMULATOR_ID=43F2F6ED-5C86-4121-B03F-40FE38891C4E \
+MOTE_ARTIFACTS=/private/tmp/mote-ipad13-slider-20261017 \
+MOTE_SURFACE_ATTESTATION=/private/tmp/mote-ipad13-attestation-20261017/surface-activation.json \
+cargo test -p mote-ios --test live_transition_simulator \
+paired_committed_replacement_captures_frames_and_first_frame_action \
+-- --ignored --nocapture
+```
+
+Expected artifact directories are `normal-transition`, `normal-action`, `reduced-motion-transition` and `reduced-motion-action` under `MOTE_ARTIFACTS`. Every directory contains `journey.mp4`, `events.json`, `capture/report.json`, `video-map.json` and `selected-frames.json`. Transition directories contain the before, first, midpoint and settled PNGs. Action directories contain before and first PNGs. IPAD-13 remains open until this literal paired run passes and its artifacts are retained.
+
+## Production slider journey complete
+
+Date: 2026-10-17, America/Los_Angeles. Environment: iPad Pro 11-inch M5 Simulator `43F2F6ED-5C86-4121-B03F-40FE38891C4E`, iOS 27.0 build 24A434, current production daemon and native client. The activation file was `/private/tmp/mote-ipad13-attestation-20261017.JRF2iJ/surface-activation.json`. Its benchmark recorded 197 of 200 first-try successes, 198 after retry and 3 of 3 slider cases on the first try.
+
+The literal four-host command passed:
+
+```text
+MOTE_LIVE=1 \
+MOTE_SIMULATOR_ID=43F2F6ED-5C86-4121-B03F-40FE38891C4E \
+MOTE_ARTIFACTS=/private/tmp/mote-ipad13-slider-20261017-split-green6 \
+MOTE_SURFACE_ATTESTATION=/private/tmp/mote-ipad13-attestation-20261017.JRF2iJ/surface-activation.json \
+cargo test -p mote-ios --test live_transition_simulator \
+paired_committed_replacement_captures_frames_and_first_frame_action \
+-- --ignored --nocapture
+
+test paired_committed_replacement_captures_frames_and_first_frame_action ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out
+```
+
+Each of the four paths used a fresh scripted model server and production daemon host. The normal transition captured 2,297 square particles on the first frame, 2,289 at 50.019 ms and zero at 133.433 ms. The reduced-motion transition captured zero particles, four red outline pulses on the first frame and at 49.764 ms, and zero pulses at 133.275 ms. Both retained the same unchanged rectangle at `[24, 594.6875, 83.03125, 36]`. The changed button border, header rule, footer rule and new slider rail retained their strict ownership and geometry assertions.
+
+The normal and reduced action paths both changed the new `budgets.router` control from 150 to 160 on its first replacement frame. Each required one typed `ui.event`, integer `config.changed` persistence, a refreshed surface and rendered revision carrying 160, no repeated local action and stale-revision rejection without another event or config change. Normal action owned 2,295 particles on its first frame. Reduced action owned zero particles and four outline pulses.
+
+The production live layout now reserves the chat area's existing 32 percent maximum height and disables vertical auto-shrink. This prevents newly appended chat messages from translating every Matrix stroke while an agent-generated replacement commits. The priming interaction waits for its refreshed surface and a 500 ms settlement window before measurement. Failed attempts under `split-green2` through `split-green5` exposed these harness and live-layout issues and are not passing evidence.
+
+Durable evidence:
+
+- [Normal transition](assets/IPAD-13/production-slider-20261017/normal-transition/selected-frames.json), with [first](assets/IPAD-13/production-slider-20261017/normal-transition/first.png), [midpoint](assets/IPAD-13/production-slider-20261017/normal-transition/midpoint.png) and [settled](assets/IPAD-13/production-slider-20261017/normal-transition/settled.png) frames.
+- [Normal action](assets/IPAD-13/production-slider-20261017/normal-action/selected-frames.json), with [first](assets/IPAD-13/production-slider-20261017/normal-action/first.png).
+- [Reduced transition](assets/IPAD-13/production-slider-20261017/reduced-motion-transition/selected-frames.json), with [first](assets/IPAD-13/production-slider-20261017/reduced-motion-transition/first.png), [midpoint](assets/IPAD-13/production-slider-20261017/reduced-motion-transition/midpoint.png) and [settled](assets/IPAD-13/production-slider-20261017/reduced-motion-transition/settled.png) frames.
+- [Reduced action](assets/IPAD-13/production-slider-20261017/reduced-motion-action/selected-frames.json), with [first](assets/IPAD-13/production-slider-20261017/reduced-motion-action/first.png).
+
+The original H.264 recordings and complete event streams remain under `/private/tmp/mote-ipad13-slider-20261017-split-green6`. IPAD-13 is complete.

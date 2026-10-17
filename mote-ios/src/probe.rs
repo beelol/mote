@@ -12,6 +12,81 @@ struct LiveTimeline {
     replacement: Option<(i64, f64)>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct GeneratedSliderTarget {
+    path: Vec<usize>,
+    field: String,
+    surface_value: f64,
+    value: f64,
+}
+
+fn generated_router_budget_slider(surface: &mote_ui::v1::Surface) -> Option<GeneratedSliderTarget> {
+    fn find(node: &mote_ui::v1::Node, path: &mut Vec<usize>) -> Option<GeneratedSliderTarget> {
+        use mote_ui::v1::Node;
+        match node {
+            Node::Slider {
+                field,
+                value,
+                max,
+                step,
+                ..
+            } if field == "budgets.router" => {
+                let increment = step.unwrap_or(1.0);
+                Some(GeneratedSliderTarget {
+                    path: path.clone(),
+                    field: field.clone(),
+                    surface_value: *value,
+                    value: (value + increment).min(*max),
+                })
+            }
+            Node::Screen { children, .. }
+            | Node::Col { children, .. }
+            | Node::Row { children, .. }
+            | Node::Header { children }
+            | Node::Footer { children } => {
+                for (index, child) in children.iter().enumerate() {
+                    path.push(index);
+                    let found = find(child, path);
+                    path.pop();
+                    if found.is_some() {
+                        return found;
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    find(&surface.root, &mut Vec::new())
+}
+
+fn red_outline_pulses(shapes: &[egui::Shape]) -> usize {
+    fn count(shape: &egui::Shape) -> usize {
+        match shape {
+            egui::Shape::Vec(shapes) => shapes.iter().map(count).sum(),
+            egui::Shape::Path(path)
+                if path.stroke.width == 2.0
+                    && matches!(
+                        &path.stroke.color,
+                        egui::epaint::ColorMode::Solid(color)
+                            if color.r() > color.g() && color.r() > color.b()
+                    ) =>
+            {
+                1
+            }
+            _ => 0,
+        }
+    }
+
+    shapes.iter().map(count).sum()
+}
+
+fn live_action_requested(args: impl IntoIterator<Item = String>) -> bool {
+    args.into_iter()
+        .any(|arg| arg == "--mote-live-transition-action")
+}
+
 impl LiveTimeline {
     fn observe(&mut self, revision: i64, time: f64) -> bool {
         let baseline = self.baseline.get_or_insert(revision);
@@ -130,6 +205,7 @@ pub(crate) mod native {
         frames: Vec<serde_json::Value>,
         directory: PathBuf,
         sequence: u32,
+        inject_action: bool,
         saved: bool,
     }
 
@@ -137,6 +213,7 @@ pub(crate) mod native {
         if !std::env::args().any(|arg| arg == "--mote-live-transition-probe") {
             return;
         }
+        let inject_action = live_action_requested(std::env::args());
         mote_client_core::transition::enable_materialization_observation(ctx);
         LIVE.with(|slot| {
             let mut slot = slot.borrow_mut();
@@ -156,6 +233,7 @@ pub(crate) mod native {
                     frames: Vec::new(),
                     directory,
                     sequence: 0,
+                    inject_action,
                     saved: false,
                 }
             });
@@ -175,6 +253,7 @@ pub(crate) mod native {
                     let report = serde_json::json!({
                         "frames":probe.frames,
                         "replacement":probe.timeline.replacement,
+                        "inject_action":probe.inject_action,
                         "present_timestamps":null,"scanout_timestamps":null,
                     });
                     std::fs::write(
@@ -192,7 +271,12 @@ pub(crate) mod native {
         });
     }
 
-    pub(crate) fn live_surface(ui: &egui::Ui, revision: i64, replacement_candidate: bool) {
+    pub(crate) fn live_surface(
+        ui: &egui::Ui,
+        revision: i64,
+        surface: &mote_ui::v1::Surface,
+        replacement_candidate: bool,
+    ) {
         LIVE.with(|slot| {
             let mut slot = slot.borrow_mut();
             let Some(probe) = slot.as_mut().filter(|probe| !probe.saved) else {
@@ -204,11 +288,30 @@ pub(crate) mod native {
                 probe.timeline.baseline = Some(revision);
             }
             let first = probe.timeline.observe(revision, time);
-            let target = ui
-                .id()
-                .with("matrix-contract-1")
-                .with(("button", vec![1_usize]));
-            if first {
+            let slider = generated_router_budget_slider(surface);
+            let target = slider.as_ref().map(|slider| {
+                ui.id()
+                    .with("matrix-contract-1")
+                    .with(("slider", slider.path.clone()))
+            });
+            if first && probe.inject_action {
+                let slider = slider.as_ref().expect("replacement router budget slider");
+                let target = target.expect("replacement router budget target");
+                ui.ctx().input_mut(|input| {
+                    input.events.push(egui::Event::AccessKitActionRequest(
+                        accesskit::ActionRequest {
+                            action: accesskit::Action::SetValue,
+                            target: target.value().into(),
+                            data: Some(accesskit::ActionData::NumericValue(slider.value)),
+                        },
+                    ))
+                });
+            }
+            if prime {
+                let target = ui
+                    .id()
+                    .with("matrix-contract-1")
+                    .with(("button", vec![0_usize, 0]));
                 ui.ctx().input_mut(|input| {
                     input.events.push(egui::Event::AccessKitActionRequest(
                         accesskit::ActionRequest {
@@ -219,15 +322,14 @@ pub(crate) mod native {
                     ))
                 });
             }
-            if prime {
-                let target = ui.id().with("matrix-contract-1").with(("button", vec![0_usize,0]));
-                ui.ctx().input_mut(|input| input.events.push(egui::Event::AccessKitActionRequest(
-                    accesskit::ActionRequest { action:accesskit::Action::Click,target:target.value().into(),data:None }
-                )));
-            }
             probe.frames.push(serde_json::json!({
                 "sequence":probe.sequence,"revision":revision,"time":time,
-                "immediate_action_target":first.then_some(target.value()),
+                "immediate_action_target":(first && probe.inject_action)
+                    .then(|| target.expect("replacement target").value()),
+                "slider_target":slider.as_ref().map(|slider| serde_json::json!({
+                    "path":slider.path,"field":slider.field,
+                    "surface_value":slider.surface_value,"value":slider.value,
+                })),
                 "paint_start":ui.ctx().graphics(|graphics| graphics.get(ui.layer_id()).map_or(0, |list| list.all_entries().count())),
             }));
         });
@@ -256,6 +358,25 @@ pub(crate) mod native {
                     serde_json::to_value(observation).expect("stroke observation");
                 observation["path"] = serde_json::json!([1]);
                 frame["changed_button"] = observation;
+            }
+            for (name, path, kind) in [
+                ("header_rule", &[0_usize][..], "header-rule"),
+                ("slider_rail", &[2_usize][..], "slider"),
+                ("footer_rule", &[3_usize][..], "footer-rule"),
+            ] {
+                if let Some(observation) =
+                    mote_client_core::transition::materialization_observation(
+                        ui.ctx(),
+                        transition_namespace,
+                        path,
+                        kind,
+                    )
+                {
+                    let mut observation =
+                        serde_json::to_value(observation).expect("stroke observation");
+                    observation["path"] = serde_json::json!(path);
+                    frame[name] = observation;
+                }
             }
             frame["emitted_events"] = serde_json::json!(events
                 .iter()
@@ -314,6 +435,10 @@ pub(crate) mod native {
             frame["particle_count"] = serde_json::json!(shapes
                 .iter()
                 .map(|clipped| particles(&clipped.shape))
+                .sum::<usize>());
+            frame["pulse_count"] = serde_json::json!(shapes
+                .iter()
+                .map(|clipped| red_outline_pulses(std::slice::from_ref(&clipped.shape)))
                 .sum::<usize>());
         });
     }
@@ -674,6 +799,61 @@ pub(crate) mod native {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generated_router_budget_slider_is_the_immediate_replacement_target() {
+        let surface = mote_ui::v1::validate(
+            &serde_json::to_vec(&serde_json::json!({
+                "version": 1,
+                "root": {"type": "screen", "children": [
+                    {"type": "button", "label": "Before", "event": "refresh"},
+                    {"type": "slider", "label": "Router budget", "field": "budgets.router",
+                        "value": 150, "min": 50, "max": 1000, "step": 10}
+                ]}
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let target = generated_router_budget_slider(&surface).unwrap();
+        assert_eq!(target.path, vec![1]);
+        assert_eq!(target.field, "budgets.router");
+        assert_eq!(target.surface_value, 150.0);
+        assert_eq!(target.value, 160.0);
+    }
+
+    #[test]
+    fn pulse_counter_only_counts_two_point_red_paths() {
+        use egui::{Color32, Pos2, Shape, Stroke};
+
+        let pulse = Shape::line(
+            vec![Pos2::ZERO, Pos2::new(10.0, 0.0)],
+            Stroke::new(2.0, Color32::from_rgb(255, 0, 0)),
+        );
+        let wrong_width = Shape::line(
+            vec![Pos2::ZERO, Pos2::new(10.0, 0.0)],
+            Stroke::new(1.0, Color32::from_rgb(255, 0, 0)),
+        );
+        let wrong_color = Shape::line(
+            vec![Pos2::ZERO, Pos2::new(10.0, 0.0)],
+            Stroke::new(2.0, Color32::WHITE),
+        );
+
+        assert_eq!(red_outline_pulses(&[pulse, wrong_width, wrong_color]), 1);
+    }
+
+    #[test]
+    fn live_transition_action_is_explicitly_opt_in() {
+        assert!(!live_action_requested([
+            "Mote".into(),
+            "--mote-live-transition-probe".into(),
+        ]));
+        assert!(live_action_requested([
+            "Mote".into(),
+            "--mote-live-transition-probe".into(),
+            "--mote-live-transition-action".into(),
+        ]));
+    }
 
     #[test]
     fn paired_capture_waits_for_a_replacement_and_tracks_its_first_frame() {

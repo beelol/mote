@@ -437,6 +437,7 @@ static void attachWindowToScene(void) {
 
 void mote_ios_attach_view(void *view) {
     MoteAccessibilityView = (__bridge UIView *)view;
+    mote_ios_appearance_attach(view);
     if (!MoteTextInput) MoteTextInput = [[MoteTextInputProxy alloc] initWithFrame:CGRectZero];
     if (MoteTextInput.superview != MoteAccessibilityView) {
         [MoteTextInput removeFromSuperview];

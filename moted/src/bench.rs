@@ -437,11 +437,19 @@ fn surface_corpus() -> Vec<SurfaceCase> {
             &format!("Show a compact {subject} panel with a refresh button."),
             true,
         ));
-        cases.push(SurfaceCase::new(
-            "field",
-            &format!("Show a compact {subject} form with the local-only field."),
-            true,
-        ));
+        if index < 3 {
+            cases.push(SurfaceCase::new(
+                "slider",
+                &format!("Show a compact {subject} slider for the router latency budget."),
+                true,
+            ));
+        } else {
+            cases.push(SurfaceCase::new(
+                "field",
+                &format!("Show a compact {subject} form with the local-only field."),
+                true,
+            ));
+        }
         cases.push(SurfaceCase::new(
             "list",
             &format!("Show a compact {subject} list using the available host items."),
@@ -519,6 +527,8 @@ struct AttemptTrace {
     matrix_parsed: bool,
     host_resolved: bool,
     v0_lowered: bool,
+    v1_lowered: bool,
+    exact_router_budget_slider: bool,
     none: bool,
     diagnostics: String,
     rejected_source: String,
@@ -532,6 +542,8 @@ impl AttemptTrace {
             matrix_parsed: false,
             host_resolved: false,
             v0_lowered: false,
+            v1_lowered: false,
+            exact_router_budget_slider: false,
             none: false,
             diagnostics: String::new(),
             rejected_source: String::new(),
@@ -554,12 +566,15 @@ impl AttemptTrace {
             matrix_parsed: true,
             host_resolved: false,
             v0_lowered: false,
+            v1_lowered: false,
+            exact_router_budget_slider: false,
             none: false,
             diagnostics: "host resolution failed".to_string(),
             rejected_source: "screen { text absent }".to_string(),
         }
     }
 
+    #[cfg(test)]
     fn valid_matrix() -> Self {
         Self {
             envelope_valid: true,
@@ -567,6 +582,8 @@ impl AttemptTrace {
             matrix_parsed: true,
             host_resolved: true,
             v0_lowered: true,
+            v1_lowered: true,
+            exact_router_budget_slider: false,
             none: false,
             diagnostics: String::new(),
             rejected_source: String::new(),
@@ -574,8 +591,10 @@ impl AttemptTrace {
     }
 
     fn valid_for(&self, case: &SurfaceCase) -> bool {
-        if case.expects_surface {
-            self.v0_lowered
+        if case.category == "slider" {
+            self.exact_router_budget_slider
+        } else if case.expects_surface {
+            self.v0_lowered || self.v1_lowered
         } else {
             self.none
         }
@@ -620,7 +639,7 @@ impl SurfaceMetrics {
                     "invalid_envelope".to_string()
                 } else if last.none {
                     format!("{}: unexpected_none", case.category)
-                } else if !case.expects_surface && last.v0_lowered {
+                } else if !case.expects_surface && (last.v0_lowered || last.v1_lowered) {
                     "unexpected_matrix".to_string()
                 } else {
                     format!("{}: {}", case.category, mote_redact::redact(&last.diagnostics))
@@ -659,12 +678,23 @@ fn surface_activation(evidence: Option<(usize, usize)>) -> bool {
     evidence.is_some_and(|(valid, samples)| samples > 0 && valid * 100 >= samples * 95)
 }
 
+fn required_slider_category_passes(
+    category_counts: &BTreeMap<String, usize>,
+    metrics: &SurfaceMetrics,
+) -> bool {
+    category_counts.get("slider").is_some_and(|expected| {
+        *expected > 0
+            && metrics.first_try_by_category.get("slider").copied() == Some(*expected)
+    })
+}
+
 fn default_surface_config() -> BTreeMap<String, Value> {
     BTreeMap::from([
         ("models.local_only".to_string(), json!(true)),
         ("models.talk".to_string(), json!("qwen3:4b")),
         ("models.router".to_string(), json!("qwen3:0.6b")),
         ("models.think".to_string(), json!("qwen3-coder:30b-64k")),
+        ("budgets.router".to_string(), json!(150)),
     ])
 }
 
@@ -723,13 +753,68 @@ fn evaluate_decision(
             };
         }
     };
-    match lower_v0(&resolved) {
-        Ok(_) => AttemptTrace::valid_matrix(),
-        Err(errors) => AttemptTrace {
+    let v0 = lower_v0(&resolved);
+    let v1 = lower_v1(&resolved);
+    if let Ok(matrix) = &v1 {
+        if let Err(error) = matrix::validate_router_budget_sliders(matrix, parsed.screen.span) {
+            return AttemptTrace {
+                envelope_valid: true,
+                matrix_decision: true,
+                matrix_parsed: true,
+                host_resolved: true,
+                v0_lowered: false,
+                v1_lowered: false,
+                exact_router_budget_slider: false,
+                none: false,
+                diagnostics: matrix::diagnostics(&[error]).to_string(),
+                rejected_source: mote_redact::redact(&source),
+            };
+        }
+    }
+    match (v0, v1) {
+        (Ok(_), Ok(matrix)) => AttemptTrace {
             envelope_valid: true,
             matrix_decision: true,
             matrix_parsed: true,
             host_resolved: true,
+            v0_lowered: true,
+            v1_lowered: true,
+            exact_router_budget_slider: matrix::has_exact_router_budget_slider(&matrix),
+            none: false,
+            diagnostics: String::new(),
+            rejected_source: String::new(),
+        },
+        (Ok(_), Err(_)) => AttemptTrace {
+            envelope_valid: true,
+            matrix_decision: true,
+            matrix_parsed: true,
+            host_resolved: true,
+            v0_lowered: true,
+            v1_lowered: false,
+            exact_router_budget_slider: false,
+            none: false,
+            diagnostics: String::new(),
+            rejected_source: String::new(),
+        },
+        (Err(_), Ok(matrix)) => AttemptTrace {
+            envelope_valid: true,
+            matrix_decision: true,
+            matrix_parsed: true,
+            host_resolved: true,
+            v0_lowered: false,
+            v1_lowered: true,
+            exact_router_budget_slider: matrix::has_exact_router_budget_slider(&matrix),
+            none: false,
+            diagnostics: String::new(),
+            rejected_source: String::new(),
+        },
+        (Err(errors), Err(_)) => AttemptTrace {
+            envelope_valid: true,
+            matrix_decision: true,
+            matrix_parsed: true,
+            host_resolved: true,
+            v1_lowered: false,
+            exact_router_budget_slider: false,
             diagnostics: matrix::diagnostics(&errors).to_string(),
             rejected_source: mote_redact::redact(&source),
             ..AttemptTrace::envelope_failure()
@@ -756,7 +841,7 @@ fn bench_surface_cases(
             inferred_ui::generate_surface(log, store, client, &first_inputs),
             &bindings,
         );
-        let retry = first.matrix_decision && !first.v0_lowered;
+        let retry = first.matrix_decision && !first.valid_for(case);
         let mut attempts = vec![first];
         if retry {
             let retry_inputs = inferred_ui::SurfaceInputs {
@@ -822,7 +907,10 @@ fn unavailable_surface_report(cases: &[SurfaceCase], reason: String) -> SurfaceR
 }
 
 fn persist_surface_gate(data_dir: &Path, report: &mut SurfaceReport) -> std::io::Result<()> {
-    let valid = if report.status == "complete" && report.reason.is_none() {
+    let valid = if report.status == "complete"
+        && report.reason.is_none()
+        && required_slider_category_passes(&report.category_counts, &report.metrics)
+    {
         report.metrics.first_attempt_valid
     } else {
         0
@@ -884,10 +972,15 @@ fn run_surface(log: &EventLog, store: &ContextStore, client: &Ollama) -> Surface
                 } else {
                     Some("model digest changed during benchmark".to_string())
                 },
-                activation_passed: stable_digest && surface_activation(Some((
-                    metrics.first_attempt_valid,
-                    metrics.samples,
-                ))),
+                activation_passed: stable_digest
+                    && required_slider_category_passes(
+                        &surface_category_counts(&cases),
+                        &metrics,
+                    )
+                    && surface_activation(Some((
+                        metrics.first_attempt_valid,
+                        metrics.samples,
+                    ))),
                 metrics,
             }
         },
@@ -1268,6 +1361,58 @@ mod tests {
     }
 
     #[test]
+    fn surface_evaluation_accepts_a_v1_router_budget_slider() {
+        let trace = evaluate_decision(
+            Ok(inferred_ui::SurfaceDecision::Matrix {
+                source: "screen { slider \"Router budget\" budgets.router min 50 max 1000 step 10 }"
+                    .to_string(),
+            }),
+            &surface_bindings().unwrap(),
+        );
+        assert!(trace.v1_lowered, "{}", trace.diagnostics);
+        assert!(trace.valid_for(&SurfaceCase::new(
+            "slider",
+            "show a router budget slider",
+            true,
+        )));
+    }
+
+    #[test]
+    fn slider_case_requires_the_exact_lowered_router_budget_contract() {
+        let case = SurfaceCase::new("slider", "show a router budget slider", true);
+        for source in [
+            "screen { text \"Not a slider\" }",
+            "screen { slider \"Router budget\" budgets.router min 50 max 1000 step 5 }",
+            "screen { slider \"Router budget\" budgets.router min 50 max 1000 step 10 }",
+        ] {
+            let trace = evaluate_decision(
+                Ok(inferred_ui::SurfaceDecision::Matrix {
+                    source: source.to_string(),
+                }),
+                &surface_bindings().unwrap(),
+            );
+            assert_eq!(trace.valid_for(&case), source.ends_with("step 10 }"), "{source}");
+        }
+    }
+
+    #[test]
+    fn non_slider_case_rejects_a_surface_with_a_drifted_router_budget_slider() {
+        let trace = evaluate_decision(
+            Ok(inferred_ui::SurfaceDecision::Matrix {
+                source: "screen { text \"Status\" slider \"Router budget\" budgets.router min 50 max 1000 step 5 }"
+                    .to_string(),
+            }),
+            &surface_bindings().unwrap(),
+        );
+        assert!(!trace.valid_for(&SurfaceCase::new(
+            "text",
+            "show status text",
+            true,
+        )));
+        assert!(trace.diagnostics.contains("budgets.router"));
+    }
+
+    #[test]
     fn surface_report_records_only_complete_exact_digest_evidence() {
         let dir = std::env::temp_dir().join(format!("mote-bench-gate-{}-{}", std::process::id(), crate::now_ms()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -1279,6 +1424,12 @@ mod tests {
         assert!(!dir.join("surface-activation.json").exists());
         report.status = "complete";
         report.reason = None;
+        report.metrics.first_try_by_category.insert("slider".into(), 2);
+        report.metrics.first_attempt_valid = 190;
+        persist_surface_gate(&dir, &mut report).unwrap();
+        assert!(!report.activation_passed);
+        assert!(!dir.join("surface-activation.json").exists());
+        report.metrics.first_try_by_category.insert("slider".into(), 3);
         persist_surface_gate(&dir, &mut report).unwrap();
         assert!(report.activation_passed);
         let attestation: Value = serde_json::from_slice(&std::fs::read(dir.join("surface-activation.json")).unwrap()).unwrap();
@@ -1322,12 +1473,16 @@ mod tests {
             diagnostics: "",
         });
         let examples: Vec<_> = prompt[0].lines().filter(|line| line.starts_with('{')).collect();
-        assert_eq!(examples.len(), 11, "one abstention and ten supported shapes");
+        assert_eq!(examples.len(), 12, "one abstention and eleven supported shapes");
         for example in examples {
             let decision = mote_localmodel::parse_verdict::<inferred_ui::SurfaceDecision>(example)
                 .unwrap();
-            let trace = evaluate_decision(Ok(decision), &bindings);
-            assert!(trace.none || trace.v0_lowered, "{}", trace.diagnostics);
+            match decision {
+                inferred_ui::SurfaceDecision::None => {}
+                inferred_ui::SurfaceDecision::Matrix { source } => {
+                    matrix::compile_contract(&source, &bindings).unwrap();
+                }
+            }
         }
     }
 
@@ -1338,18 +1493,19 @@ mod tests {
         assert_eq!(corpus.len(), 200);
         assert_eq!(
             surface_corpus_hash(&corpus),
-            "447a7a73f4669a6450bf88a9e1ab5bc03f914c2ab70d213f3d398e49980a5d2d"
+            "0dc26f26f04ad10e25267e1c6411ac93c55a0fcc7b26ee97f399bceb3dd7b214"
         );
         assert_eq!(
             surface_category_counts(&corpus),
             [
                 ("action", 18),
-                ("field", 18),
+                ("field", 15),
                 ("list", 18),
                 ("none", 20),
                 ("progress", 18),
                 ("row", 18),
                 ("select", 18),
+                ("slider", 3),
                 ("stack", 18),
                 ("table", 18),
                 ("text", 18),

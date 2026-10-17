@@ -9,6 +9,8 @@ pub struct MoteApp {
     last_event: String,
     reduced_motion: bool,
     #[cfg(target_os = "ios")]
+    appearance_bridge: Option<crate::appearance::Bridge>,
+    #[cfg(target_os = "ios")]
     motion_bridge: Option<crate::motion::Bridge>,
     live: Option<crate::live::LiveRuntime>,
     first_run: Option<crate::first_run::FirstRun>,
@@ -24,6 +26,8 @@ impl Default for MoteApp {
             last_event: "No interaction yet".into(),
             reduced_motion: false,
             #[cfg(target_os = "ios")]
+            appearance_bridge: None,
+            #[cfg(target_os = "ios")]
             motion_bridge: None,
             live: None,
             first_run: None,
@@ -35,6 +39,8 @@ impl Default for MoteApp {
 
 impl eframe::App for MoteApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        #[cfg(target_os = "ios")]
+        crate::appearance::sync(ctx);
         #[cfg(all(target_os = "ios", target_abi = "sim"))]
         crate::probe::native::live_begin(ctx);
         #[cfg(target_os = "ios")]
@@ -67,6 +73,10 @@ impl eframe::App for MoteApp {
 
 impl MoteApp {
     pub fn attach_live(&mut self, ctx: &egui::Context) {
+        #[cfg(target_os = "ios")]
+        if self.appearance_bridge.is_none() {
+            self.appearance_bridge = Some(crate::appearance::Bridge::install(ctx));
+        }
         #[cfg(target_os = "ios")]
         if self.motion_bridge.is_none() {
             self.motion_bridge = Some(crate::motion::Bridge::install(ctx));

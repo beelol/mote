@@ -330,6 +330,23 @@ pub struct HostConfig {
     pub offer: Option<String>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum CredentialSource<'a> {
+    Pair(&'a str),
+    Stored,
+    Missing,
+}
+
+fn credential_source(config: &HostConfig, credential_exists: bool) -> CredentialSource<'_> {
+    if let Some(offer) = config.offer.as_deref() {
+        CredentialSource::Pair(offer)
+    } else if credential_exists {
+        CredentialSource::Stored
+    } else {
+        CredentialSource::Missing
+    }
+}
+
 pub struct LiveRuntime {
     pub(crate) directory: HostDirectory,
     pub(crate) rx: Receiver<HostUpdate>,
@@ -712,9 +729,12 @@ impl LiveRuntime {
                 .host(&host)
                 .map_or("Host", |paired| paired.name())
                 .to_owned();
+            let chat_height = ui.available_height() * 0.32;
             egui::ScrollArea::vertical()
                 .id_salt(("live-chat", &host))
-                .max_height(ui.available_height() * 0.32)
+                .max_height(chat_height)
+                .min_scrolled_height(chat_height)
+                .auto_shrink([true, false])
                 .show(ui, |ui| {
                     for message in messages {
                         let id =
@@ -796,7 +816,7 @@ impl LiveRuntime {
                             ui.add_enabled_ui(online, |ui| {
                                 let transition_namespace = egui::Id::new(("live-surface-transition", &host, &surface.thread));
                                 #[cfg(all(target_os = "ios", target_abi = "sim"))]
-                                crate::probe::native::live_surface(ui, surface.surface_seq,
+                                crate::probe::native::live_surface(ui, surface.surface_seq, &surface_tree,
                                     matches!(&surface_tree.root, mote_ui::v1::Node::Screen {children,..} if matches!(children.get(1),Some(mote_ui::v1::Node::Button {label,..}) if label == "Replacement")));
                                 mote_client_core::surface_v1::draw_with_transition_namespace(
                                     ui,
@@ -990,49 +1010,56 @@ fn attach_host<S: CredentialStore<Credential = StoredCredential> + Send + 'stati
         .map_err(|_| anyhow::anyhow!("credential store unavailable"))?
         .load(&id)?
         .is_some();
-    let mut network = if credential_exists {
-        let mut connected = NetworkHost::connect(
-            id.clone(),
-            config.endpoint,
-            gateway_config.clone(),
-            store.clone(),
-        );
-        if connected.is_err() {
-            for record in &records {
-                let expected = mote_gateway::discovery::DiscoveryRecord::new(
-                    record.endpoint,
-                    1,
-                    &config.public_key,
-                )?;
-                if record.protocol_major != 1 || record.fingerprint != expected.fingerprint {
-                    continue;
-                }
-                connected = NetworkHost::connect(
-                    id.clone(),
-                    record.endpoint,
+    let (mut network, credential_kind) = match credential_source(&config, credential_exists) {
+        CredentialSource::Pair(offer) => {
+            ensure!(
+                ClientCredential::from_pairing_code(&gateway_config, offer)?.host_id() == &id,
+                "pairing offer has a different host identity"
+            );
+            (
+                NetworkHost::pair(
+                    config.endpoint,
                     gateway_config.clone(),
+                    offer,
+                    "Mote iPad",
                     store.clone(),
-                );
-                if connected.is_ok() {
-                    break;
+                )?,
+                "paired",
+            )
+        }
+        CredentialSource::Stored => {
+            let mut connected = NetworkHost::connect(
+                id.clone(),
+                config.endpoint,
+                gateway_config.clone(),
+                store.clone(),
+            );
+            if connected.is_err() {
+                for record in &records {
+                    let expected = mote_gateway::discovery::DiscoveryRecord::new(
+                        record.endpoint,
+                        1,
+                        &config.public_key,
+                    )?;
+                    if record.protocol_major != 1 || record.fingerprint != expected.fingerprint {
+                        continue;
+                    }
+                    connected = NetworkHost::connect(
+                        id.clone(),
+                        record.endpoint,
+                        gateway_config.clone(),
+                        store.clone(),
+                    );
+                    if connected.is_ok() {
+                        break;
+                    }
                 }
             }
+            (connected?, "keychain_restored")
         }
-        connected?
-    } else if let Some(offer) = &config.offer {
-        ensure!(
-            ClientCredential::from_pairing_code(&gateway_config, offer)?.host_id() == &id,
-            "pairing offer has a different host identity"
-        );
-        NetworkHost::pair(
-            config.endpoint,
-            gateway_config.clone(),
-            offer,
-            "Mote iPad",
-            store.clone(),
-        )?
-    } else {
-        anyhow::bail!("Host requires a new owner-present pairing");
+        CredentialSource::Missing => {
+            anyhow::bail!("Host requires a new owner-present pairing");
+        }
     };
     ensure!(
         network.host_id() == &id,
@@ -1040,7 +1067,7 @@ fn attach_host<S: CredentialStore<Credential = StoredCredential> + Send + 'stati
     );
     network_evidence(
         config_path,
-        serde_json::json!({"kind":if credential_exists {"keychain_restored"} else {"paired"},"host_id":id,"endpoint":network.endpoint(),"saved_cursor":cursor.seq}),
+        serde_json::json!({"kind":credential_kind,"host_id":id,"endpoint":network.endpoint(),"saved_cursor":cursor.seq}),
     )?;
     for record in records {
         if mote_gateway::discovery::DiscoveryRecord::new(record.endpoint, 1, &config.public_key)?
@@ -1247,6 +1274,21 @@ mod recovery_tests {
             self.0.remove(id);
             Ok(())
         }
+    }
+
+    #[test]
+    fn owner_present_offer_takes_precedence_over_saved_credential() {
+        let config = HostConfig {
+            name: "Fresh pairing".into(),
+            public_key: [7; 32],
+            endpoint: "127.0.0.1:47810".parse().unwrap(),
+            offer: Some("MOTE1-owner-present".into()),
+        };
+
+        assert!(matches!(
+            credential_source(&config, true),
+            CredentialSource::Pair("MOTE1-owner-present")
+        ));
     }
 
     struct Forward<D: Dispatch>(mote_testkit::gateway::LoopbackHost<D>);

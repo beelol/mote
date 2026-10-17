@@ -16,6 +16,10 @@ void mote_ios_text_input_publish(const uint8_t *bytes, size_t length);
 void mote_ios_text_input_update(uint64_t id, const uint8_t *bytes, size_t length,
                                 size_t selection_start, size_t selection_end);
 void mote_ios_text_input_return(uint64_t id);
+void mote_ios_appearance_attach(void *view);
+uint8_t mote_ios_appearance(void);
+void *mote_ios_appearance_observe(void (*changed)(void));
+void mote_ios_appearance_remove(void *observer);
 uint8_t mote_ios_reduce_motion_enabled(void);
 void *mote_ios_motion_observe(void (*changed)(void));
 void mote_ios_motion_remove(void *observer);
