@@ -100,7 +100,7 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
 
 - (void)testNativeTextBridgeSupportsEdgeFocusHardwareEditingAndEditMenu {
     XCUIApplication *app = [XCUIApplication new];
-    app.launchArguments = @[@"--mote-offline"];
+    app.launchArguments = @[@"--mote-offline", @"--mote-test-pasteboard", @"pasted"];
     [app launch];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
 
@@ -118,7 +118,6 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     [editable typeText:@"X"];
     [self assertValue:@"abcXd" element:editable];
 
-    UIPasteboard.generalPasteboard.string = @"pasted";
     [editable doubleTap];
     XCUIElement *paste = [self nativeElement:@"Paste" app:app];
     XCTAssertTrue([paste waitForExistenceWithTimeout:5]);

@@ -84,6 +84,30 @@ xcodebuild test-without-building \
   -only-testing:MoteUITests/MoteUITests/testNativeTextBridgeSupportsEdgeFocusHardwareEditingAndEditMenu
 ```
 
-The physical test is waiting for the iPad to be unlocked. Marked-text composition and dictation
-still require observed runs on the physical device. IPAD-14 remains unchecked until those checks and
-the queued physical flow pass.
+On 2026-10-16 the unlocked iPad ran the selected test. The first run reached the native Paste menu,
+but the XCTest runner could not replace the physical device pasteboard. UIKit pasted the existing
+iPad clipboard instead. The runner logged `PBErrorDomain` codes 10 and 11. This proved the edit menu
+used the real device pasteboard, but made the expected value nondeterministic.
+
+The UI test now passes `--mote-test-pasteboard pasted`. The app handles that launch argument before
+starting Rust and seeds its own pasteboard. A red physical run without the handler failed with the
+old iPad clipboard value. The corrected signed build passed the identical test.
+
+Command:
+
+```text
+xcodebuild test-without-building \
+  -xctestrun /private/tmp/mote-native-text-green-signed2/Build/Products/Mote_iphoneos27.0-arm64.xctestrun \
+  -destination 'platform=iOS,id=00008132-001104661AB9001C' \
+  -resultBundlePath /private/tmp/mote-native-text-green-signed2.xcresult \
+  -only-testing:MoteUITests/MoteUITests/testNativeTextBridgeSupportsEdgeFocusHardwareEditingAndEditMenu
+```
+
+Output: `TEST EXECUTE SUCCEEDED`. The physical test passed in 24.743 seconds. It tapped the right
+edge of the 48-point field, observed the system keyboard, typed `abcd`, moved the cursor left with a
+hardware-key event, inserted `X` to produce `abcXd`, and exercised native Paste, Copy and Cut. Cut
+cleared the field. A long press exposed Paste and restored `pasted`. The result bundle contains the
+attachment `native-text-edit-menu`.
+
+Marked-text composition and spoken dictation still require observed runs with the physical iPad
+software keyboard. IPAD-14 remains unchecked until those two observations are recorded.

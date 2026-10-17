@@ -439,6 +439,11 @@ MoteInsets mote_ios_safe_area(void) {
 
 int main(int argc, char *argv[]) {
     @autoreleasepool {
+        NSArray<NSString *> *arguments = NSProcessInfo.processInfo.arguments;
+        NSUInteger pasteboard = [arguments indexOfObject:@"--mote-test-pasteboard"];
+        if (pasteboard != NSNotFound && pasteboard + 1 < arguments.count) {
+            UIPasteboard.generalPasteboard.string = arguments[pasteboard + 1];
+        }
         mote_ios_main();
     }
 }
