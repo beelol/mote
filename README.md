@@ -65,6 +65,16 @@ The dashboard demonstrates an anchored header and footer, a stretching body, a t
 selects and a Refresh action. Configuration changes go through the daemon and apply on the next
 turn.
 
+Once `moted install` has registered the persistent Mac host, these commands control only Mote's
+`com.mote.moted` LaunchAgent. Stop preserves the installed service, configuration and data.
+
+```text
+moted host start
+moted host status
+moted host restart
+moted host stop
+```
+
 ## Ready for Go
 
 ### Continue development

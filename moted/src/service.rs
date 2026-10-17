@@ -12,7 +12,16 @@ pub const LABEL: &str = "com.mote.moted";
 
 struct CommandResult {
     success: bool,
+    stdout: Vec<u8>,
     stderr: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostAction {
+    Start,
+    Status,
+    Restart,
+    Stop,
 }
 
 /// Path of the LaunchAgent plist.
@@ -83,11 +92,102 @@ pub fn uninstall() -> Result<(), String> {
         let output = std::process::Command::new(program).args(args).output()?;
         Ok(CommandResult {
             success: output.status.success(),
+            stdout: output.stdout,
             stderr: output.stderr,
         })
     })?;
     println!("removed {LABEL}");
     Ok(())
+}
+
+pub fn host(action: HostAction) -> Result<String, String> {
+    let uid = current_uid()?;
+    host_with(action, &plist_path(), uid, |program, args| {
+        let output = std::process::Command::new(program).args(args).output()?;
+        Ok(CommandResult {
+            success: output.status.success(),
+            stdout: output.stdout,
+            stderr: output.stderr,
+        })
+    })
+}
+
+fn current_uid() -> Result<u32, String> {
+    let output = std::process::Command::new("id")
+        .arg("-u")
+        .output()
+        .map_err(|error| format!("could not determine user id: {error}"))?;
+    if !output.status.success() {
+        return Err("could not determine user id".to_string());
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse()
+        .map_err(|error| format!("invalid user id: {error}"))
+}
+
+fn host_with<F>(
+    action: HostAction,
+    plist: &Path,
+    uid: u32,
+    mut run: F,
+) -> Result<String, String>
+where
+    F: FnMut(&str, &[&OsStr]) -> std::io::Result<CommandResult>,
+{
+    let domain = format!("gui/{uid}");
+    let target = format!("{domain}/{LABEL}");
+    let args = match action {
+        HostAction::Start => vec![
+            OsStr::new("bootstrap"),
+            OsStr::new(&domain),
+            plist.as_os_str(),
+        ],
+        HostAction::Status => vec![OsStr::new("print"), OsStr::new(&target)],
+        HostAction::Restart => vec![
+            OsStr::new("kickstart"),
+            OsStr::new("-k"),
+            OsStr::new(&target),
+        ],
+        HostAction::Stop => vec![OsStr::new("bootout"), OsStr::new(&target)],
+    };
+    let result = run("launchctl", &args)
+        .map_err(|error| format!("could not run launchctl: {error}"))?;
+    if !result.success {
+        let detail = String::from_utf8_lossy(&result.stderr);
+        let detail = detail.trim();
+        return if detail.is_empty() {
+            Err(format!("launchctl {} failed", action.name()))
+        } else {
+            Err(format!("launchctl {} failed: {detail}", action.name()))
+        };
+    }
+    let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
+    Ok(if stdout.is_empty() {
+        format!("{} {LABEL}", action.past_tense())
+    } else {
+        stdout
+    })
+}
+
+impl HostAction {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Status => "status",
+            Self::Restart => "restart",
+            Self::Stop => "stop",
+        }
+    }
+
+    fn past_tense(self) -> &'static str {
+        match self {
+            Self::Start => "started",
+            Self::Status => "reported",
+            Self::Restart => "restarted",
+            Self::Stop => "stopped",
+        }
+    }
 }
 
 fn uninstall_with<F>(plist: &Path, run: F) -> Result<(), String>
@@ -115,6 +215,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ok() -> CommandResult {
+        CommandResult {
+            success: true,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+        }
+    }
 
     fn plist_fixture(name: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!(
@@ -149,6 +257,7 @@ mod tests {
             );
             Ok(CommandResult {
                 success: false,
+                stdout: Vec::new(),
                 stderr: b"service is busy\n".to_vec(),
             })
         })
@@ -171,6 +280,7 @@ mod tests {
             );
             Ok(CommandResult {
                 success: false,
+                stdout: Vec::new(),
                 stderr: Vec::new(),
             })
         })
@@ -215,6 +325,7 @@ mod tests {
             );
             Ok(CommandResult {
                 success: true,
+                stdout: Vec::new(),
                 stderr: Vec::new(),
             })
         })
@@ -230,9 +341,123 @@ mod tests {
             );
             Ok(CommandResult {
                 success: true,
+                stdout: Vec::new(),
                 stderr: Vec::new(),
             })
         })
         .unwrap();
+    }
+
+    #[test]
+    fn host_start_bootstraps_only_the_mote_launch_agent() {
+        let plist = Path::new("/Users/test/Library/LaunchAgents/com.mote.moted.plist");
+        let mut calls = Vec::new();
+
+        host_with(HostAction::Start, plist, 501, |program, args| {
+            calls.push((
+                program.to_string(),
+                args.iter().map(|arg| arg.to_os_string()).collect::<Vec<_>>(),
+            ));
+            Ok(ok())
+        })
+        .unwrap();
+
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "launchctl");
+        assert_eq!(
+            calls[0].1,
+            [OsStr::new("bootstrap"), OsStr::new("gui/501"), plist.as_os_str()]
+        );
+    }
+
+    #[test]
+    fn host_stop_boots_out_only_the_mote_launch_agent() {
+        let plist = Path::new("/Users/test/Library/LaunchAgents/com.mote.moted.plist");
+        let mut calls = Vec::new();
+
+        host_with(HostAction::Stop, plist, 501, |program, args| {
+            calls.push((
+                program.to_string(),
+                args.iter().map(|arg| arg.to_os_string()).collect::<Vec<_>>(),
+            ));
+            Ok(ok())
+        })
+        .unwrap();
+
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0].1,
+            [OsStr::new("bootout"), OsStr::new("gui/501/com.mote.moted")]
+        );
+    }
+
+    #[test]
+    fn host_restart_kickstarts_only_the_mote_launch_agent() {
+        let plist = Path::new("/Users/test/Library/LaunchAgents/com.mote.moted.plist");
+        let mut calls = Vec::new();
+
+        host_with(HostAction::Restart, plist, 501, |program, args| {
+            calls.push((
+                program.to_string(),
+                args.iter().map(|arg| arg.to_os_string()).collect::<Vec<_>>(),
+            ));
+            Ok(ok())
+        })
+        .unwrap();
+
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0].1,
+            [
+                OsStr::new("kickstart"),
+                OsStr::new("-k"),
+                OsStr::new("gui/501/com.mote.moted")
+            ]
+        );
+    }
+
+    #[test]
+    fn host_status_prints_only_the_mote_launch_agent() {
+        let plist = Path::new("/Users/test/Library/LaunchAgents/com.mote.moted.plist");
+        let mut calls = Vec::new();
+
+        host_with(HostAction::Status, plist, 501, |program, args| {
+            calls.push((
+                program.to_string(),
+                args.iter().map(|arg| arg.to_os_string()).collect::<Vec<_>>(),
+            ));
+            Ok(ok())
+        })
+        .unwrap();
+
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0].1,
+            [OsStr::new("print"), OsStr::new("gui/501/com.mote.moted")]
+        );
+    }
+
+    #[test]
+    fn host_actions_preserve_the_plist_when_launchctl_fails() {
+        for action in [
+            HostAction::Start,
+            HostAction::Status,
+            HostAction::Restart,
+            HostAction::Stop,
+        ] {
+            let plist = plist_fixture(action.name());
+            let error = host_with(action, &plist, 501, |_program, _args| {
+                Ok(CommandResult {
+                    success: false,
+                    stdout: Vec::new(),
+                    stderr: b"not permitted\n".to_vec(),
+                })
+            })
+            .unwrap_err();
+
+            assert!(plist.exists());
+            assert!(error.contains("not permitted"));
+            std::fs::remove_file(plist).unwrap();
+        }
     }
 }

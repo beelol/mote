@@ -4624,6 +4624,12 @@ fn main() {
             eprintln!("moted uninstall: {e}");
             1
         }),
+        OwnerCommand::Host(action) => service::host(action)
+            .map(|message| println!("{message}"))
+            .map_err(|error| {
+                eprintln!("moted host {}: {error}", action.name());
+                1
+            }),
         OwnerCommand::Run => run(),
         OwnerCommand::Invalid(message) => {
             eprintln!("moted: {message}");
@@ -4646,6 +4652,7 @@ enum OwnerCommand {
     Confirm { client_id: String, approved: bool },
     Install,
     Uninstall,
+    Host(service::HostAction),
     Invalid(String),
 }
 
@@ -4669,8 +4676,18 @@ impl OwnerCommand {
             },
             [command] if command == "install" => Self::Install,
             [command] if command == "uninstall" => Self::Uninstall,
+            [command, action] if command == "host" => match action.as_str() {
+                "start" => Self::Host(service::HostAction::Start),
+                "status" => Self::Host(service::HostAction::Status),
+                "restart" => Self::Host(service::HostAction::Restart),
+                "stop" => Self::Host(service::HostAction::Stop),
+                _ => Self::Invalid(
+                    "usage: moted host [start|status|restart|stop]".into(),
+                ),
+            },
             _ => Self::Invalid(
-                "usage: moted [status|pair|pending|confirm CLIENT_ID|deny CLIENT_ID]".into(),
+                "usage: moted [status|pair|pending|confirm CLIENT_ID|deny CLIENT_ID|host ACTION]"
+                    .into(),
             ),
         }
     }
@@ -4817,7 +4834,7 @@ fn run_gateway_command(method: &str, params: Value) -> Result<(), i32> {
 
 #[cfg(test)]
 mod owner_command_tests {
-    use super::OwnerCommand;
+    use super::{service::HostAction, OwnerCommand};
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_string()).collect()
@@ -4836,6 +4853,30 @@ mod owner_command_tests {
             OwnerCommand::Confirm { client_id: "ipad-1".into(), approved: false }
         );
         assert!(matches!(OwnerCommand::parse(&args(&["confirm"])), OwnerCommand::Invalid(_)));
+    }
+
+    #[test]
+    fn parses_mote_host_lifecycle_commands() {
+        assert_eq!(
+            OwnerCommand::parse(&args(&["host", "start"])),
+            OwnerCommand::Host(HostAction::Start)
+        );
+        assert_eq!(
+            OwnerCommand::parse(&args(&["host", "status"])),
+            OwnerCommand::Host(HostAction::Status)
+        );
+        assert_eq!(
+            OwnerCommand::parse(&args(&["host", "restart"])),
+            OwnerCommand::Host(HostAction::Restart)
+        );
+        assert_eq!(
+            OwnerCommand::parse(&args(&["host", "stop"])),
+            OwnerCommand::Host(HostAction::Stop)
+        );
+        assert!(matches!(
+            OwnerCommand::parse(&args(&["host", "remove"])),
+            OwnerCommand::Invalid(_)
+        ));
     }
 }
 
