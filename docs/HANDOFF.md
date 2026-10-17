@@ -1,20 +1,17 @@
 # Current development handoff
 
-Updated 2026-10-14 in America/Los_Angeles. This file is a replacement snapshot.
+Updated 2026-10-16 in America/Los_Angeles. This file is a replacement snapshot.
 
 ## Current goal
 
 IPAD-14 adds one reusable UIKit text-input bridge beneath Matrix and egui fields. Egui remains the
-visual renderer. The bridge now covers generated fields, first-run pairing, offline preview and live
+visual renderer. The bridge covers generated fields, first-run pairing, offline preview and live
 chat. It exposes a 48-point native editing surface with the system keyboard, cursor and selection
 state, marked text, dictation, hardware-keyboard events and native copy, cut and paste menus.
 
-The iPad Simulator UI test passes. The full Rust workspace suite and clippy pass. A signed Debug app
-is installed on the physical iPad. A Mote-only UI test runner App ID and development profile were
-created for physical automation. The physical UI test is waiting because the iPad is locked. After
-unlock, rerun or resume the selected UI test, then observe marked-text composition and dictation on
-the device. Keep IPAD-14 unchecked until those physical observations are recorded in
-`docs/verification/IPAD-14.md`.
+Automated physical-device verification now passes for edge focus, typing, cursor movement and the
+native Copy, Cut and Paste flows. Manual marked-text composition and dictation remain to be observed
+on the physical iPad before IPAD-14 can be marked complete.
 
 ## Current implementation state
 
@@ -31,6 +28,11 @@ app bundle is `com.beelol.mote`. The Mote-only test plug-in bundle is
 `com.beelol.mote.xctrunner.xctrunner` with profile `Mote UI Test Runner Host Development`. The app
 and runner are installed on the iPad. Do not reuse another app's provisioning resources.
 
+The physical test runner cannot set the device pasteboard directly. The app accepts the test-only
+launch argument `--mote-test-pasteboard <text>` and seeds the system pasteboard before Rust starts.
+This makes native paste verification deterministic without changing the normal application flow.
+Commit `ca5d947` contains that change.
+
 The App Store Connect record remains Mote Agent, Apple ID `6822101041`. Build `0.1.0 (1)` is in the
 internal Testing group. The manual-only `.github/workflows/mote-testflight.yml` workflow remains
 guarded and separate from other apps. Its Mote-specific App Store profile exists, but the App Store
@@ -38,15 +40,28 @@ Connect API key and Apple Distribution certificate secrets are still absent.
 
 ## Verification and next actions
 
-`cargo test --workspace` and `cargo clippy --workspace -- -D warnings` passed after the LAN pairing,
-first-run setup and native text bridge changes. The selected Simulator test passed in 26.264 seconds
-with result bundle `/private/tmp/mote-native-text-test14.xcresult`. It covered edge focus, the system
-keyboard, a hardware cursor edit and native Copy, Cut and Paste.
+`cargo test --workspace` and `cargo clippy --workspace -- -D warnings` passed after the deterministic
+paste test change. The physical UI test passed in 24.743 seconds with result bundle
+`/private/tmp/mote-native-text-green-signed2.xcresult`. It covered right-edge focus, the system
+keyboard, typing, hardware-keyboard cursor movement and native Copy, Cut and Paste.
 
-Finish the physical IPAD-14 run after the owner unlocks the iPad. Then update the evidence, check the
-criterion, run the required workspace checks again, commit and push. IPAD-06, IPAD-08, IPAD-12 and
-IPAD-13 remain separate open criteria. The memory backend comparison remains a separate goal with
-SQLite as the production default. External testing, App Review, public release and cloud relay stay
-out of scope.
+An earlier Simulator run passed in 29.122 seconds with result bundle
+`/private/tmp/mote-native-text-sim15.xcresult`. A rerun against the latest test code currently stops
+because the Simulator software keyboard is hidden. Toggling Device Hub's software keyboard setting
+requires owner confirmation. This does not invalidate the previous passing Simulator result.
+
+The Mote app is installed and opens on the physical iPad. Finish IPAD-14 by entering and committing
+text with a composition keyboard, then clearing the field and entering a short phrase with dictation.
+Record the observations in `docs/verification/IPAD-14.md`, check the README criterion, rerun the
+required workspace checks, commit and push.
+
+The requested Mac host lifecycle command is a bounded follow-up. The proposed interface is
+`mote host start|status|restart|stop`. It should manage only Mote's launchd service, enable LAN
+advertising, show the reachable address and shut down cleanly. Implementation must wait for explicit
+approval of that short design under the repository workflow.
+
+IPAD-06, IPAD-08, IPAD-12 and IPAD-13 remain separate open criteria. The memory backend comparison
+remains a separate goal with SQLite as the production default. External testing, App Review, public
+release and cloud relay stay out of scope.
 
 Preserve unrelated `.DS_Store` and `.superpowers/` files.
