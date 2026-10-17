@@ -6,6 +6,24 @@ struct Timeline {
     warmup_completed: bool,
 }
 
+#[derive(Default)]
+struct LiveTimeline {
+    baseline: Option<i64>,
+    replacement: Option<(i64, f64)>,
+}
+
+impl LiveTimeline {
+    fn observe(&mut self, revision: i64, time: f64) -> bool {
+        let baseline = self.baseline.get_or_insert(revision);
+        if *baseline != revision && self.replacement.is_none() {
+            self.replacement = Some((revision, time));
+            true
+        } else {
+            false
+        }
+    }
+}
+
 #[derive(Default, Debug)]
 struct Step {
     sequence: u32,
@@ -93,6 +111,7 @@ pub(crate) mod native {
 
     use mote_client_core::gallery::GalleryPage;
     use std::{
+        cell::RefCell,
         ffi::CStr,
         path::PathBuf,
         sync::{
@@ -101,6 +120,240 @@ pub(crate) mod native {
         },
         time::{Instant, SystemTime, UNIX_EPOCH},
     };
+
+    thread_local! {
+        static LIVE: RefCell<Option<LiveProbe>> = const { RefCell::new(None) };
+    }
+
+    struct LiveProbe {
+        timeline: LiveTimeline,
+        frames: Vec<serde_json::Value>,
+        directory: PathBuf,
+        sequence: u32,
+        saved: bool,
+    }
+
+    pub(crate) fn live_begin(ctx: &egui::Context) {
+        if !std::env::args().any(|arg| arg == "--mote-live-transition-probe") {
+            return;
+        }
+        mote_client_core::transition::enable_materialization_observation(ctx);
+        LIVE.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            let probe = slot.get_or_insert_with(|| {
+                extern "C" {
+                    fn mote_ios_probe_documents() -> *const std::ffi::c_char;
+                }
+                let documents = unsafe {
+                    CStr::from_ptr(mote_ios_probe_documents())
+                        .to_str()
+                        .expect("native Documents path")
+                };
+                let directory = PathBuf::from(documents).join("mote-live-transition");
+                std::fs::create_dir_all(&directory).expect("probe directory");
+                LiveProbe {
+                    timeline: LiveTimeline::default(),
+                    frames: Vec::new(),
+                    directory,
+                    sequence: 0,
+                    saved: false,
+                }
+            });
+            if probe.saved {
+                return;
+            }
+            probe.sequence += 1;
+            if probe.timeline.baseline.is_some() {
+                let _ = std::fs::write(probe.directory.join("ready"), b"ready");
+            }
+            if probe
+                .timeline
+                .replacement
+                .is_some_and(|(_, start)| ctx.input(|i| i.time) - start > 0.8)
+            {
+                let result = (|| -> anyhow::Result<()> {
+                    let report = serde_json::json!({
+                        "frames":probe.frames,
+                        "replacement":probe.timeline.replacement,
+                        "present_timestamps":null,"scanout_timestamps":null,
+                    });
+                    std::fs::write(
+                        probe.directory.join("report.json"),
+                        serde_json::to_vec_pretty(&report)?,
+                    )?;
+                    Ok(())
+                })();
+                match result {
+                    Ok(()) => probe.saved = true,
+                    Err(error) => eprintln!("Live transition probe failed: {error}"),
+                }
+            }
+            ctx.request_repaint();
+        });
+    }
+
+    pub(crate) fn live_surface(ui: &egui::Ui, revision: i64, replacement_candidate: bool) {
+        LIVE.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            let Some(probe) = slot.as_mut().filter(|probe| !probe.saved) else {
+                return;
+            };
+            let time = ui.input(|input| input.time);
+            let prime = probe.timeline.baseline.is_none();
+            if !replacement_candidate {
+                probe.timeline.baseline = Some(revision);
+            }
+            let first = probe.timeline.observe(revision, time);
+            let target = ui
+                .id()
+                .with("matrix-contract-1")
+                .with(("button", vec![1_usize]));
+            if first {
+                ui.ctx().input_mut(|input| {
+                    input.events.push(egui::Event::AccessKitActionRequest(
+                        accesskit::ActionRequest {
+                            action: accesskit::Action::Click,
+                            target: target.value().into(),
+                            data: None,
+                        },
+                    ))
+                });
+            }
+            if prime {
+                let target = ui.id().with("matrix-contract-1").with(("button", vec![0_usize,0]));
+                ui.ctx().input_mut(|input| input.events.push(egui::Event::AccessKitActionRequest(
+                    accesskit::ActionRequest { action:accesskit::Action::Click,target:target.value().into(),data:None }
+                )));
+            }
+            probe.frames.push(serde_json::json!({
+                "sequence":probe.sequence,"revision":revision,"time":time,
+                "immediate_action_target":first.then_some(target.value()),
+                "paint_start":ui.ctx().graphics(|graphics| graphics.get(ui.layer_id()).map_or(0, |list| list.all_entries().count())),
+            }));
+        });
+    }
+
+    pub(crate) fn live_surface_drawn(
+        ui: &egui::Ui,
+        events: &[mote_client_core::surface_v1::Event],
+        transition_namespace: egui::Id,
+    ) {
+        LIVE.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            let Some(probe) = slot.as_mut().filter(|probe| !probe.saved) else {
+                return;
+            };
+            let Some(frame) = probe.frames.last_mut() else {
+                return;
+            };
+            if let Some(observation) = mote_client_core::transition::materialization_observation(
+                ui.ctx(),
+                transition_namespace,
+                &[1],
+                "button",
+            ) {
+                let mut observation =
+                    serde_json::to_value(observation).expect("stroke observation");
+                observation["path"] = serde_json::json!([1]);
+                frame["changed_button"] = observation;
+            }
+            frame["emitted_events"] = serde_json::json!(events
+                .iter()
+                .map(|event| format!("{event:?}"))
+                .collect::<Vec<_>>());
+            let start = frame["paint_start"].as_u64().unwrap() as usize;
+            let shapes = ui.ctx().graphics(|graphics| {
+                graphics
+                    .get(ui.layer_id())
+                    .map(|list| list.all_entries().skip(start).cloned().collect::<Vec<_>>())
+                    .unwrap_or_default()
+            });
+            frame["rectangles"] = serde_json::json!(shapes
+                .iter()
+                .filter_map(|clipped| {
+                    if let egui::Shape::Rect(rect) = &clipped.shape {
+                        (rect.stroke.width == 1.0).then_some([
+                            rect.rect.left(),
+                            rect.rect.top(),
+                            rect.rect.width(),
+                            rect.rect.height(),
+                        ])
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>());
+            frame["line_segments"] = serde_json::json!(shapes
+                .iter()
+                .filter_map(|clipped| {
+                    if let egui::Shape::LineSegment { points, stroke } = &clipped.shape {
+                        (stroke.width > 0.0).then_some([
+                            points[0].x,
+                            points[0].y,
+                            points[1].x,
+                            points[1].y,
+                        ])
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>());
+            fn particles(shape: &egui::Shape) -> usize {
+                match shape {
+                    egui::Shape::Vec(shapes) => shapes.iter().map(particles).sum(),
+                    egui::Shape::Rect(rect)
+                        if rect.stroke.width == 0.0
+                            && rect.rect.width() == 4.0
+                            && rect.rect.height() == 4.0 =>
+                    {
+                        1
+                    }
+                    _ => 0,
+                }
+            }
+            frame["particle_count"] = serde_json::json!(shapes
+                .iter()
+                .map(|clipped| particles(&clipped.shape))
+                .sum::<usize>());
+        });
+    }
+
+    pub(crate) fn live_end(ctx: &egui::Context, safe_area: egui::Margin) {
+        LIVE.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            let Some(probe) = slot.as_mut().filter(|probe| !probe.saved) else {
+                return;
+            };
+            let screen = ctx.input(|input| input.screen_rect());
+            let point = egui::pos2(screen.right() - 112.0, safe_area.top as f32 + 8.0);
+            let scale = ctx.pixels_per_point();
+            if let Some(frame) = probe.frames.last_mut() {
+                frame["marker_origin"] = serde_json::json!([
+                    ((point.x + 1.5) * scale) as usize,
+                    ((point.y + 2.0) * scale) as usize
+                ]);
+                frame["marker_stride"] = serde_json::json!((3.0 * scale) as usize);
+            }
+            let painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::new("live-transition-probe"),
+            ));
+            for bit in 0..32 {
+                painter.rect_filled(
+                    egui::Rect::from_min_size(
+                        point + egui::vec2(bit as f32 * 3.0, 0.0),
+                        egui::vec2(3.0, 4.0),
+                    ),
+                    0.0,
+                    if probe.sequence & (1 << bit) == 0 {
+                        egui::Color32::RED
+                    } else {
+                        egui::Color32::GREEN
+                    },
+                );
+            }
+        });
+    }
 
     #[derive(Clone)]
     struct Request {
@@ -421,6 +674,16 @@ pub(crate) mod native {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn paired_capture_waits_for_a_replacement_and_tracks_its_first_frame() {
+        let mut timeline = LiveTimeline::default();
+        assert!(!timeline.observe(10, 0.0));
+        assert!(!timeline.observe(10, 1.0));
+        assert!(timeline.observe(20, 2.0));
+        assert!(!timeline.observe(20, 2.016));
+        assert_eq!(timeline.replacement, Some((20, 2.0)));
+    }
 
     #[test]
     fn first_probe_frame_prewarms_capture_without_changing_layout() {

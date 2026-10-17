@@ -31,6 +31,8 @@ impl Default for MoteApp {
 
 impl eframe::App for MoteApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        #[cfg(all(target_os = "ios", target_abi = "sim"))]
+        crate::probe::native::live_begin(ctx);
         #[cfg(target_os = "ios")]
         {
             mote_client_core::native_accessibility::begin_frame();
@@ -46,6 +48,8 @@ impl eframe::App for MoteApp {
             }
         }
         self.draw(ctx, safe_area);
+        #[cfg(all(target_os = "ios", target_abi = "sim"))]
+        crate::probe::native::live_end(ctx, safe_area);
         #[cfg(target_os = "ios")]
         crate::accessibility::publish();
         #[cfg(target_os = "ios")]

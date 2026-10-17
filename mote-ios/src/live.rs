@@ -794,16 +794,18 @@ impl LiveRuntime {
                         let mut events = Vec::new();
                         ui.push_id((&host, &surface.thread, surface.surface_seq), |ui| {
                             ui.add_enabled_ui(online, |ui| {
+                                let transition_namespace = egui::Id::new(("live-surface-transition", &host, &surface.thread));
+                                #[cfg(all(target_os = "ios", target_abi = "sim"))]
+                                crate::probe::native::live_surface(ui, surface.surface_seq,
+                                    matches!(&surface_tree.root, mote_ui::v1::Node::Screen {children,..} if matches!(children.get(1),Some(mote_ui::v1::Node::Button {label,..}) if label == "Replacement")));
                                 mote_client_core::surface_v1::draw_with_transition_namespace(
                                     ui,
                                     &surface_tree,
                                     &mut events,
-                                    egui::Id::new((
-                                        "live-surface-transition",
-                                        &host,
-                                        &surface.thread,
-                                    )),
-                                )
+                                    transition_namespace,
+                                );
+                                #[cfg(all(target_os = "ios", target_abi = "sim"))]
+                                crate::probe::native::live_surface_drawn(ui, &events, transition_namespace);
                             });
                         });
                         for event in events {

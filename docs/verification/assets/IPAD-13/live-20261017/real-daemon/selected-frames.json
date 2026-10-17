@@ -1,0 +1,152 @@
+{
+  "before": {
+    "emitted_events": [],
+    "immediate_action_target": null,
+    "line_segments": [
+      [
+        8.0,
+        373.5,
+        826.0,
+        373.5
+      ],
+      [
+        8.0,
+        1153.5,
+        826.0,
+        1153.5
+      ]
+    ],
+    "marker_origin": [
+      1447,
+      84
+    ],
+    "marker_stride": 6,
+    "paint_start": 14,
+    "particle_count": 0,
+    "rectangles": [
+      [
+        24.0,
+        291.0,
+        83.03125,
+        36.0
+      ],
+      [
+        8.0,
+        379.5,
+        818.0,
+        36.0
+      ],
+      [
+        8.0,
+        435.5,
+        818.0,
+        36.0
+      ]
+    ],
+    "revision": 3,
+    "sequence": 156,
+    "time": 2.642955042
+  },
+  "first": {
+    "emitted_events": [
+      "Action { event: \"refresh\", path: [1] }"
+    ],
+    "immediate_action_target": 11259016297482583622,
+    "line_segments": [],
+    "marker_origin": [
+      1447,
+      84
+    ],
+    "marker_stride": 6,
+    "paint_start": 14,
+    "particle_count": 2522,
+    "rectangles": [
+      [
+        24.0,
+        291.0,
+        83.03125,
+        36.0
+      ]
+    ],
+    "revision": 4,
+    "sequence": 157,
+    "time": 2.65962675
+  },
+  "midpoint": {
+    "emitted_events": [],
+    "immediate_action_target": null,
+    "line_segments": [],
+    "marker_origin": [
+      1447,
+      84
+    ],
+    "marker_stride": 6,
+    "paint_start": 14,
+    "particle_count": 2505,
+    "rectangles": [
+      [
+        24.0,
+        291.0,
+        83.03125,
+        36.0
+      ]
+    ],
+    "revision": 6,
+    "sequence": 160,
+    "time": 2.709632334
+  },
+  "settled": {
+    "emitted_events": [],
+    "immediate_action_target": null,
+    "line_segments": [
+      [
+        8.0,
+        422.5,
+        826.0,
+        422.5
+      ],
+      [
+        8.0,
+        1104.5,
+        826.0,
+        1104.5
+      ]
+    ],
+    "marker_origin": [
+      1447,
+      84
+    ],
+    "marker_stride": 6,
+    "paint_start": 14,
+    "particle_count": 0,
+    "rectangles": [
+      [
+        24.0,
+        291.0,
+        83.03125,
+        36.0
+      ],
+      [
+        8.0,
+        428.5,
+        818.0,
+        36.0
+      ],
+      [
+        8.0,
+        484.5,
+        818.0,
+        36.0
+      ]
+    ],
+    "revision": 6,
+    "sequence": 165,
+    "time": 2.792988292
+  },
+  "unchanged_rectangle": [
+    24.0,
+    291.0,
+    83.03125,
+    36.0
+  ]
+}

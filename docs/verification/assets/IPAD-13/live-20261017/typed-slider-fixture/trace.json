@@ -1,0 +1,3940 @@
+{
+  "frames": [
+    {
+      "emitted_events": [
+        "Action { event: \"refresh\", path: [0, 0] }"
+      ],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          349.0,
+          826.0,
+          349.0
+        ],
+        [
+          16.0,
+          439.0,
+          818.0,
+          439.0
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 13,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          266.5,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          355.0,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          429.25,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 123,
+      "time": 2.072410167
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2188,
+      "rectangles": [
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 124,
+      "time": 2.089087708
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2178,
+      "rectangles": [
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 125,
+      "time": 2.10571125
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2181,
+      "rectangles": [
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 126,
+      "time": 2.122387
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2182,
+      "rectangles": [
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 127,
+      "time": 2.139059292
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2176,
+      "rectangles": [
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 128,
+      "time": 2.155712292
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2178,
+      "rectangles": [
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 129,
+      "time": 2.172370958
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2176,
+      "rectangles": [
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 130,
+      "time": 2.189055583
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2166,
+      "rectangles": [
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 131,
+      "time": 2.205745625
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 132,
+      "time": 2.222375292
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 133,
+      "time": 2.239057833
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 134,
+      "time": 2.255734833
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 135,
+      "time": 2.272414208
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 136,
+      "time": 2.289071542
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 137,
+      "time": 2.305723208
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 138,
+      "time": 2.322388917
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 139,
+      "time": 2.339057083
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 140,
+      "time": 2.35573325
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 141,
+      "time": 2.372379583
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 142,
+      "time": 2.389044667
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 143,
+      "time": 2.4057275000000002
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 144,
+      "time": 2.422374875
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 145,
+      "time": 2.4390905
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 146,
+      "time": 2.455705917
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 147,
+      "time": 2.472371
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 148,
+      "time": 2.489053833
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 149,
+      "time": 2.505737125
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 150,
+      "time": 2.522380667
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 151,
+      "time": 2.539037
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 152,
+      "time": 2.55571175
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 153,
+      "time": 2.5723815
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 154,
+      "time": 2.589051167
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 155,
+      "time": 2.605701
+    },
+    {
+      "emitted_events": [
+        "Action { event: \"refresh\", path: [1] }"
+      ],
+      "immediate_action_target": 7573499753639078594,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2069,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 156,
+      "time": 2.622373
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2062,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 157,
+      "time": 2.639046083
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2057,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 158,
+      "time": 2.655715667
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2060,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 159,
+      "time": 2.672369083
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2058,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 160,
+      "time": 2.689009833
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2066,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 161,
+      "time": 2.705678458
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2055,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 162,
+      "time": 2.722358875
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2051,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 163,
+      "time": 2.739031792
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 164,
+      "time": 2.7557201669999998
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 165,
+      "time": 2.772393583
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 166,
+      "time": 2.789061792
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 167,
+      "time": 2.80569775
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 168,
+      "time": 2.822391708
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 169,
+      "time": 2.839050292
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 170,
+      "time": 2.855704417
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 171,
+      "time": 2.872370625
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 172,
+      "time": 2.889054042
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 173,
+      "time": 2.905724583
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 174,
+      "time": 2.922376708
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 175,
+      "time": 2.939056167
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 176,
+      "time": 2.955733083
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 177,
+      "time": 2.972397125
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 178,
+      "time": 2.989059
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 179,
+      "time": 3.005724542
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 180,
+      "time": 3.022408292
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 181,
+      "time": 3.039068792
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 182,
+      "time": 3.055735792
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 183,
+      "time": 3.0724065
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 184,
+      "time": 3.089064875
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 185,
+      "time": 3.10574375
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 186,
+      "time": 3.122414958
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 187,
+      "time": 3.139063625
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 188,
+      "time": 3.155731583
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 189,
+      "time": 3.172407875
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 190,
+      "time": 3.189065542
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 191,
+      "time": 3.205746
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 192,
+      "time": 3.222398
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 193,
+      "time": 3.239049208
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 194,
+      "time": 3.255723708
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 195,
+      "time": 3.27240275
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 196,
+      "time": 3.289116542
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 197,
+      "time": 3.305746667
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 198,
+      "time": 3.322438542
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 199,
+      "time": 3.339100125
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 200,
+      "time": 3.35572925
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 201,
+      "time": 3.372399417
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 202,
+      "time": 3.389133792
+    },
+    {
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 203,
+      "time": 3.405733292
+    }
+  ],
+  "present_timestamps": null,
+  "replacement": [
+    3,
+    2.622373
+  ],
+  "scanout_timestamps": null
+}

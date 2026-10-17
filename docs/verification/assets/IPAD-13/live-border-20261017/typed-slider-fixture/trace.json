@@ -1,0 +1,6632 @@
+{
+  "frames": [
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            355.0
+          ],
+          [
+            826.0,
+            355.0
+          ],
+          [
+            826.0,
+            391.0
+          ],
+          [
+            8.0,
+            391.0
+          ],
+          [
+            8.0,
+            355.0
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [
+        "Action { event: \"refresh\", path: [0, 0] }"
+      ],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          349.0,
+          826.0,
+          349.0
+        ],
+        [
+          16.0,
+          439.0,
+          818.0,
+          439.0
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 13,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          266.5,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          355.0,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          429.25,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 123,
+      "time": 2.07699175
+    },
+    {
+      "changed_button": {
+        "painted": false,
+        "particle_count": 854,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": [
+          [
+            8.0,
+            355.0
+          ],
+          [
+            826.0,
+            355.0
+          ],
+          [
+            826.0,
+            391.0
+          ],
+          [
+            8.0,
+            391.0
+          ],
+          [
+            8.0,
+            355.0
+          ]
+        ]
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2190,
+      "rectangles": [
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 124,
+      "time": 2.093663458
+    },
+    {
+      "changed_button": {
+        "painted": false,
+        "particle_count": 854,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": [
+          [
+            8.0,
+            355.0
+          ],
+          [
+            826.0,
+            355.0
+          ],
+          [
+            826.0,
+            391.0
+          ],
+          [
+            8.0,
+            391.0
+          ],
+          [
+            8.0,
+            355.0
+          ]
+        ]
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2177,
+      "rectangles": [
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 125,
+      "time": 2.110314416
+    },
+    {
+      "changed_button": {
+        "painted": false,
+        "particle_count": 854,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": [
+          [
+            8.0,
+            355.0
+          ],
+          [
+            826.0,
+            355.0
+          ],
+          [
+            826.0,
+            391.0
+          ],
+          [
+            8.0,
+            391.0
+          ],
+          [
+            8.0,
+            355.0
+          ]
+        ]
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2177,
+      "rectangles": [
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 126,
+      "time": 2.144758458
+    },
+    {
+      "changed_button": {
+        "painted": false,
+        "particle_count": 854,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": [
+          [
+            8.0,
+            355.0
+          ],
+          [
+            826.0,
+            355.0
+          ],
+          [
+            826.0,
+            391.0
+          ],
+          [
+            8.0,
+            391.0
+          ],
+          [
+            8.0,
+            355.0
+          ]
+        ]
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2173,
+      "rectangles": [
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 127,
+      "time": 2.1703391659999998
+    },
+    {
+      "changed_button": {
+        "painted": false,
+        "particle_count": 854,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": [
+          [
+            8.0,
+            355.0
+          ],
+          [
+            826.0,
+            355.0
+          ],
+          [
+            826.0,
+            391.0
+          ],
+          [
+            8.0,
+            391.0
+          ],
+          [
+            8.0,
+            355.0
+          ]
+        ]
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2177,
+      "rectangles": [
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 128,
+      "time": 2.178869333
+    },
+    {
+      "changed_button": {
+        "painted": false,
+        "particle_count": 854,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": [
+          [
+            8.0,
+            355.0
+          ],
+          [
+            826.0,
+            355.0
+          ],
+          [
+            826.0,
+            391.0
+          ],
+          [
+            8.0,
+            391.0
+          ],
+          [
+            8.0,
+            355.0
+          ]
+        ]
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2174,
+      "rectangles": [
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 129,
+      "time": 2.1936605
+    },
+    {
+      "changed_button": {
+        "painted": false,
+        "particle_count": 854,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": [
+          [
+            8.0,
+            355.0
+          ],
+          [
+            826.0,
+            355.0
+          ],
+          [
+            826.0,
+            391.0
+          ],
+          [
+            8.0,
+            391.0
+          ],
+          [
+            8.0,
+            355.0
+          ]
+        ]
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2175,
+      "rectangles": [
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 130,
+      "time": 2.210300041
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 131,
+      "time": 2.226995541
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 132,
+      "time": 2.243654125
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 133,
+      "time": 2.260378875
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 134,
+      "time": 2.276974
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 135,
+      "time": 2.29370475
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 136,
+      "time": 2.3103195
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 137,
+      "time": 2.327007083
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 138,
+      "time": 2.3436495
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 139,
+      "time": 2.360359833
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 140,
+      "time": 2.3769683329999998
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 141,
+      "time": 2.393688583
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 142,
+      "time": 2.410306208
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 143,
+      "time": 2.426973041
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 144,
+      "time": 2.4436384159999998
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 145,
+      "time": 2.460336208
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 146,
+      "time": 2.476973166
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 147,
+      "time": 2.493662625
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 148,
+      "time": 2.510291458
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 149,
+      "time": 2.526993541
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 150,
+      "time": 2.543634125
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 151,
+      "time": 2.560328625
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 152,
+      "time": 2.5769583750000002
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 153,
+      "time": 2.593660791
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          373.5,
+          826.0,
+          373.5
+        ],
+        [
+          16.0,
+          463.5,
+          818.0,
+          463.5
+        ],
+        [
+          8.0,
+          1153.5,
+          826.0,
+          1153.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          379.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          453.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 1,
+      "sequence": 154,
+      "time": 2.610292791
+    },
+    {
+      "changed_button": {
+        "painted": false,
+        "particle_count": 854,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ]
+      },
+      "emitted_events": [
+        "Action { event: \"refresh\", path: [1] }"
+      ],
+      "immediate_action_target": 17576792463378433346,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2070,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 155,
+      "time": 2.626988625
+    },
+    {
+      "changed_button": {
+        "painted": false,
+        "particle_count": 854,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ]
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2064,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 156,
+      "time": 2.643657583
+    },
+    {
+      "changed_button": {
+        "painted": false,
+        "particle_count": 854,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ]
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2058,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 157,
+      "time": 2.660302458
+    },
+    {
+      "changed_button": {
+        "painted": false,
+        "particle_count": 854,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ]
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2068,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 158,
+      "time": 2.676979375
+    },
+    {
+      "changed_button": {
+        "painted": false,
+        "particle_count": 854,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ]
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2061,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 159,
+      "time": 2.693632
+    },
+    {
+      "changed_button": {
+        "painted": false,
+        "particle_count": 854,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ]
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2053,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 160,
+      "time": 2.710299625
+    },
+    {
+      "changed_button": {
+        "painted": false,
+        "particle_count": 854,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ]
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2053,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 161,
+      "time": 2.726973375
+    },
+    {
+      "changed_button": {
+        "painted": false,
+        "particle_count": 854,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": [
+          [
+            8.0,
+            379.5
+          ],
+          [
+            826.0,
+            379.5
+          ],
+          [
+            826.0,
+            415.5
+          ],
+          [
+            8.0,
+            415.5
+          ],
+          [
+            8.0,
+            379.5
+          ]
+        ]
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 2057,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 162,
+      "time": 2.74364975
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 163,
+      "time": 2.760319791
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 164,
+      "time": 2.776967541
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 165,
+      "time": 2.793652166
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 166,
+      "time": 2.810312083
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 167,
+      "time": 2.826971625
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 168,
+      "time": 2.8436109160000003
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 169,
+      "time": 2.860327416
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 170,
+      "time": 2.876969916
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 171,
+      "time": 2.893648166
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 172,
+      "time": 2.91028925
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 173,
+      "time": 2.92696775
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 174,
+      "time": 2.943612416
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 175,
+      "time": 2.960359916
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 176,
+      "time": 2.976957125
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 177,
+      "time": 2.993647833
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 178,
+      "time": 3.010333166
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 179,
+      "time": 3.02699775
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 180,
+      "time": 3.0436435
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 181,
+      "time": 3.060323125
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 182,
+      "time": 3.076965666
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 183,
+      "time": 3.0936339999999998
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 184,
+      "time": 3.11030425
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 185,
+      "time": 3.126995291
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 186,
+      "time": 3.14362025
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 187,
+      "time": 3.160317833
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 188,
+      "time": 3.176959375
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 189,
+      "time": 3.193638208
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 190,
+      "time": 3.210314875
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 191,
+      "time": 3.226964416
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 192,
+      "time": 3.24364275
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 193,
+      "time": 3.26032025
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 194,
+      "time": 3.2769675830000002
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 195,
+      "time": 3.2936565
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 196,
+      "time": 3.310285041
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 197,
+      "time": 3.326978125
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 198,
+      "time": 3.343643791
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 199,
+      "time": 3.360292791
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 200,
+      "time": 3.376956458
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 201,
+      "time": 3.393640583
+    },
+    {
+      "changed_button": {
+        "painted": true,
+        "particle_count": 0,
+        "path": [
+          1
+        ],
+        "points": [
+          [
+            8.0,
+            412.5
+          ],
+          [
+            826.0,
+            412.5
+          ],
+          [
+            826.0,
+            448.5
+          ],
+          [
+            8.0,
+            448.5
+          ],
+          [
+            8.0,
+            412.5
+          ]
+        ],
+        "previous_points": null
+      },
+      "emitted_events": [],
+      "immediate_action_target": null,
+      "line_segments": [
+        [
+          8.0,
+          406.5,
+          826.0,
+          406.5
+        ],
+        [
+          16.0,
+          496.5,
+          818.0,
+          496.5
+        ],
+        [
+          8.0,
+          1120.5,
+          826.0,
+          1120.5
+        ]
+      ],
+      "marker_origin": [
+        1447,
+        84
+      ],
+      "marker_stride": 6,
+      "paint_start": 14,
+      "particle_count": 0,
+      "rectangles": [
+        [
+          24.0,
+          291.0,
+          83.03125,
+          36.0
+        ],
+        [
+          8.0,
+          412.5,
+          818.0,
+          36.0
+        ],
+        [
+          332.8000183105469,
+          486.75,
+          8.0,
+          19.5
+        ]
+      ],
+      "revision": 3,
+      "sequence": 202,
+      "time": 3.410280916
+    }
+  ],
+  "present_timestamps": null,
+  "replacement": [
+    3,
+    2.626988625
+  ],
+  "scanout_timestamps": null
+}

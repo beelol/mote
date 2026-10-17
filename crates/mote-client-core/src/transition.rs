@@ -32,6 +32,8 @@ pub struct MaterializeState {
     current: Vec<StructuralStroke>,
     changes: Vec<Change>,
     initialized: bool,
+    #[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]
+    observe: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -46,6 +48,38 @@ pub struct MaterializeFrame {
     pub hidden: Vec<StructuralId>,
     pub paint: Vec<egui::epaint::ClippedShape>,
     pub active: bool,
+    #[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]
+    paint_owners: Vec<StructuralId>,
+}
+
+#[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct StrokeObservation {
+    pub points: Vec<[f32; 2]>,
+    pub previous_points: Option<Vec<[f32; 2]>>,
+    pub painted: bool,
+    pub particle_count: usize,
+}
+
+#[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]
+pub fn enable_materialization_observation(ctx: &egui::Context) {
+    ctx.data_mut(|data| data.insert_temp(egui::Id::new("observe-materialization"), true));
+}
+
+#[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]
+pub fn materialization_observation(
+    ctx: &egui::Context,
+    namespace: egui::Id,
+    path: &[usize],
+    kind: &str,
+) -> Option<StrokeObservation> {
+    ctx.data_mut(|data| {
+        data.get_temp::<std::collections::HashMap<StructuralId, StrokeObservation>>(
+            namespace.with("materialization-observations"),
+        )
+    })?
+    .get(&StructuralId::new(namespace, path, kind, 0))
+    .cloned()
 }
 
 impl MaterializeState {
@@ -100,6 +134,10 @@ impl MaterializeState {
             let eased = 1.0 - (1.0 - t).powi(3);
             if reduced_motion {
                 if let Some(new) = &change.new {
+                    #[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]
+                    if self.observe {
+                        frame.paint_owners.push(new.id);
+                    }
                     frame.paint.push(egui::epaint::ClippedShape {
                         clip_rect: new.clip,
                         shape: Shape::line(
@@ -136,6 +174,10 @@ impl MaterializeState {
                         0,
                         stroke.stroke.color.gamma_multiply(alpha),
                     ));
+                }
+                #[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]
+                if self.observe {
+                    frame.paint_owners.push(stroke.id);
                 }
                 frame.paint.push(egui::epaint::ClippedShape {
                     clip_rect: stroke.clip,
@@ -268,7 +310,53 @@ impl StrokeRegistry {
         let reduced = ui
             .data_mut(|data| data.get_temp::<bool>(egui::Id::new("vector-reduced-motion")))
             .unwrap_or(false);
+        #[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]
+        {
+            state.observe = ui
+                .data_mut(|data| data.get_temp::<bool>(egui::Id::new("observe-materialization")))
+                .unwrap_or(false);
+        }
         let frame = state.frame(now, reduced, ui.visuals().selection.stroke.color);
+        #[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]
+        if state.observe {
+            let observations: std::collections::HashMap<_, _> = self
+                .strokes
+                .iter()
+                .map(|stroke| {
+                    let previous_points = state
+                        .changes
+                        .iter()
+                        .find_map(|change| change.old.as_ref().filter(|old| old.id == stroke.id))
+                        .map(|old| old.points.iter().map(|point| [point.x, point.y]).collect());
+                    let particle_count = frame
+                        .paint_owners
+                        .iter()
+                        .zip(&frame.paint)
+                        .filter(|(owner, _)| **owner == stroke.id)
+                        .map(|(_, paint)| match &paint.shape {
+                            Shape::Vec(shapes) => shapes.len(),
+                            _ => 0,
+                        })
+                        .sum();
+                    (
+                        stroke.id,
+                        StrokeObservation {
+                            points: stroke
+                                .points
+                                .iter()
+                                .map(|point| [point.x, point.y])
+                                .collect(),
+                            previous_points,
+                            painted: !frame.hidden.contains(&stroke.id),
+                            particle_count,
+                        },
+                    )
+                })
+                .collect();
+            ui.data_mut(|data| {
+                data.insert_temp(namespace.with("materialization-observations"), observations)
+            });
+        }
         ui.ctx().graphics_mut(|graphics| {
             for (stroke, (layer, slot)) in self.strokes.iter().zip(self.slots) {
                 if frame.hidden.contains(&stroke.id) {
@@ -314,6 +402,32 @@ mod tests {
         gallery::{Gallery, GalleryPage},
         surface_v1,
     };
+
+    #[test]
+    fn ordinary_materialization_records_no_paint_owners() {
+        let mut state = MaterializeState::default();
+        state.replace(vec![line(0, 20.0)], 0.0);
+        state.replace(vec![line(0, 40.0)], 1.0);
+        for reduced in [false, true] {
+            let frame = state.frame(1.0, reduced, Color32::RED);
+            assert!(!frame.paint.is_empty());
+            assert!(
+                frame.paint_owners.is_empty(),
+                "disabled observation must not collect owners"
+            );
+            assert_eq!(
+                frame.paint_owners.capacity(),
+                0,
+                "disabled observation must not allocate owner storage"
+            );
+            state.observe = true;
+            let observed = state.frame(1.0, reduced, Color32::RED);
+            assert!(!observed.paint_owners.is_empty());
+            assert_eq!(observed.paint, frame.paint);
+            assert_eq!(observed.hidden, frame.hidden);
+            state.observe = false;
+        }
+    }
 
     fn frame(
         ctx: &egui::Context,
