@@ -11,15 +11,15 @@ resources isolated from every other app.
 
 ## Current state
 
-IPAD-14 is complete and pushed at `b729d37`. The physical M4 iPad is connected as
-`00008132-001104661AB9001C` on iPadOS 26.5. The prior Mote-only signed test bundle is at
-`/private/tmp/mote-native-text-physical-marked2`. A temporary copy at
-`/private/tmp/mote-ipad06-fixed-signed` contains the corrected gallery locator test binary.
+IPAD-14 is complete and pushed at `b729d37`. The physical M4 iPad is paired over Wi-Fi as
+`00008132-001104661AB9001C` on iPadOS 26.5. Xcode can see it without a cable. The current Mote-only
+signed closeout test bundle is `/private/tmp/mote-ipad06-final-signed.MxNtEH`.
 
-The host lifecycle command is a bounded proposed change. The presented interface is
-`moted host start|status|restart|stop`. It manages only `com.mote.moted`, preserves configuration
-and data on stop, and retains `moted install|uninstall` for persistent login management. Product
-code must wait for explicit owner approval of that short design.
+The host lifecycle command is implemented as `moted host start|status|restart|stop`. It manages
+only `com.mote.moted`, preserves configuration and data on stop, and retains
+`moted install|uninstall` for persistent login management. Exact command-vector tests pass. A live
+restart changed the process ID from 97330 to 71052 while retaining event sequence 9. The change is
+committed and pushed on `main` at `cb27915`.
 
 HOST-05 has complete automated reconnect, replay, resync, state and isolation coverage. Its live
 physical iPad connection-state journey now passes. The literal Mac sleep and wake run remains open.
@@ -34,6 +34,14 @@ accessibility elements, reduced-motion launch, foreground survival, native text 
 landscape Dashboard select also pass. Literal center and edge taps for every control, split view,
 paired background recovery, the local-network privacy prompt, system light and dark appearance,
 the system Reduce Motion setting and actual VoiceOver navigation remain open.
+
+A reviewed physical-only exhaustive journey now covers all eight pages, an independently observed
+native control and dropdown inventory, all 20 list actions, every select option, every control at
+center and four inset edges, the Preview note field, and both orientations. Its Simulator helpers
+report seven passes and two expected physical skips. The paired background journey requires actual
+suspension, driver-coordinated Mote host stop and start, exact offline and online states, cursor
+advancement and exactly-once replay. Both device and Simulator bundles compile. Physical execution
+is still pending because Xcode reaches the iPad over Wi-Fi but reports `Unlock iPad to Continue`.
 
 IPAD-13 has headless transition timing and paired Simulator integration evidence. Its live paired
 replacement captures and immediate changed-control action remain open. A UI audit found a real
@@ -76,9 +84,10 @@ The physical timing probe is invalid because `--mote-timing-probe` is intentiona
 Do not include it in physical selections. The separate physical reduced-motion launch test already
 passed, but it is not proof of the iPad system preference.
 
-Next add literal center and edge coverage, physical appearance, split-view, background,
-local-network permission and VoiceOver evidence. Fix Reduce Motion propagation. Complete the live
-paired transition capture. Then finish TestFlight and the hosted upload.
+Next unlock the Wi-Fi-paired iPad and let the waiting exhaustive journey run. Then run the
+driver-coordinated background journey. Physical appearance, split-view, local-network permission,
+system Reduce Motion and VoiceOver evidence remain. Fix Reduce Motion propagation, complete the
+live paired transition capture, then finish TestFlight and the hosted upload.
 
 ## Required delivery loop
 

@@ -137,3 +137,91 @@ IPAD-06 remains open. This run does not yet satisfy the literal requirement for 
 taps on every control. Split view, paired background recovery, the physical local-network privacy
 prompt, system light and dark appearance, the system Reduce Motion setting and actual VoiceOver
 navigation also remain to be recorded.
+
+## Exhaustive physical touch journey prepared
+
+Date: 2026-10-17, America/Los_Angeles. Environment: macOS 26.6.2, Xcode 27.1, SDK 27.1. Helper execution used the iPad Pro 11-inch (M5) Simulator on iOS 27.0, device `43F2F6ED-5C86-4121-B03F-40FE38891C4E`. The physical iPad was disconnected. No physical execution or physical pass is claimed in this section.
+
+`testPhysicalGalleryEveryControlAcceptsCenterAndFourEdges` now implements the literal exhaustive control journey. It uses native accessibility hit-target frames for center taps and all four edge midpoints inset by two points. It rejects invalid, clipped or undersized frames. A bounded scroll search brings reachable list controls into view. Vision is used for the existing status-row assertions, not to infer touch geometry.
+
+The shared inventory covers all eight page navigation buttons and 37 page controls. Those controls comprise 24 actions, four toggles, three sliders and six selects. The List page includes every action from Open draft through Open item 20. The select journeys cover all 17 option instances across Priority, model and Mode controls. The same journey runs in portrait and landscape. It requests a one-hour execution allowance for this exhaustive on-device test.
+
+Each tested tap requires a fresh effect. Actions first replace the previous action status with the page selection status. Toggles must change their native On or Off value. Sliders are first set to a different endpoint. Selects are first set to a different option when needed. Every option is chosen at all five positions. Test logs record labels, positions, hit frames and tap points. The physical journey retains a native role tree after each control and a screenshot after each page. All changes are confined to the offline gallery preview.
+
+The global Preview note field is included in the exhaustive physical journey. Each of its five positions starts with a fresh offline launch and no visible keyboard. The native field frame supplies the tap point. Each tap must open the system keyboard, expose the native editing field and accept a distinct marker with the exact expected native value. This repeats in each orientation. These five-position checks are implemented but physically unrun. The separate [IPAD-14](IPAD-14.md) record covers additional native editing behavior. It does not supply the missing five-position physical evidence.
+
+The physical paired-test Simulator skip guards remain. The exhaustive gallery test also skips before launching an app on Simulator. The paired background test is strengthened below. Its former acceptance of a merely background-running app is removed.
+
+Two deterministic helper tests were first observed failing. The inventory stub returned zero controls instead of the five Dashboard controls. The geometry stub returned the center for an edge position. After implementation, the inventory and geometry tests passed. A native helper smoke test then exposed an off-screen lookup error because XCTest was asked for item 20's frame before it existed. The helper now checks existence before reading its frame. The final native smoke test passed through all four control kinds, dropdown options and a scrolled item 20 action.
+
+Simulator command:
+
+```text
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,id=43F2F6ED-5C86-4121-B03F-40FE38891C4E' \
+  -derivedDataPath /private/tmp/mote-ipad06-exhaustive-sim \
+  -resultBundlePath /private/tmp/mote-ipad06-exhaustive-green3.xcresult \
+  -collect-test-diagnostics never \
+  -only-testing:MoteUITests/MoteUITests/testGalleryTapPointsCoverCenterAndFourInsetEdges \
+  -only-testing:MoteUITests/MoteUITests/testGalleryControlInventoryIncludesEveryPageAndListAction \
+  -only-testing:MoteUITests/MoteUITests/testGalleryNativeHelpersExerciseEachControlKindAndScrolledAction \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalGalleryEveryControlAcceptsCenterAndFourEdges \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalPairedHostRecoversAfterBackgrounding test
+```
+
+Output: exited 0. `xcresulttool` reported three passed tests, zero failed and two skipped. The skips were the physical gallery journey and paired background-recovery journey. These are Simulator helper results only.
+
+Both final test bundles were compiled without device installation or execution:
+
+```text
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug -destination 'generic/platform=iOS' \
+  -derivedDataPath /private/tmp/mote-ipad06-exhaustive-device \
+  CODE_SIGNING_ALLOWED=NO build-for-testing
+
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /private/tmp/mote-ipad06-exhaustive-sim \
+  CODE_SIGNING_ALLOWED=NO build-for-testing
+```
+
+Output: both exited 0. The manifests are `Mote_iphoneos27.1-arm64.xctestrun` and `Mote_iphonesimulator27.1-arm64.xctestrun` under their respective `Build/Products` directories. Existing linker warnings report that the deployment target is iOS 16 while the XCTest libraries were built for iOS 17. The final source compilation produced no new source warnings.
+
+Remaining physical action: reconnect and unlock the M4 iPad, sign the current app and test runner with the existing Mote-only development profiles, then run `MoteUITests/MoteUITests/testPhysicalGalleryEveryControlAcceptsCenterAndFourEdges` on device `00008132-001104661AB9001C`. Retain its result bundle, tap logs, observed native inventories, per-control role trees and page screenshots. The unsigned device bundle above cannot supply physical execution evidence. Run the strengthened paired background-recovery test separately with the live host and driver coordination described below. Local-network permission, split view, system appearance, system Reduce Motion and actual VoiceOver evidence remain separate open work. IPAD-06 stays unchecked.
+
+### Review corrections prepared, physical execution pending
+
+Before exercising a page, the physical journey now independently enumerates native actionable elements while scrolling in both directions to stable content boundaries. It collects observed labels and XCTest platform roles without using the declared inventory to locate controls or stop scrolling. Exact comparison rejects missing controls, unexpected controls and role changes. It rejects duplicate labels within a native snapshot. The observed set includes all 20 reachable list actions. Navigation buttons and the global Preview note field are declared separately from page controls. Each select is opened separately to compare its observed native option buttons with its declared options. UIKit exposes buttons, toggles and selects as Button and adjustable sliders as Other. The inactive text-field accessibility mirror is also Other. The inventory comparison uses those actual platform roles, not invented native Toggle or Select types. Each page and select retain observed inventory attachments.
+
+The paired background test now requires `RunningBackgroundSuspended` within 60 seconds. RunningBackground is not accepted. After confirmed suspension, the test logs `BACKGROUND COORDINATION` and leaves Mote backgrounded for 30 seconds. The driver must run `moted host stop` for the paired host during that window. On activation, the test requires the exact paired host label to reach offline within 30 seconds and retains a screenshot. Connecting does not satisfy this assertion. Only after offline is observed does it log the second coordination marker. The driver must run `moted host start` for the same host. The test requires that exact host online within 180 seconds, the previous cursor and the previous visible content. It sends one unique user message, requires that native message exactly once and a higher event cursor, then relaunches to require persisted cursor replay and that same message exactly once. New host events may advance the cursor further. The replay cursor must not regress.
+
+This path is implemented but physically unrun. Run the physical method without `-quiet` and watch the live XCTest output for both coordination markers. The disconnected iPad cannot establish whether iPadOS exposes suspension within the strict timeout. If it does not, this test fails and needs an explicit controlled-interruption alternative. There is no background-running fallback. The driver must retain stop/start command output alongside the result bundle. A run without the required host interruption cannot pass its offline assertion. Simulator skip results are not recovery evidence.
+
+The inventory mismatch and suspension-state helpers were first observed failing in `/private/tmp/mote-ipad06-review-red.xcresult`. The first corrected Simulator run exited 0 with four passed tests, zero failures and two physical skips in `/private/tmp/mote-ipad06-review-green.xcresult`. That run covered the native page inventory, all five fresh text focus/editing positions and both negative helpers. The final combined rerun also includes the opened-option inventory and existing native control smoke journey:
+
+```text
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,id=43F2F6ED-5C86-4121-B03F-40FE38891C4E' \
+  -derivedDataPath /private/tmp/mote-ipad06-exhaustive-sim \
+  -resultBundlePath /private/tmp/mote-ipad06-review-final.xcresult \
+  -collect-test-diagnostics never \
+  -only-testing:MoteUITests/MoteUITests/testGalleryTapPointsCoverCenterAndFourInsetEdges \
+  -only-testing:MoteUITests/MoteUITests/testGalleryControlInventoryIncludesEveryPageAndListAction \
+  -only-testing:MoteUITests/MoteUITests/testGalleryObservedInventoryRejectsMissingUnexpectedAndWrongRole \
+  -only-testing:MoteUITests/MoteUITests/testGalleryRecoveryRejectsMerelyBackgroundRunning \
+  -only-testing:MoteUITests/MoteUITests/testGalleryObservedInventoryCoversEveryPageIncludingAllListRows \
+  -only-testing:MoteUITests/MoteUITests/testGalleryPreviewNoteFreshFocusAndEditingAtEveryPosition \
+  -only-testing:MoteUITests/MoteUITests/testGalleryNativeHelpersExerciseEachControlKindAndScrolledAction \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalGalleryEveryControlAcceptsCenterAndFourEdges \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalPairedHostRecoversAfterBackgrounding test
+```
+
+Final review-correction output: exited 0. `/private/tmp/mote-ipad06-review-final.xcresult` reports seven passed tests, zero failed and two skipped. The native control smoke passed in 192.886 seconds. The independent eight-page and opened-option inventory passed in 119.832 seconds. The remaining passes cover tap geometry, declared inventory, mismatched observations, five-position text focus/editing and strict suspension-state classification. Both physical journeys skipped. These results are Simulator helper evidence, not physical acceptance evidence.
+
+The new physical recovery message entry uses `mote.native-text-input`, matching the current live native text-field bridge. After that physical-only locator correction, the same Simulator command was repeated with only the two physical `-only-testing` selectors and result path `/private/tmp/mote-ipad06-review-final-guards.xcresult`. It exited 0 and reported two skips and zero failures. The physical recovery body is still unrun.
+
+The two unsigned `build-for-testing` commands above were repeated against final source. Both exited 0. Build logs are `/private/tmp/mote-ipad06-review-device-final-build.log` and `/private/tmp/mote-ipad06-review-sim-final-build.log`. The device linker retains the existing iOS 16 versus XCTest iOS 17 warnings. The final Simulator build log is empty. No physical device was installed, activated or tested.
+
+The final offline-boundary correction removes Connecting from the background test's acceptance condition. It waits for the exact paired host's offline native label before emitting the host-start marker. Repeating the same two-selector Simulator guard command with result path `/private/tmp/mote-ipad06-exact-offline-guards.xcresult` exited 0 with two skips and zero failures. Repeating both unsigned bundle build commands exited 0. Logs are `/private/tmp/mote-ipad06-exact-offline-device-build.log` and `/private/tmp/mote-ipad06-exact-offline-sim-build.log`. This correction remains physically unrun.

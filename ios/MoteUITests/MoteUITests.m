@@ -1,8 +1,76 @@
 #import <XCTest/XCTest.h>
+#import <TargetConditionals.h>
 @import Vision;
+
+static NSArray<NSString *> *galleryPages(void) {
+    return @[@"Layout",@"Toggle",@"Slider",@"Select",@"List",@"Form",@"Dashboard",@"Fixture"];
+}
+
+static CGPoint galleryTapPoint(CGRect frame, NSUInteger position) {
+    if (!isfinite(frame.origin.x) || !isfinite(frame.origin.y) ||
+        !isfinite(frame.size.width) || !isfinite(frame.size.height) ||
+        frame.size.width < 48 || frame.size.height < 48 || position > 4) {
+        return CGPointMake(NAN, NAN);
+    }
+    CGPoint point = CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame));
+    if (position == 1) point.x = CGRectGetMinX(frame) + 2;
+    if (position == 2) point.x = CGRectGetMaxX(frame) - 2;
+    if (position == 3) point.y = CGRectGetMinY(frame) + 2;
+    if (position == 4) point.y = CGRectGetMaxY(frame) - 2;
+    return point;
+}
+
+static NSArray<NSDictionary *> *galleryControls(NSString *page) {
+    if ([page isEqualToString:@"List"]) {
+        NSMutableArray *controls = [NSMutableArray array];
+        NSArray *first = @[@"draft",@"review",@"ready"];
+        for (NSUInteger index = 0; index < 20; index++) {
+            NSString *label = index < 3 ? [@"Open " stringByAppendingString:first[index]]
+                : [NSString stringWithFormat:@"Open item %lu", (unsigned long)index + 1];
+            NSString *event = index < 3 ? [@"gallery." stringByAppendingString:first[index]]
+                : [NSString stringWithFormat:@"gallery.item.%lu", (unsigned long)index + 1];
+            [controls addObject:@{@"kind":@"action",@"label":label,@"event":event}];
+        }
+        return controls;
+    }
+    NSArray *priority = @[@"Low",@"Normal",@"High"];
+    NSArray *models = @[@"qwen3:4b",@"qwen3:0.6b",@"qwen3-coder:30b-64k"];
+    NSArray *volume = @[@6,@0,@10,@6,@6];
+    NSDictionary *pages = @{
+        @"Layout":@[@{@"kind":@"action",@"label":@"Preview",@"event":@"gallery.layout"}],
+        @"Toggle":@[@{@"kind":@"toggle",@"label":@"Enable preview"}],
+        @"Slider":@[@{@"kind":@"slider",@"label":@"Volume",@"values":volume,@"max":@10}],
+        @"Select":@[@{@"kind":@"select",@"label":@"Priority",@"options":priority}],
+        @"Form":@[
+            @{@"kind":@"toggle",@"label":@"Enable preview"},
+            @{@"kind":@"select",@"label":@"Priority",@"options":priority},
+            @{@"kind":@"slider",@"label":@"Volume",@"values":volume,@"max":@10},
+            @{@"kind":@"action",@"label":@"Submit preview",@"event":@"gallery.submit"}],
+        @"Dashboard":@[
+            @{@"kind":@"toggle",@"label":@"Local only"},
+            @{@"kind":@"select",@"label":@"Talk model",@"options":models},
+            @{@"kind":@"select",@"label":@"Router model",@"options":models},
+            @{@"kind":@"select",@"label":@"Think model",@"options":models},
+            @{@"kind":@"action",@"label":@"Refresh",@"event":@"refresh"}],
+        @"Fixture":@[
+            @{@"kind":@"toggle",@"label":@"Local only"},
+            @{@"kind":@"slider",@"label":@"Volume",@"values":@[@50,@0,@100,@50,@50],@"max":@100},
+            @{@"kind":@"select",@"label":@"Mode",@"options":@[@"quiet",@"normal"]},
+            @{@"kind":@"action",@"label":@"Refresh",@"event":@"refresh"}]
+    };
+    return pages[page] ?: @[];
+}
 
 static NSString *compactText(NSString *text) {
     return [[text componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] componentsJoinedByString:@""];
+}
+
+static BOOL galleryInventoryMatches(NSDictionary *observed, NSDictionary *expected) {
+    return [observed isEqualToDictionary:expected];
+}
+
+static BOOL galleryRecoveryStateIsSuspended(XCUIApplicationState state) {
+    return state == XCUIApplicationStateRunningBackgroundSuspended;
 }
 
 static BOOL statusTextMatches(NSString *observed, NSString *expected) {
@@ -82,6 +150,79 @@ static CGRect textTargetBox(NSArray<NSDictionary *> *fragments, NSString *target
 - (void)setUp {
     [super setUp];
     self.continueAfterFailure = NO;
+}
+
+- (void)testGalleryTapPointsCoverCenterAndFourInsetEdges {
+    CGRect frame = CGRectMake(101.5, 203.25, 96, 48);
+    NSArray<NSValue *> *expected = @[
+        [NSValue valueWithCGPoint:CGPointMake(149.5, 227.25)],
+        [NSValue valueWithCGPoint:CGPointMake(103.5, 227.25)],
+        [NSValue valueWithCGPoint:CGPointMake(195.5, 227.25)],
+        [NSValue valueWithCGPoint:CGPointMake(149.5, 205.25)],
+        [NSValue valueWithCGPoint:CGPointMake(149.5, 249.25)]
+    ];
+    for (NSUInteger position = 0; position < expected.count; position++) {
+        CGPoint point = galleryTapPoint(frame, position);
+        XCTAssertTrue(CGPointEqualToPoint(point, expected[position].CGPointValue));
+        XCTAssertTrue(CGRectContainsPoint(frame, point));
+    }
+    for (NSValue *invalid in @[[NSValue valueWithCGRect:CGRectZero],
+                               [NSValue valueWithCGRect:CGRectMake(0, 0, 47, 48)],
+                               [NSValue valueWithCGRect:CGRectMake(NAN, 0, 48, 48)]]) {
+        CGPoint point = galleryTapPoint(invalid.CGRectValue, 0);
+        XCTAssertFalse(isfinite(point.x) && isfinite(point.y));
+    }
+    CGPoint unknown = galleryTapPoint(frame, 5);
+    XCTAssertFalse(isfinite(unknown.x) && isfinite(unknown.y));
+}
+
+- (void)testGalleryControlInventoryIncludesEveryPageAndListAction {
+    NSDictionary *counts = @{@"Layout":@1,@"Toggle":@1,@"Slider":@1,@"Select":@1,
+                             @"List":@20,@"Form":@4,@"Dashboard":@5,@"Fixture":@4};
+    XCTAssertEqualObjects([NSSet setWithArray:galleryPages()], [NSSet setWithArray:counts.allKeys]);
+    XCTAssertEqual(galleryPages().count, (NSUInteger)8);
+    NSArray *kinds = @[@"action",@"toggle",@"slider",@"select"];
+    for (NSString *page in counts) {
+        NSArray *controls = galleryControls(page);
+        XCTAssertEqual(controls.count, [counts[page] unsignedIntegerValue], @"%@", page);
+        NSMutableSet *labels = [NSMutableSet set];
+        for (NSDictionary *control in controls) {
+            XCTAssertFalse([labels containsObject:control[@"label"]]);
+            [labels addObject:control[@"label"]];
+            XCTAssertTrue([kinds containsObject:control[@"kind"]]);
+            if ([control[@"kind"] isEqual:@"select"]) {
+                NSArray *options = control[@"options"];
+                XCTAssertGreaterThanOrEqual(options.count, (NSUInteger)2);
+                XCTAssertEqual([NSSet setWithArray:options].count, options.count);
+            }
+            if ([control[@"kind"] isEqual:@"slider"]) {
+                XCTAssertEqual([control[@"values"] count], (NSUInteger)5);
+            }
+        }
+    }
+    NSArray *list = galleryControls(@"List");
+    NSArray *first = @[@"Open draft",@"Open review",@"Open ready"];
+    for (NSUInteger index = 0; index < 20; index++) {
+        NSString *label = index < 3 ? first[index] : [NSString stringWithFormat:@"Open item %lu", (unsigned long)index + 1];
+        NSArray *matches = [list filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"label == %@", label]];
+        XCTAssertEqual(matches.count, (NSUInteger)1);
+    }
+    XCTAssertEqual(galleryControls(@"Unknown").count, (NSUInteger)0);
+}
+
+- (void)testGalleryObservedInventoryRejectsMissingUnexpectedAndWrongRole {
+    NSDictionary *expected = @{@"Open item 20":@(XCUIElementTypeButton), @"Volume":@(XCUIElementTypeOther)};
+    XCTAssertTrue(galleryInventoryMatches(expected, expected));
+    XCTAssertFalse(galleryInventoryMatches(@{@"Volume":@(XCUIElementTypeOther)}, expected));
+    XCTAssertFalse(galleryInventoryMatches(@{@"Open item 20":@(XCUIElementTypeButton), @"Volume":@(XCUIElementTypeOther), @"Open item 21":@(XCUIElementTypeButton)}, expected));
+    XCTAssertFalse(galleryInventoryMatches(@{@"Open item 20":@(XCUIElementTypeOther), @"Volume":@(XCUIElementTypeOther)}, expected));
+}
+
+- (void)testGalleryRecoveryRejectsMerelyBackgroundRunning {
+    XCTAssertTrue(galleryRecoveryStateIsSuspended(XCUIApplicationStateRunningBackgroundSuspended));
+    XCTAssertFalse(galleryRecoveryStateIsSuspended(XCUIApplicationStateRunningBackground));
+    XCTAssertFalse(galleryRecoveryStateIsSuspended(XCUIApplicationStateRunningForeground));
+    XCTAssertFalse(galleryRecoveryStateIsSuspended(XCUIApplicationStateNotRunning));
 }
 - (void)tearDown {
     self.recognitionMisses = 0;
@@ -465,6 +606,244 @@ static CGRect textTargetBox(NSArray<NSDictionary *> *fragments, NSString *target
     }
     XCUIDevice.sharedDevice.orientation = UIDeviceOrientationPortrait;
 }
+
+- (XCUIElement *)galleryElement:(NSString *)label kind:(NSString *)kind app:(XCUIApplication *)app {
+    XCUIElement *element = [kind isEqualToString:@"slider"] ? app.otherElements[label] : app.buttons[label];
+    BOOL appeared = [element waitForExistenceWithTimeout:1];
+    if (!appeared) NSLog(@"GALLERY SEEK label=%@", label);
+    for (NSUInteger attempt = 0; attempt < 24; attempt++) {
+        BOOL exists = element.exists;
+        CGRect frame = exists ? element.frame : CGRectZero;
+        CGPoint point = galleryTapPoint(frame, 0);
+        if (exists && isfinite(point.x) && isfinite(point.y) &&
+            CGRectContainsRect(app.windows.firstMatch.frame, frame)) {
+            XCTAssertTrue(element.enabled, @"%@", label);
+            return element;
+        }
+        BOOL reverse = attempt >= 12 || (exists && CGRectGetMidY(frame) < CGRectGetMidY(app.windows.firstMatch.frame));
+        XCUICoordinate *start = [app.windows.firstMatch coordinateWithNormalizedOffset:CGVectorMake(0.85, reverse ? 0.4 : 0.75)];
+        XCUICoordinate *end = [app.windows.firstMatch coordinateWithNormalizedOffset:CGVectorMake(0.85, reverse ? 0.75 : 0.4)];
+        [start pressForDuration:0.05 thenDragToCoordinate:end];
+    }
+    [self capture:[@"missing-gallery-control-" stringByAppendingString:label] app:app];
+    XCTFail(@"No fully visible native hit target for %@", label);
+    return element;
+}
+
+- (void)tapGalleryElement:(XCUIElement *)element position:(NSUInteger)position app:(XCUIApplication *)app {
+    CGRect frame = element.frame;
+    CGPoint point = galleryTapPoint(frame, position);
+    XCTAssertTrue(isfinite(point.x) && isfinite(point.y), @"Invalid native hit target %@ %@", element.label, NSStringFromCGRect(frame));
+    CGRect window = app.windows.firstMatch.frame;
+    XCTAssertTrue(CGRectContainsRect(window, frame));
+    NSArray *positions = @[@"center",@"left",@"right",@"top",@"bottom"];
+    NSLog(@"GALLERY TAP label=%@ position=%@ frame=%@ point=%@", element.label, positions[position], NSStringFromCGRect(frame), NSStringFromCGPoint(point));
+    [[[app.windows.firstMatch coordinateWithNormalizedOffset:CGVectorMake(0, 0)]
+        coordinateWithOffset:CGVectorMake(point.x - window.origin.x, point.y - window.origin.y)] tap];
+}
+
+- (void)selectGalleryPage:(NSString *)page position:(NSUInteger)position app:(XCUIApplication *)app {
+    NSString *other = [page isEqualToString:@"Layout"] ? @"Toggle" : @"Layout";
+    [app.buttons[other] tap];
+    [self assertText:[@"Selected " stringByAppendingString:other] app:app];
+    [self tapGalleryElement:[self galleryElement:page kind:@"action" app:app] position:position app:app];
+    [self assertText:[@"Selected " stringByAppendingString:page] app:app];
+}
+
+- (void)chooseGalleryOption:(NSString *)option label:(NSString *)label position:(NSUInteger)position app:(XCUIApplication *)app {
+    [self tapGalleryElement:[self galleryElement:label kind:@"select" app:app] position:position app:app];
+    XCUIElement *choice = [self galleryElement:option kind:@"action" app:app];
+    [self tapGalleryElement:choice position:position app:app];
+    [self assertValue:option element:app.buttons[label]];
+}
+
+- (void)exerciseGalleryControl:(NSDictionary *)control page:(NSString *)page app:(XCUIApplication *)app {
+    NSString *label = control[@"label"];
+    NSString *kind = control[@"kind"];
+    if ([kind isEqualToString:@"select"]) {
+        NSArray<NSString *> *options = control[@"options"];
+        for (NSUInteger position = 0; position < 5; position++) {
+            for (NSString *option in options) {
+                XCUIElement *select = [self galleryElement:label kind:kind app:app];
+                XCTAssertTrue([options containsObject:select.value], @"Unexpected select value %@", select.value);
+                if ([option isEqual:select.value]) {
+                    NSString *other = [option isEqualToString:options[0]] ? options[1] : options[0];
+                    [self chooseGalleryOption:other label:label position:0 app:app];
+                }
+                [self chooseGalleryOption:option label:label position:position app:app];
+            }
+        }
+        return;
+    }
+    for (NSUInteger position = 0; position < 5; position++) {
+        if ([kind isEqualToString:@"action"]) {
+            [app.buttons[page] tap];
+            [self assertText:[@"Selected " stringByAppendingString:page] app:app];
+        }
+        XCUIElement *element = [self galleryElement:label kind:kind app:app];
+        if ([kind isEqualToString:@"toggle"]) {
+            NSArray *values = @[@"On",@"Off"];
+            XCTAssertTrue([values containsObject:element.value], @"Unexpected toggle value %@", element.value);
+            NSString *target = [element.value isEqual:@"On"] ? @"Off" : @"On";
+            [self tapGalleryElement:element position:position app:app];
+            [self assertValue:target element:element];
+        } else if ([kind isEqualToString:@"slider"]) {
+            NSNumber *target = control[@"values"][position];
+            NSNumber *seed = target.doubleValue == 0 ? control[@"max"] : @0;
+            [self tapGalleryElement:element position:seed.doubleValue == 0 ? 1 : 2 app:app];
+            [self assertValue:seed.stringValue element:element];
+            [self tapGalleryElement:element position:position app:app];
+            [self assertValue:target.stringValue element:element];
+        } else {
+            [self tapGalleryElement:element position:position app:app];
+            [self assertText:[@"Action: " stringByAppendingString:control[@"event"]] app:app];
+        }
+    }
+}
+
+- (void)testGalleryNativeHelpersExerciseEachControlKindAndScrolledAction {
+    XCUIApplication *app = [XCUIApplication new];
+    app.launchArguments = @[@"--mote-offline"];
+    [app launch];
+    XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+    for (NSString *page in @[@"Layout",@"Toggle",@"Slider",@"Select",@"List"]) {
+        [self selectGalleryPage:page position:0 app:app];
+        NSDictionary *control = [page isEqualToString:@"List"] ? galleryControls(page).lastObject : galleryControls(page).firstObject;
+        [self exerciseGalleryControl:control page:page app:app];
+    }
+    [self capture:@"gallery-native-control-helpers" app:app];
+    [app terminate];
+}
+
+- (void)assertObservedGalleryInventory:(NSString *)page app:(XCUIApplication *)app {
+    NSMutableDictionary *expected = [NSMutableDictionary dictionary];
+    for (NSString *navigation in galleryPages()) expected[navigation] = @(XCUIElementTypeButton);
+    expected[@"Preview note"] = @(XCUIElementTypeOther);
+    for (NSDictionary *control in galleryControls(page)) {
+        expected[control[@"label"]] = @([control[@"kind"] isEqual:@"slider"] ? XCUIElementTypeOther : XCUIElementTypeButton);
+    }
+    NSMutableDictionary *observed = [NSMutableDictionary dictionary];
+    for (NSNumber *reverse in @[@NO,@YES]) {
+        NSString *previous = nil;
+        NSUInteger stable = 0;
+        BOOL boundary = NO;
+        for (NSUInteger attempt = 0; attempt < 24; attempt++) {
+            NSMutableArray *geometry = [NSMutableArray array];
+            NSMutableSet *snapshotLabels = [NSMutableSet set];
+            NSPredicate *actionable = [NSPredicate predicateWithFormat:@"label != '' AND (elementType == %lu OR elementType == %lu OR elementType == %lu)",
+                (unsigned long)XCUIElementTypeButton, (unsigned long)XCUIElementTypeOther, (unsigned long)XCUIElementTypeTextField];
+            NSArray *elements = [[app descendantsMatchingType:XCUIElementTypeAny] matchingPredicate:actionable].allElementsBoundByIndex;
+            for (XCUIElement *element in elements) {
+                NSString *label = element.label;
+                NSNumber *role = @(element.elementType);
+                XCTAssertFalse([snapshotLabels containsObject:label], @"Duplicate actionable label %@", label);
+                [snapshotLabels addObject:label];
+                if (observed[label]) XCTAssertEqualObjects(observed[label], role);
+                observed[label] = role;
+                [geometry addObject:[NSString stringWithFormat:@"%@:%@:%@",label,role,NSStringFromCGRect(element.frame)]];
+            }
+            NSString *signature = [[geometry sortedArrayUsingSelector:@selector(compare:)] componentsJoinedByString:@"\n"];
+            stable = [signature isEqualToString:previous] ? stable + 1 : 0;
+            if (stable == 2) { boundary = YES; break; }
+            previous = signature;
+            XCUICoordinate *start = [app.windows.firstMatch coordinateWithNormalizedOffset:CGVectorMake(0.85, reverse.boolValue ? 0.4 : 0.75)];
+            XCUICoordinate *end = [app.windows.firstMatch coordinateWithNormalizedOffset:CGVectorMake(0.85, reverse.boolValue ? 0.75 : 0.4)];
+            [start pressForDuration:0.05 thenDragToCoordinate:end];
+        }
+        XCTAssertTrue(boundary, @"Did not observe a stable scroll boundary for %@", page);
+    }
+    XCTAttachment *inventory = [XCTAttachment attachmentWithString:[observed description]];
+    inventory.name = [@"observed-native-inventory-" stringByAppendingString:page];
+    inventory.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:inventory];
+    XCTAssertTrue(galleryInventoryMatches(observed, expected), @"%@ observed %@ expected %@",page,observed,expected);
+    for (NSDictionary *control in galleryControls(page)) {
+        if (![control[@"kind"] isEqual:@"select"]) continue;
+        [[self galleryElement:control[@"label"] kind:@"select" app:app] tap];
+        NSMutableSet *observedOptions = [NSMutableSet set];
+        for (XCUIElement *button in app.buttons.allElementsBoundByIndex) {
+            if (!expected[button.label]) [observedOptions addObject:button.label];
+        }
+        XCTAssertEqualObjects(observedOptions, [NSSet setWithArray:control[@"options"]], @"Unexpected native options for %@",control[@"label"]);
+        XCTAttachment *options = [XCTAttachment attachmentWithString:observedOptions.description];
+        options.name = [NSString stringWithFormat:@"observed-native-options-%@-%@",page,control[@"label"]];
+        options.lifetime = XCTAttachmentLifetimeKeepAlways;
+        [self addAttachment:options];
+        [app.buttons[[control[@"options"] firstObject]] tap];
+    }
+}
+
+- (void)exercisePreviewNoteAtEveryPosition:(XCUIApplication *)app {
+    for (NSUInteger position = 0; position < 5; position++) {
+        [app terminate];
+        [app launch];
+        XCTAssertFalse(app.keyboards.firstMatch.exists);
+        XCUIElement *field = [self nativeElement:@"Preview note" app:app];
+        XCTAssertTrue([field waitForExistenceWithTimeout:10]);
+        [self tapGalleryElement:field position:position app:app];
+        XCTAssertTrue([app.keyboards.firstMatch waitForExistenceWithTimeout:5]);
+        XCUIElement *editable = app.textFields[@"mote.native-text-input"];
+        XCTAssertTrue([editable waitForExistenceWithTimeout:5]);
+        NSString *marker = [NSString stringWithFormat:@"edge%lu",(unsigned long)position];
+        [editable typeText:marker];
+        [self assertValue:marker element:editable];
+        [self capture:[NSString stringWithFormat:@"preview-note-position-%lu",(unsigned long)position] app:app];
+    }
+    [app terminate];
+    [app launch];
+}
+
+- (void)testGalleryObservedInventoryCoversEveryPageIncludingAllListRows {
+    XCUIApplication *app = [XCUIApplication new];
+    app.launchArguments = @[@"--mote-offline"];
+    [app launch];
+    for (NSString *page in galleryPages()) {
+        [self selectGalleryPage:page position:0 app:app];
+        [self assertObservedGalleryInventory:page app:app];
+    }
+    [app terminate];
+}
+
+- (void)testGalleryPreviewNoteFreshFocusAndEditingAtEveryPosition {
+    XCUIApplication *app = [XCUIApplication new];
+    app.launchArguments = @[@"--mote-offline"];
+    [self exercisePreviewNoteAtEveryPosition:app];
+    [app terminate];
+}
+
+- (void)testPhysicalGalleryEveryControlAcceptsCenterAndFourEdges {
+#if TARGET_OS_SIMULATOR
+    XCTSkip(@"Requires physical iPad touch evidence");
+#endif
+    self.executionTimeAllowance = 3600;
+    XCUIApplication *app = [XCUIApplication new];
+    app.launchArguments = @[@"--mote-offline"];
+    NSArray *pages = galleryPages();
+    for (NSNumber *orientation in @[@(UIDeviceOrientationPortrait),@(UIDeviceOrientationLandscapeLeft)]) {
+        [app terminate];
+        XCUIDevice.sharedDevice.orientation = orientation.integerValue;
+        [app launch];
+        XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+        [self exercisePreviewNoteAtEveryPosition:app];
+        for (NSString *page in pages) {
+            [self selectGalleryPage:page position:0 app:app];
+            [self assertObservedGalleryInventory:page app:app];
+            for (NSUInteger position = 0; position < 5; position++) {
+                [self selectGalleryPage:page position:position app:app];
+            }
+            for (NSDictionary *control in galleryControls(page)) {
+                [self exerciseGalleryControl:control page:page app:app];
+                XCTAttachment *tree = [XCTAttachment attachmentWithString:app.debugDescription];
+                tree.name = [NSString stringWithFormat:@"physical-exhaustive-%@-%@-%@-role-tree",orientation,page,control[@"label"]];
+                tree.lifetime = XCTAttachmentLifetimeKeepAlways;
+                [self addAttachment:tree];
+            }
+            NSString *name = [NSString stringWithFormat:@"physical-exhaustive-%@-%@",orientation,page];
+            [self capture:name app:app];
+        }
+    }
+    [app terminate];
+}
 - (void)testOfflineGalleryLaunchRemainsInForeground {
     XCUIApplication *app = [[XCUIApplication alloc] init];
     app.launchArguments = @[@"--mote-offline"];
@@ -634,6 +1013,9 @@ static CGRect textTargetBox(NSArray<NSDictionary *> *fragments, NSString *target
 }
 
 - (void)testPhysicalPairedHostDisconnectsAndReconnectsWithoutRepairing {
+#if TARGET_OS_SIMULATOR
+    XCTSkip(@"Requires a paired physical iPad");
+#endif
     XCUIApplication *app = [[XCUIApplication alloc] init];
     [app activate];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
@@ -666,6 +1048,82 @@ static CGRect textTargetBox(NSArray<NSDictionary *> *fragments, NSString *target
     XCTAssertTrue([reconnected waitForExistenceWithTimeout:180]);
     XCTAssertTrue([self nativeElement:cursorLabel app:app].exists);
     [self capture:@"physical-wifi-reconnected" app:app];
+}
+
+- (void)testPhysicalPairedHostRecoversAfterBackgrounding {
+#if TARGET_OS_SIMULATOR
+    XCTSkip(@"Requires a paired physical iPad");
+#endif
+    self.executionTimeAllowance = 900;
+    XCUIApplication *app = [[XCUIApplication alloc] init];
+    [app activate];
+    XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+
+    NSPredicate *onlinePredicate = [NSPredicate predicateWithFormat:@"label ENDSWITH ': online'"];
+    XCUIElement *online = [[[app descendantsMatchingType:XCUIElementTypeAny]
+        matchingPredicate:onlinePredicate] firstMatch];
+    XCTAssertTrue([online waitForExistenceWithTimeout:20]);
+    NSString *onlineLabel = online.label;
+    XCUIElement *cursor = [[[app descendantsMatchingType:XCUIElementTypeAny]
+        matchingPredicate:[NSPredicate predicateWithFormat:@"label BEGINSWITH 'Cursor: '"]] firstMatch];
+    XCTAssertTrue([cursor waitForExistenceWithTimeout:10]);
+    NSString *cursorLabel = cursor.label;
+    NSString *visibleBefore = compactText([self visibleText:app]);
+    [self capture:@"physical-background-before" app:app];
+
+    [XCUIDevice.sharedDevice pressButton:XCUIDeviceButtonHome];
+    XCTAssertTrue([app waitForState:XCUIApplicationStateRunningBackgroundSuspended timeout:60]);
+    XCTAssertTrue(galleryRecoveryStateIsSuspended(app.state));
+    NSLog(@"BACKGROUND COORDINATION: suspension confirmed; stop this paired Mote host within 30 seconds and keep it stopped until the offline capture");
+    XCTestExpectation *stopWindow = [self expectationWithDescription:@"Driver stops host while app is suspended"];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        [stopWindow fulfill];
+    });
+    [self waitForExpectations:@[stopWindow] timeout:35];
+    XCTAssertTrue(galleryRecoveryStateIsSuspended(app.state));
+
+    [app activate];
+    XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:20]);
+    NSString *prefix = [onlineLabel substringToIndex:onlineLabel.length - @"online".length];
+    NSString *offlineLabel = [prefix stringByAppendingString:@"offline"];
+    XCTAssertTrue([[self nativeElement:offlineLabel app:app] waitForExistenceWithTimeout:30]);
+    [self capture:@"physical-background-host-stopped" app:app];
+    NSLog(@"BACKGROUND COORDINATION: offline captured; start the same paired Mote host now");
+    XCTAssertTrue([[self nativeElement:onlineLabel app:app] waitForExistenceWithTimeout:180]);
+    XCTAssertTrue([[self nativeElement:cursorLabel app:app] exists]);
+    XCTAssertEqualObjects(compactText([self visibleText:app]), visibleBefore);
+    [self capture:@"physical-background-recovered" app:app];
+
+    NSString *marker = [@"background-recovery-" stringByAppendingString:NSUUID.UUID.UUIDString];
+    [self tapText:@"Message your Mote host" app:app];
+    XCTAssertTrue([app.keyboards.firstMatch waitForExistenceWithTimeout:5]);
+    XCUIElement *composer = app.textFields[@"mote.native-text-input"];
+    XCTAssertTrue([composer waitForExistenceWithTimeout:5]);
+    [composer typeText:marker];
+    [self tapText:@"Send" app:app];
+    NSString *messageLabel = [@"User: " stringByAppendingString:marker];
+    XCTAssertTrue([[self nativeElement:messageLabel app:app] waitForExistenceWithTimeout:30]);
+    long long initialSequence = [[cursorLabel substringFromIndex:@"Cursor: ".length] longLongValue];
+    NSPredicate *advanced = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        return cursor.exists && [[cursor.label substringFromIndex:@"Cursor: ".length] longLongValue] > initialSequence;
+    }];
+    XCTNSPredicateExpectation *newEvent = [[XCTNSPredicateExpectation alloc] initWithPredicate:advanced object:app];
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[newEvent] timeout:30], XCTWaiterResultCompleted);
+    long long advancedSequence = [[cursor.label substringFromIndex:@"Cursor: ".length] longLongValue];
+    NSPredicate *messageMatch = [NSPredicate predicateWithFormat:@"label == %@",messageLabel];
+    XCTAssertEqual([[app descendantsMatchingType:XCUIElementTypeAny] matchingPredicate:messageMatch].count, (NSUInteger)1);
+    [self capture:@"physical-background-new-cursor-event" app:app];
+    [app terminate];
+    [app launch];
+    XCTAssertTrue([[self nativeElement:onlineLabel app:app] waitForExistenceWithTimeout:30]);
+    NSPredicate *replayed = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        return cursor.exists && [[cursor.label substringFromIndex:@"Cursor: ".length] longLongValue] >= advancedSequence;
+    }];
+    XCTNSPredicateExpectation *replayedCursor = [[XCTNSPredicateExpectation alloc] initWithPredicate:replayed object:app];
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[replayedCursor] timeout:30], XCTWaiterResultCompleted);
+    XCTAssertTrue([[self nativeElement:messageLabel app:app] waitForExistenceWithTimeout:30]);
+    XCTAssertEqual([[app descendantsMatchingType:XCUIElementTypeAny] matchingPredicate:messageMatch].count, (NSUInteger)1);
+    [self capture:@"physical-background-cursor-replay-no-duplicates" app:app];
 }
 
 - (void)sendInferenceMessage:(NSString *)message prose:(NSString *)prose app:(XCUIApplication *)app {
