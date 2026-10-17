@@ -225,3 +225,154 @@ The new physical recovery message entry uses `mote.native-text-input`, matching 
 The two unsigned `build-for-testing` commands above were repeated against final source. Both exited 0. Build logs are `/private/tmp/mote-ipad06-review-device-final-build.log` and `/private/tmp/mote-ipad06-review-sim-final-build.log`. The device linker retains the existing iOS 16 versus XCTest iOS 17 warnings. The final Simulator build log is empty. No physical device was installed, activated or tested.
 
 The final offline-boundary correction removes Connecting from the background test's acceptance condition. It waits for the exact paired host's offline native label before emitting the host-start marker. Repeating the same two-selector Simulator guard command with result path `/private/tmp/mote-ipad06-exact-offline-guards.xcresult` exited 0 with two skips and zero failures. Repeating both unsigned bundle build commands exited 0. Logs are `/private/tmp/mote-ipad06-exact-offline-device-build.log` and `/private/tmp/mote-ipad06-exact-offline-sim-build.log`. This correction remains physically unrun.
+
+## System Reduce Motion bridge implementation
+
+Date: 2026-10-17, America/Los_Angeles. Environment: macOS 26.6.2, Xcode 27.1, SDK 27.1. Native automated execution uses the iPad Pro 11-inch (M5) Simulator on iOS 27.0, device `43F2F6ED-5C86-4121-B03F-40FE38891C4E`. No physical system preference toggle or physical Reduce Motion pass is claimed.
+
+The iOS adapter reads `UIAccessibilityIsReduceMotionEnabled()`. Every MoteApp draw applies the logical OR of that current system setting and the existing explicit reduced-motion override before selecting the first-run, live paired or offline gallery branch. The preference is not cached at launch. A native Reduce Motion notification requests an egui repaint. The app owns one observer token. Dropping its bridge clears the repaint context and removes that observer. Native observer installation is absent from non-iOS production builds. Synthetic Rust preference input exists only under `cfg(test)`. No Simulator preference override hook was added.
+
+The focused Rust tests were observed failing before implementation. They rejected an enabled preference being read as false, missing notification repaint and the gallery draw ignoring the system preference. The native observer test also failed before implementation because the observer token was null. After implementation, this focused command passed four tests with zero failures:
+
+```text
+cargo test -p mote-ios --lib motion -- --nocapture
+```
+
+The tests cover repeated native state reads, conservative handling of unknown nonzero bridge values, explicit-override precedence, on/off changes through all three actual rendering branches and repaint requests only during the bridge lifetime. The native Simulator test compares the getter with UIKit's current preference and posts notifications over three observer lifetimes. It requires exactly one callback per notification and none after teardown. It does not toggle the system preference. A real system-setting toggle on the physical iPad remains required for IPAD-06.
+
+Native command:
+
+```text
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,id=43F2F6ED-5C86-4121-B03F-40FE38891C4E' \
+  -derivedDataPath /private/tmp/mote-ipad06-exhaustive-sim \
+  -resultBundlePath /private/tmp/mote-motion-native-final.xcresult \
+  -collect-test-diagnostics never \
+  -only-testing:MoteUITests/MoteUITests/testNativeMotionPreferenceAndObserverLifetime \
+  -only-testing:MoteUITests/MoteUITests/testDeterministicFixtureAndReducedMotionLaunch test
+```
+
+Output: exited 0. The result bundle reports two passed tests, zero failed and zero skipped. The native adapter test also rejects null callback installation and safely ignores null observer removal. The second test launches the real app with the preserved explicit override and changes its gallery page. These are automated native bridge and app-launch checks, not physical preference-toggle evidence.
+
+Both unsigned bundle builds exited 0:
+
+```text
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug -destination 'generic/platform=iOS' \
+  -derivedDataPath /private/tmp/mote-ipad06-exhaustive-device \
+  CODE_SIGNING_ALLOWED=NO build-for-testing
+
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /private/tmp/mote-ipad06-exhaustive-sim \
+  CODE_SIGNING_ALLOWED=NO build-for-testing
+```
+
+Those initial logs are `/private/tmp/mote-motion-device-bundle.log` and `/private/tmp/mote-motion-sim-bundle.log`. They predate the unconditional-read correction and are superseded by the builds below. Existing XCTest deployment-target linker warnings remain. `cargo clippy -p mote-ios --all-targets -- -D warnings` also exited 0 before that correction.
+
+Review added a read-count assertion for every draw, including when the explicit override is true. It first failed with zero native reads instead of one. The draw now reads the system value into a local before evaluating the OR. `cargo test -p mote-ios --lib motion -- --nocapture` then passed all four focused tests in `/private/tmp/mote-motion-read-count-green.log`.
+
+Both post-correction native builds exited 0:
+
+```text
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug -destination 'generic/platform=iOS' \
+  -derivedDataPath /private/tmp/mote-motion-final-device \
+  CODE_SIGNING_ALLOWED=NO build-for-testing
+
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /private/tmp/mote-motion-final-sim \
+  CODE_SIGNING_ALLOWED=NO build-for-testing
+```
+
+Logs: `/private/tmp/mote-motion-unconditional-final-device-build.log` and `/private/tmp/mote-motion-unconditional-final-sim-build.log`. These compile the unconditional system preference read. They do not supply physical preference-toggle evidence.
+
+## Bounded physical gallery cases prepared
+
+Date: 2026-10-17. The previous monolithic physical journey did not pass. Its M4 iPad run on iPadOS 26.5 is retained in `/private/tmp/mote-ipad06-exhaustive-physical2.xcresult`. The result reports zero passed tests and one failed test with `Test crashed with signal kill.` The driver observed the runner terminate after 349 seconds during List-page native inventory. No control assertion failure was reported before that termination. This is incomplete physical evidence, not an application acceptance pass.
+
+The monolithic selector is replaced by 32 independently selectable physical cases. Each orientation has one case for Layout, Toggle, Slider, Select, Form and Fixture. List has five four-row batches. Dashboard has one base-control case and one case per model select. Preview note has a separate case per orientation. Every case requests a 240-second execution allowance. The case sizes and timeout are intended to stay below the previous runner budget. Their physical completion times remain unverified.
+
+Every page case still independently scans the entire native page inventory, compares all labels and platform roles, inventories every opened select and tests all five navigation positions. It then exercises its assigned controls at the center and all four inset edges with the same fresh-effect assertions. It retains inventory attachments, control role trees, tap logs and a case screenshot. The separate Preview note cases retain all five fresh-launch focus/editing checks. Nothing is substituted for the literal control coverage.
+
+`testGalleryPhysicalCasesPartitionEveryControlExactlyOnce` was first observed failing against an empty partition. It now proves every page control is assigned exactly once per orientation, no List batch exceeds four rows, no batch has more than one select, and the runtime XCTest selectors exactly match the expected 32 stable names. The focused Simulator run at `/private/tmp/mote-gallery-partition-final.xcresult` exited 0 with two passed tests, zero failures and all 32 physical cases skipped. The other pass is the native motion observer test. These skips are not physical coverage.
+
+Run the physical suite one selector per invocation. Set `MOTE_GALLERY_XCTESTRUN` to a freshly signed manifest containing the bounded cases. Do not reuse the pre-split manifest. The following command requires `jq`. It preserves a separate result bundle, log and summary for every case, continues after a failed or killed case, and exits nonzero if any invocation fails. A case is reported passed only when its result contains exactly one passed test, no failures and no skips:
+
+```sh
+: "${MOTE_GALLERY_XCTESTRUN:?Set the freshly signed bounded-case xctestrun path}"
+MOTE_GALLERY_DEVICE=00008132-001104661AB9001C
+MOTE_GALLERY_ARTIFACTS=$(mktemp -d /private/tmp/mote-gallery-cases.XXXXXX) || exit 1
+gallery_failed=0
+for gallery_orientation in Portrait Landscape; do
+  for gallery_case in Layout Toggle Slider Select \
+    ListItems01Through04 ListItems05Through08 ListItems09Through12 \
+    ListItems13Through16 ListItems17Through20 Form DashboardBase \
+    DashboardTalkModel DashboardRouterModel DashboardThinkModel Fixture PreviewNote; do
+    gallery_selector="testPhysicalGallery${gallery_case}${gallery_orientation}"
+    if xcodebuild test-without-building \
+      -xctestrun "$MOTE_GALLERY_XCTESTRUN" \
+      -destination "platform=iOS,id=$MOTE_GALLERY_DEVICE" \
+      -destination-timeout 45 -collect-test-diagnostics never \
+      -only-testing:"MoteUITests/MoteUITests/$gallery_selector" \
+      -resultBundlePath "$MOTE_GALLERY_ARTIFACTS/$gallery_selector.xcresult" \
+      > "$MOTE_GALLERY_ARTIFACTS/$gallery_selector.log" 2>&1 && \
+      xcrun xcresulttool get test-results summary \
+        --path "$MOTE_GALLERY_ARTIFACTS/$gallery_selector.xcresult" \
+        > "$MOTE_GALLERY_ARTIFACTS/$gallery_selector.summary.json" && \
+      jq -e '.passedTests == 1 and .failedTests == 0 and .skippedTests == 0' \
+        "$MOTE_GALLERY_ARTIFACTS/$gallery_selector.summary.json" > /dev/null; then
+      printf '%s passed\n' "$gallery_selector"
+    else
+      printf '%s failed or interrupted\n' "$gallery_selector"
+      gallery_failed=1
+    fi
+  done
+done
+printf 'Evidence: %s\n' "$MOTE_GALLERY_ARTIFACTS"
+test "$gallery_failed" -eq 0
+```
+
+All 32 bounded cases remain physically unrun. The older monolithic commands above are historical and are not the current exhaustive-suite command. No physical pass or README acceptance checkbox is claimed.
+
+The Simulator partition/guard command was:
+
+```sh
+gallery_selectors=()
+for gallery_orientation in Portrait Landscape; do
+  for gallery_case in Layout Toggle Slider Select \
+    ListItems01Through04 ListItems05Through08 ListItems09Through12 \
+    ListItems13Through16 ListItems17Through20 Form DashboardBase \
+    DashboardTalkModel DashboardRouterModel DashboardThinkModel Fixture PreviewNote; do
+    gallery_selectors+=("-only-testing:MoteUITests/MoteUITests/testPhysicalGallery${gallery_case}${gallery_orientation}")
+  done
+done
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,id=43F2F6ED-5C86-4121-B03F-40FE38891C4E' \
+  -derivedDataPath /private/tmp/mote-ipad06-exhaustive-sim \
+  -resultBundlePath /private/tmp/mote-gallery-partition-final.xcresult \
+  -collect-test-diagnostics never \
+  -only-testing:MoteUITests/MoteUITests/testGalleryPhysicalCasesPartitionEveryControlExactlyOnce \
+  -only-testing:MoteUITests/MoteUITests/testNativeMotionPreferenceAndObserverLifetime \
+  "${gallery_selectors[@]}" test
+```
+
+Output: exited 0 with two passed tests, zero failures and 32 physical skips. Both unsigned native builds were repeated after the final bounded-case source change using the post-correction build commands above. Both exited 0. Logs are `/private/tmp/mote-gallery-partition-device-build.log` and `/private/tmp/mote-gallery-partition-sim-build.log`. The device manifest is `/private/tmp/mote-motion-final-device/Build/Products/Mote_iphoneos27.1-arm64.xctestrun`. The Simulator manifest is `/private/tmp/mote-motion-final-sim/Build/Products/Mote_iphonesimulator27.1-arm64.xctestrun`.
+
+## Final automated source verification
+
+Date: 2026-10-17. The fresh post-correction workspace run exited 0. Its 65 suite summaries total 748 passed tests, zero failed and 21 ignored. Ignored live and physical journeys do not supply acceptance evidence.
+
+```text
+cargo test --workspace -- --test-threads=4
+cargo clippy --workspace -- -D warnings
+cargo test -p mote-ios --lib motion -- --nocapture
+cargo clippy -p mote-ios --all-targets -- -D warnings
+cargo build --locked -p mote-ios --target aarch64-apple-ios --target aarch64-apple-ios-sim
+cargo clippy -p mote-ios --target aarch64-apple-ios --target aarch64-apple-ios-sim -- -D warnings
+```
+
+All commands exited 0. The focused motion command passed four tests after the test-only read-count adapter's needless-return lint was fixed. The corresponding logs are `/private/tmp/mote-motion-final-workspace-tests.log`, `/private/tmp/mote-motion-workspace-clippy.log`, `/private/tmp/mote-motion-final-focused-tests.log`, `/private/tmp/mote-motion-final-host-clippy.log`, `/private/tmp/mote-motion-final-apple-build.log` and `/private/tmp/mote-motion-final-apple-clippy.log`. The documented shell blocks passed `bash -n` without execution. `git diff --check` passed. No physical system preference toggle or bounded gallery case pass is claimed.

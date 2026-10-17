@@ -8,6 +8,8 @@ pub struct MoteApp {
     composer: String,
     last_event: String,
     reduced_motion: bool,
+    #[cfg(target_os = "ios")]
+    motion_bridge: Option<crate::motion::Bridge>,
     live: Option<crate::live::LiveRuntime>,
     first_run: Option<crate::first_run::FirstRun>,
     #[cfg(all(target_os = "ios", target_abi = "sim"))]
@@ -21,6 +23,8 @@ impl Default for MoteApp {
             composer: String::new(),
             last_event: "No interaction yet".into(),
             reduced_motion: false,
+            #[cfg(target_os = "ios")]
+            motion_bridge: None,
             live: None,
             first_run: None,
             #[cfg(all(target_os = "ios", target_abi = "sim"))]
@@ -63,6 +67,10 @@ impl eframe::App for MoteApp {
 
 impl MoteApp {
     pub fn attach_live(&mut self, ctx: &egui::Context) {
+        #[cfg(target_os = "ios")]
+        if self.motion_bridge.is_none() {
+            self.motion_bridge = Some(crate::motion::Bridge::install(ctx));
+        }
         match crate::live::LiveRuntime::from_environment(ctx.clone()) {
             Ok(runtime) => self.live = runtime,
             Err(error) => self.last_event = format!("Host setup failed: {error}"),
@@ -86,6 +94,11 @@ impl MoteApp {
     }
 
     fn draw(&mut self, ctx: &egui::Context, safe_area: egui::Margin) {
+        let system_reduced = crate::motion::system_reduced_motion();
+        mote_client_core::transition::set_reduced_motion(
+            ctx,
+            self.reduced_motion || system_reduced,
+        );
         if let Some(first_run) = self.first_run.as_mut() {
             if let Some(live) = first_run.poll() {
                 self.live = Some(live);
@@ -102,7 +115,6 @@ impl MoteApp {
             live.draw(ctx, safe_area, &mut self.composer);
             return;
         }
-        mote_client_core::transition::set_reduced_motion(ctx, self.reduced_motion);
         let mut status = egui::Frame::side_top_panel(&ctx.style());
         status.inner_margin.top = status.inner_margin.top.saturating_add(safe_area.top);
         status.inner_margin.left = status.inner_margin.left.saturating_add(safe_area.left);
@@ -219,6 +231,75 @@ impl MoteApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_draw_path_combines_and_refreshes_native_motion_with_explicit_override() {
+        use mote_host_client::{ConnectionState, HostDirectory, PairedHost};
+        for path in ["gallery", "first-run", "paired"] {
+            let ctx = egui::Context::default();
+            let mut app = MoteApp::default();
+            if path == "first-run" {
+                app.first_run = Some(crate::first_run::FirstRun::default());
+            } else if path == "paired" {
+                let host = PairedHost::new(
+                    [31; 32],
+                    "Motion host",
+                    None,
+                    mote_protocol::VersionRange::current(),
+                )
+                .unwrap();
+                let id = host.host_id().clone();
+                let mut directory = HostDirectory::default();
+                directory.register(host).unwrap();
+                directory.select_host(&id).unwrap();
+                directory
+                    .set_connection(&id, ConnectionState::Online)
+                    .unwrap();
+                let (persist, rx) = std::sync::mpsc::channel();
+                app.live = Some(crate::live::LiveRuntime {
+                    directory,
+                    rx,
+                    persist,
+                    commands: Default::default(),
+                    status: Default::default(),
+                    approval_requests: Default::default(),
+                    authenticated: true,
+                });
+            }
+            frame(&mut app, &ctx, egui::vec2(834.0, 1210.0), vec![]);
+            for (system, explicit, expected) in [
+                (0, false, false),
+                (1, false, true),
+                (0, false, false),
+                (0, true, true),
+                (1, true, true),
+                (0, false, false),
+            ] {
+                crate::motion::set_test_system_state(system);
+                app.reduced_motion = explicit;
+                mote_client_core::transition::set_reduced_motion(&ctx, !expected);
+                let output = frame(&mut app, &ctx, egui::vec2(834.0, 1210.0), vec![]);
+                assert_eq!(
+                    crate::motion::test_system_reads(),
+                    1,
+                    "{path}: native preference must be read even when explicit={explicit}"
+                );
+                let title = match path {
+                    "first-run" => "Connect to a Mote host",
+                    "paired" => "Motion host: online",
+                    _ => "Offline gallery",
+                };
+                assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == title)), "{path} branch was not drawn");
+                assert_eq!(
+                    ctx.data_mut(
+                        |data| data.get_temp::<bool>(egui::Id::new("vector-reduced-motion"))
+                    ),
+                    Some(expected),
+                    "{path}: system={system}, explicit={explicit}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn live_browser_card_sends_once_then_replaces_controls_with_terminal_status() {

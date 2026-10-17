@@ -1,6 +1,13 @@
 #import <XCTest/XCTest.h>
 #import <TargetConditionals.h>
+#import "../Mote/mote_ios.h"
+#import <objc/runtime.h>
 @import Vision;
+
+static NSUInteger motionNotifications;
+static void observedMotionChange(void) {
+    motionNotifications++;
+}
 
 static NSArray<NSString *> *galleryPages(void) {
     return @[@"Layout",@"Toggle",@"Slider",@"Select",@"List",@"Form",@"Dashboard",@"Fixture"];
@@ -59,6 +66,20 @@ static NSArray<NSDictionary *> *galleryControls(NSString *page) {
             @{@"kind":@"action",@"label":@"Refresh",@"event":@"refresh"}]
     };
     return pages[page] ?: @[];
+}
+
+static NSArray<NSArray<NSString *> *> *galleryPhysicalBatches(NSString *page) {
+    NSArray *labels = [galleryControls(page) valueForKey:@"label"];
+    if (!labels.count) return @[];
+    if ([page isEqual:@"Dashboard"]) {
+        return @[@[@"Local only",@"Refresh"],@[@"Talk model"],@[@"Router model"],@[@"Think model"]];
+    }
+    if (![page isEqual:@"List"]) return @[labels];
+    NSMutableArray *batches = [NSMutableArray array];
+    for (NSUInteger start = 0; start < labels.count; start += 4) {
+        [batches addObject:[labels subarrayWithRange:NSMakeRange(start, MIN((NSUInteger)4, labels.count - start))]];
+    }
+    return batches;
 }
 
 static NSString *compactText(NSString *text) {
@@ -152,6 +173,24 @@ static CGRect textTargetBox(NSArray<NSDictionary *> *fragments, NSString *target
     self.continueAfterFailure = NO;
 }
 
+- (void)testNativeMotionPreferenceAndObserverLifetime {
+    XCTAssertEqual(mote_ios_reduce_motion_enabled(), (uint8_t)UIAccessibilityIsReduceMotionEnabled());
+    XCTAssertEqual(mote_ios_motion_observe(NULL), NULL);
+    mote_ios_motion_remove(NULL);
+    motionNotifications = 0;
+    for (NSUInteger lifetime = 0; lifetime < 3; lifetime++) {
+        void *observer = mote_ios_motion_observe(observedMotionChange);
+        XCTAssertNotEqual(observer, NULL);
+        for (NSUInteger notification = 0; notification < 3; notification++) {
+            [NSNotificationCenter.defaultCenter postNotificationName:UIAccessibilityReduceMotionStatusDidChangeNotification object:nil];
+            XCTAssertEqual(motionNotifications, lifetime * 3 + notification + 1);
+        }
+        mote_ios_motion_remove(observer);
+        [NSNotificationCenter.defaultCenter postNotificationName:UIAccessibilityReduceMotionStatusDidChangeNotification object:nil];
+        XCTAssertEqual(motionNotifications, (lifetime + 1) * 3);
+    }
+}
+
 - (void)testGalleryTapPointsCoverCenterAndFourInsetEdges {
     CGRect frame = CGRectMake(101.5, 203.25, 96, 48);
     NSArray<NSValue *> *expected = @[
@@ -216,6 +255,52 @@ static CGRect textTargetBox(NSArray<NSDictionary *> *fragments, NSString *target
     XCTAssertFalse(galleryInventoryMatches(@{@"Volume":@(XCUIElementTypeOther)}, expected));
     XCTAssertFalse(galleryInventoryMatches(@{@"Open item 20":@(XCUIElementTypeButton), @"Volume":@(XCUIElementTypeOther), @"Open item 21":@(XCUIElementTypeButton)}, expected));
     XCTAssertFalse(galleryInventoryMatches(@{@"Open item 20":@(XCUIElementTypeOther), @"Volume":@(XCUIElementTypeOther)}, expected));
+}
+
+- (void)testGalleryPhysicalCasesPartitionEveryControlExactlyOnce {
+    NSDictionary *counts = @{@"Layout":@1,@"Toggle":@1,@"Slider":@1,@"Select":@1,
+                             @"List":@5,@"Form":@1,@"Dashboard":@4,@"Fixture":@1};
+    NSUInteger cases = 0;
+    for (NSString *page in galleryPages()) {
+        NSArray *batches = galleryPhysicalBatches(page);
+        XCTAssertEqual(batches.count, [counts[page] unsignedIntegerValue], @"%@", page);
+        NSMutableArray *labels = [NSMutableArray array];
+        for (NSArray *batch in batches) {
+            XCTAssertGreaterThan(batch.count, (NSUInteger)0);
+            if ([page isEqual:@"List"]) XCTAssertLessThanOrEqual(batch.count, (NSUInteger)4);
+            NSUInteger selects = 0;
+            for (NSString *label in batch) {
+                NSArray *matches = [galleryControls(page) filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"label == %@",label]];
+                XCTAssertEqual(matches.count, (NSUInteger)1);
+                if ([matches.firstObject[@"kind"] isEqual:@"select"]) selects++;
+            }
+            XCTAssertLessThanOrEqual(selects, (NSUInteger)1);
+            [labels addObjectsFromArray:batch];
+        }
+        XCTAssertEqual([NSSet setWithArray:labels].count, labels.count);
+        XCTAssertEqualObjects([NSSet setWithArray:labels], [NSSet setWithArray:[galleryControls(page) valueForKey:@"label"]]);
+        cases += batches.count;
+    }
+    XCTAssertEqual(cases * 2 + 2, (NSUInteger)32);
+    XCTAssertEqual(galleryPhysicalBatches(@"Unknown").count, (NSUInteger)0);
+    NSArray *stems = @[@"Layout",@"Toggle",@"Slider",@"Select",@"ListItems01Through04",@"ListItems05Through08",
+        @"ListItems09Through12",@"ListItems13Through16",@"ListItems17Through20",@"Form",@"DashboardBase",
+        @"DashboardTalkModel",@"DashboardRouterModel",@"DashboardThinkModel",@"Fixture",@"PreviewNote"];
+    NSMutableSet *expectedSelectors = [NSMutableSet set];
+    for (NSString *orientation in @[@"Portrait",@"Landscape"]) {
+        for (NSString *stem in stems) {
+            [expectedSelectors addObject:[NSString stringWithFormat:@"testPhysicalGallery%@%@",stem,orientation]];
+        }
+    }
+    unsigned int methodCount = 0;
+    Method *methods = class_copyMethodList(self.class, &methodCount);
+    NSMutableSet *observedSelectors = [NSMutableSet set];
+    for (unsigned int index = 0; index < methodCount; index++) {
+        NSString *name = NSStringFromSelector(method_getName(methods[index]));
+        if ([name hasPrefix:@"testPhysicalGallery"]) [observedSelectors addObject:name];
+    }
+    free(methods);
+    XCTAssertEqualObjects(observedSelectors, expectedSelectors);
 }
 
 - (void)testGalleryRecoveryRejectsMerelyBackgroundRunning {
@@ -811,38 +896,95 @@ static CGRect textTargetBox(NSArray<NSDictionary *> *fragments, NSString *target
     [app terminate];
 }
 
-- (void)testPhysicalGalleryEveryControlAcceptsCenterAndFourEdges {
+- (void)runPhysicalGalleryPage:(NSString *)page orientation:(UIDeviceOrientation)orientation batch:(NSUInteger)batch {
 #if TARGET_OS_SIMULATOR
     XCTSkip(@"Requires physical iPad touch evidence");
 #endif
-    self.executionTimeAllowance = 3600;
+    self.executionTimeAllowance = 240;
+    NSArray *batches = galleryPhysicalBatches(page);
+    XCTAssertLessThan(batch, batches.count);
+    NSArray *labels = batches[batch];
     XCUIApplication *app = [XCUIApplication new];
     app.launchArguments = @[@"--mote-offline"];
-    NSArray *pages = galleryPages();
-    for (NSNumber *orientation in @[@(UIDeviceOrientationPortrait),@(UIDeviceOrientationLandscapeLeft)]) {
-        [app terminate];
-        XCUIDevice.sharedDevice.orientation = orientation.integerValue;
-        [app launch];
-        XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
-        [self exercisePreviewNoteAtEveryPosition:app];
-        for (NSString *page in pages) {
-            [self selectGalleryPage:page position:0 app:app];
-            [self assertObservedGalleryInventory:page app:app];
-            for (NSUInteger position = 0; position < 5; position++) {
-                [self selectGalleryPage:page position:position app:app];
-            }
-            for (NSDictionary *control in galleryControls(page)) {
-                [self exerciseGalleryControl:control page:page app:app];
-                XCTAttachment *tree = [XCTAttachment attachmentWithString:app.debugDescription];
-                tree.name = [NSString stringWithFormat:@"physical-exhaustive-%@-%@-%@-role-tree",orientation,page,control[@"label"]];
-                tree.lifetime = XCTAttachmentLifetimeKeepAlways;
-                [self addAttachment:tree];
-            }
-            NSString *name = [NSString stringWithFormat:@"physical-exhaustive-%@-%@",orientation,page];
-            [self capture:name app:app];
-        }
+    XCUIDevice.sharedDevice.orientation = orientation;
+    [app launch];
+    XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+    [self selectGalleryPage:page position:0 app:app];
+    [self assertObservedGalleryInventory:page app:app];
+    for (NSUInteger position = 0; position < 5; position++) {
+        [self selectGalleryPage:page position:position app:app];
     }
+    NSString *name = [NSString stringWithFormat:@"physical-exhaustive-%ld-%@-%lu",(long)orientation,page,(unsigned long)batch];
+    for (NSDictionary *control in galleryControls(page)) {
+        if (![labels containsObject:control[@"label"]]) continue;
+        [self exerciseGalleryControl:control page:page app:app];
+        XCTAttachment *tree = [XCTAttachment attachmentWithString:app.debugDescription];
+        tree.name = [NSString stringWithFormat:@"%@-%@-role-tree",name,control[@"label"]];
+        tree.lifetime = XCTAttachmentLifetimeKeepAlways;
+        [self addAttachment:tree];
+    }
+    [self capture:name app:app];
     [app terminate];
+}
+
+- (void)runPhysicalPreviewNoteOrientation:(UIDeviceOrientation)orientation {
+#if TARGET_OS_SIMULATOR
+    XCTSkip(@"Requires physical iPad text-field touch evidence");
+#endif
+    self.executionTimeAllowance = 240;
+    XCUIDevice.sharedDevice.orientation = orientation;
+    XCUIApplication *app = [XCUIApplication new];
+    app.launchArguments = @[@"--mote-offline"];
+    [self exercisePreviewNoteAtEveryPosition:app];
+    XCTAttachment *tree = [XCTAttachment attachmentWithString:app.debugDescription];
+    tree.name = [NSString stringWithFormat:@"physical-preview-note-%ld-role-tree",(long)orientation];
+    tree.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:tree];
+    [app terminate];
+}
+
+#define PHYSICAL_GALLERY_CASE(testName, pageName, deviceOrientation, batchIndex) \
+- (void)testName { [self runPhysicalGalleryPage:pageName orientation:deviceOrientation batch:batchIndex]; }
+
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryLayoutPortrait, @"Layout", UIDeviceOrientationPortrait, 0)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryTogglePortrait, @"Toggle", UIDeviceOrientationPortrait, 0)
+PHYSICAL_GALLERY_CASE(testPhysicalGallerySliderPortrait, @"Slider", UIDeviceOrientationPortrait, 0)
+PHYSICAL_GALLERY_CASE(testPhysicalGallerySelectPortrait, @"Select", UIDeviceOrientationPortrait, 0)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryListItems01Through04Portrait, @"List", UIDeviceOrientationPortrait, 0)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryListItems05Through08Portrait, @"List", UIDeviceOrientationPortrait, 1)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryListItems09Through12Portrait, @"List", UIDeviceOrientationPortrait, 2)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryListItems13Through16Portrait, @"List", UIDeviceOrientationPortrait, 3)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryListItems17Through20Portrait, @"List", UIDeviceOrientationPortrait, 4)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryFormPortrait, @"Form", UIDeviceOrientationPortrait, 0)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryDashboardBasePortrait, @"Dashboard", UIDeviceOrientationPortrait, 0)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryDashboardTalkModelPortrait, @"Dashboard", UIDeviceOrientationPortrait, 1)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryDashboardRouterModelPortrait, @"Dashboard", UIDeviceOrientationPortrait, 2)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryDashboardThinkModelPortrait, @"Dashboard", UIDeviceOrientationPortrait, 3)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixturePortrait, @"Fixture", UIDeviceOrientationPortrait, 0)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryLayoutLandscape, @"Layout", UIDeviceOrientationLandscapeLeft, 0)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryToggleLandscape, @"Toggle", UIDeviceOrientationLandscapeLeft, 0)
+PHYSICAL_GALLERY_CASE(testPhysicalGallerySliderLandscape, @"Slider", UIDeviceOrientationLandscapeLeft, 0)
+PHYSICAL_GALLERY_CASE(testPhysicalGallerySelectLandscape, @"Select", UIDeviceOrientationLandscapeLeft, 0)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryListItems01Through04Landscape, @"List", UIDeviceOrientationLandscapeLeft, 0)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryListItems05Through08Landscape, @"List", UIDeviceOrientationLandscapeLeft, 1)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryListItems09Through12Landscape, @"List", UIDeviceOrientationLandscapeLeft, 2)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryListItems13Through16Landscape, @"List", UIDeviceOrientationLandscapeLeft, 3)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryListItems17Through20Landscape, @"List", UIDeviceOrientationLandscapeLeft, 4)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryFormLandscape, @"Form", UIDeviceOrientationLandscapeLeft, 0)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryDashboardBaseLandscape, @"Dashboard", UIDeviceOrientationLandscapeLeft, 0)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryDashboardTalkModelLandscape, @"Dashboard", UIDeviceOrientationLandscapeLeft, 1)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryDashboardRouterModelLandscape, @"Dashboard", UIDeviceOrientationLandscapeLeft, 2)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryDashboardThinkModelLandscape, @"Dashboard", UIDeviceOrientationLandscapeLeft, 3)
+PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixtureLandscape, @"Fixture", UIDeviceOrientationLandscapeLeft, 0)
+
+#undef PHYSICAL_GALLERY_CASE
+
+- (void)testPhysicalGalleryPreviewNotePortrait {
+    [self runPhysicalPreviewNoteOrientation:UIDeviceOrientationPortrait];
+}
+
+- (void)testPhysicalGalleryPreviewNoteLandscape {
+    [self runPhysicalPreviewNoteOrientation:UIDeviceOrientationLandscapeLeft];
 }
 - (void)testOfflineGalleryLaunchRemainsInForeground {
     XCUIApplication *app = [[XCUIApplication alloc] init];

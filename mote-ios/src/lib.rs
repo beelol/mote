@@ -5,6 +5,7 @@ pub mod discovery;
 mod first_run;
 pub mod keychain;
 pub mod live;
+mod motion;
 #[cfg(any(test, target_os = "ios"))]
 mod native_text;
 #[cfg(any(test, all(target_os = "ios", target_abi = "sim")))]

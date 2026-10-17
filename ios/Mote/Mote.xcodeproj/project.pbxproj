@@ -7,6 +7,8 @@
         A00000000000000000000001 = {isa = PBXBuildFile; fileRef = A00000000000000000000011; };
         A00000000000000000000002 = {isa = PBXBuildFile; fileRef = A00000000000000000000012; };
         A00000000000000000000003 = {isa = PBXBuildFile; fileRef = A00000000000000000000013; };
+        A00000000000000000000004 = {isa = PBXBuildFile; fileRef = A00000000000000000000019; };
+        A00000000000000000000005 = {isa = PBXBuildFile; fileRef = A00000000000000000000019; };
         A00000000000000000000011 = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
         A00000000000000000000012 = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
         A00000000000000000000013 = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ../MoteUITests/MoteUITests.m; sourceTree = "<group>"; };
@@ -15,9 +17,10 @@
         A00000000000000000000016 = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "build-rust.sh"; sourceTree = "<group>"; };
         A00000000000000000000017 = {isa = PBXFileReference; explicitFileType = wrapper.application; path = Mote.app; sourceTree = BUILT_PRODUCTS_DIR; };
         A00000000000000000000018 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = MoteUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+        A00000000000000000000019 = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = motion.m; sourceTree = "<group>"; };
         A00000000000000000000020 = {
             isa = PBXGroup;
-            children = (A00000000000000000000011, A00000000000000000000014, A00000000000000000000015, A00000000000000000000012, A00000000000000000000016, A00000000000000000000013, A00000000000000000000021);
+            children = (A00000000000000000000011, A00000000000000000000019, A00000000000000000000014, A00000000000000000000015, A00000000000000000000012, A00000000000000000000016, A00000000000000000000013, A00000000000000000000021);
             sourceTree = "<group>";
         };
         A00000000000000000000021 = {isa = PBXGroup; name = Products; children = (A00000000000000000000017, A00000000000000000000018); sourceTree = "<group>"; };
@@ -33,10 +36,10 @@
             shellPath = /bin/sh;
             shellScript = "/bin/sh \"$SRCROOT/build-rust.sh\"";
         };
-        A00000000000000000000031 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
+        A00000000000000000000031 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000001, A00000000000000000000004); runOnlyForDeploymentPostprocessing = 0; };
         A00000000000000000000032 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
         A00000000000000000000033 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000002); runOnlyForDeploymentPostprocessing = 0; };
-        A00000000000000000000034 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000003); runOnlyForDeploymentPostprocessing = 0; };
+        A00000000000000000000034 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000003, A00000000000000000000005); runOnlyForDeploymentPostprocessing = 0; };
         A00000000000000000000035 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
         A00000000000000000000040 = {
             isa = PBXNativeTarget;
