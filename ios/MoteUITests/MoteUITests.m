@@ -633,6 +633,41 @@ static CGRect textTargetBox(NSArray<NSDictionary *> *fragments, NSString *target
     [self capture:@"live-home-restored" app:app];
 }
 
+- (void)testPhysicalPairedHostDisconnectsAndReconnectsWithoutRepairing {
+    XCUIApplication *app = [[XCUIApplication alloc] init];
+    [app activate];
+    XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+
+    NSPredicate *onlinePredicate = [NSPredicate predicateWithFormat:@"label ENDSWITH ': online'"];
+    XCUIElement *online = [[[app descendantsMatchingType:XCUIElementTypeAny]
+        matchingPredicate:onlinePredicate] firstMatch];
+    XCTAssertTrue([online waitForExistenceWithTimeout:20]);
+    NSString *onlineLabel = online.label;
+    NSString *prefix = [onlineLabel substringToIndex:onlineLabel.length - @"online".length];
+    XCUIElement *cursor = [[[app descendantsMatchingType:XCUIElementTypeAny]
+        matchingPredicate:[NSPredicate predicateWithFormat:@"label BEGINSWITH 'Cursor: '"]] firstMatch];
+    XCTAssertTrue([cursor waitForExistenceWithTimeout:10]);
+    NSString *cursorLabel = cursor.label;
+    [self capture:@"physical-wifi-online-before" app:app];
+
+    NSString *offlineLabel = [prefix stringByAppendingString:@"offline"];
+    NSString *connectingLabel = [prefix stringByAppendingString:@"connecting"];
+    NSPredicate *disconnected = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        return [self nativeElement:offlineLabel app:app].exists ||
+               [self nativeElement:connectingLabel app:app].exists;
+    }];
+    XCTNSPredicateExpectation *disconnectExpectation =
+        [[XCTNSPredicateExpectation alloc] initWithPredicate:disconnected object:app];
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[disconnectExpectation] timeout:120],
+                   XCTWaiterResultCompleted);
+    [self capture:@"physical-wifi-disconnected" app:app];
+
+    XCUIElement *reconnected = [self nativeElement:onlineLabel app:app];
+    XCTAssertTrue([reconnected waitForExistenceWithTimeout:180]);
+    XCTAssertTrue([self nativeElement:cursorLabel app:app].exists);
+    [self capture:@"physical-wifi-reconnected" app:app];
+}
+
 - (void)sendInferenceMessage:(NSString *)message prose:(NSString *)prose app:(XCUIApplication *)app {
     [self tapText:@"Message your Mote host" app:app];
     XCTAssertTrue([app.keyboards.firstMatch waitForExistenceWithTimeout:5]);

@@ -21,10 +21,8 @@ The host lifecycle command is a bounded proposed change. The presented interface
 and data on stop, and retains `moted install|uninstall` for persistent login management. Product
 code must wait for explicit owner approval of that short design.
 
-HOST-05 has complete automated reconnect, replay, resync, state and isolation coverage. The literal
-Mac sleep and wake run and live iPad connection-state evidence remain open. A physical-iPad Wi-Fi
-interruption and recovery may provide the live disconnect evidence, but it does not replace the
-criterion's explicit Mac sleep and wake clause.
+HOST-05 has complete automated reconnect, replay, resync, state and isolation coverage. Its live
+physical iPad connection-state journey now passes. The literal Mac sleep and wake run remains open.
 
 IPAD-06 now has a passing physical gallery run in portrait and landscape. Physical native
 accessibility elements, reduced-motion launch, foreground survival, native text input and a
@@ -64,6 +62,10 @@ test took 0.039 seconds. `docs/verification/IPAD-06.md` records the commands and
 The live daemon advertises the same paired host identity through Bonjour. A normal physical app
 launch migrated its saved endpoint from `169.254.9.119:47810` to the Mac Wi-Fi endpoint
 `192.168.50.184:47810` without repairing and preserved cursor sequence 9.
+
+The physical reconnect observer then passed in 56.175 seconds. It captured the same host online,
+offline after stopping only the Mote daemon, and online again with the same cursor after restarting
+the daemon. The result bundle is `/private/tmp/mote-physical-reconnect1.xcresult`.
 
 The physical timing probe is invalid because `--mote-timing-probe` is intentionally Simulator-only.
 Do not include it in physical selections. The separate physical reduced-motion launch test already

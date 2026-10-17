@@ -235,3 +235,33 @@ pmset -g custom
 The preflight did not establish a reliable automatic wake mechanism. No sleep command or power-setting change was issued. The literal live sleep and wake Verify clause remains open.
 The literal Mac sleep and wake run was not attempted because no safe wake mechanism was configured.
 HOST-05 remains unchecked. This does not prove live iPad connection-state presentation.
+
+## Physical iPad disconnect and reconnect, 2026-10-17
+
+Environment: iPad Pro 11-inch (M4), UDID `00008132-001104661AB9001C`, iPadOS
+26.5, Xcode 27.0. The Mac and iPad were on the same Wi-Fi network. The paired host identity was
+unchanged. Its saved endpoint had already moved from the direct-link address to
+`192.168.50.184:47810` after authenticated Bonjour discovery.
+
+A physical-only UI observer captured the selected host online and saved its exact `Cursor:` label.
+The driver stopped only the foreground Mote daemon. The app presented the same host as offline.
+The driver restarted the same daemon and the app returned to the exact online label with the same
+cursor. No pairing code, credential mutation or host selection was used.
+
+Command:
+
+```text
+xcodebuild test-without-building \
+  -xctestrun /private/tmp/mote-reconnect-signed/Build/Products/Mote_iphoneos27.0-arm64.xctestrun \
+  -destination 'platform=iOS,id=00008132-001104661AB9001C' \
+  -resultBundlePath /private/tmp/mote-physical-reconnect1.xcresult \
+  -collect-test-diagnostics never \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalPairedHostDisconnectsAndReconnectsWithoutRepairing
+```
+
+Output: `TEST EXECUTE SUCCEEDED`. The test passed in 56.175 seconds with zero failures. The result
+bundle retains `physical-wifi-online-before`, `physical-wifi-disconnected` and
+`physical-wifi-reconnected` screenshots.
+
+This verifies the live physical iPad connection-state and recovery journey. HOST-05 remains open
+because its Verify clause separately requires a literal Mac sleep and wake run.
