@@ -1,4 +1,4 @@
-# IPAD-14 verification in progress
+# IPAD-14 verification
 
 Date: 2026-10-16, America/Los_Angeles.
 
@@ -130,5 +130,24 @@ hardware-key event, inserted `X` to produce `abcXd`, and exercised native Paste,
 cleared the field. A long press exposed Paste and restored `pasted`. The result bundle contains the
 attachment `native-text-edit-menu`.
 
-Marked-text composition and spoken dictation still require observed runs with the physical iPad
-software keyboard. IPAD-14 remains unchecked until those two observations are recorded.
+The composition and dictation-delivery sequence was then run against the same physical iPad. The
+app and XCTest runner were signed with their existing Mote-only development profiles and explicit
+Mote entitlements.
+
+Command:
+
+```text
+xcodebuild test-without-building \
+  -xctestrun /private/tmp/mote-native-text-physical-marked2/Build/Products/Mote_iphoneos27.0-arm64.xctestrun \
+  -destination 'platform=iOS,id=00008132-001104661AB9001C' \
+  -resultBundlePath /private/tmp/mote-native-text-physical-marked2.xcresult \
+  -only-testing:MoteUITests/MoteUITests/testNativeTextBridgePreservesMarkedTextAndAcceptsDictationFallback
+```
+
+Output: `TEST EXECUTE SUCCEEDED`. The test passed in 6.046 seconds. It preserved `かな` as active
+marked text across multiple egui frames, committed the composition and accepted
+` Mote dictation works` through UIKit's documented `insertText:` dictation fallback. XCTest read
+the final value `かな Mote dictation works` from the transparent native field. The result bundle
+contains the attachment `native-text-composition-dictation`.
+
+The focused Rust tests, Simulator tests and physical-iPad tests cover every IPAD-14 behavior.

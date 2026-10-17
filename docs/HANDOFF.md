@@ -12,8 +12,8 @@ state, marked text, dictation, hardware-keyboard events and native copy, cut and
 Automated physical-device verification now passes for edge focus, typing, cursor movement and the
 native Copy, Cut and Paste flows. A launch-only UIKit sequence now verifies that marked text survives
 multiple egui frames before commit and that the documented `UITextField` dictation fallback reaches
-the field. The same sequence passes in the iPad Simulator. Its physical-iPad run is prepared and is
-waiting for the locked device to become available.
+the field. The same sequence passes in the iPad Simulator and on the physical iPad. IPAD-14 is
+complete.
 
 ## Current implementation state
 
@@ -54,11 +54,10 @@ combined rerun confirmed the new test again, but the older edit-menu test stoppe
 Simulator software keyboard is hidden. Toggling Device Hub's software keyboard setting requires
 owner confirmation. This does not invalidate the previous passing Simulator result.
 
-The updated physical test build is signed with the existing Mote-only profiles at
-`/private/tmp/mote-native-text-physical-marked1`. Its active `xcodebuild test-without-building` run
-is waiting at device preflight because the iPad locked itself. Unlock the iPad before that process
-times out. After it passes, record the result in `docs/verification/IPAD-14.md`, check the README
-criterion, rerun the required workspace checks, commit and push.
+The physical composition and dictation-delivery test passed in 6.046 seconds with result bundle
+`/private/tmp/mote-native-text-physical-marked2.xcresult`. It preserved active marked text across
+multiple egui frames, committed the composition and accepted the documented UIKit dictation
+fallback. `docs/verification/IPAD-14.md` contains the complete commands and observed results.
 
 The requested Mac host lifecycle command is a bounded follow-up. The proposed interface is
 `mote host start|status|restart|stop`. It should manage only Mote's launchd service, enable LAN

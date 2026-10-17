@@ -283,7 +283,7 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
     layout in the iPad Simulator, capture the first, midpoint and settled frames, and exercise
     a changed control immediately. Repeat with Reduce Motion, which must swap immediately with
     a brief red outline pulse. [partial evidence](docs/verification/IPAD-13.md)
-  - [ ] **IPAD-14** Every Matrix and egui single-line field uses one reusable iOS text-input bridge
+  - [x] **IPAD-14** Every Matrix and egui single-line field uses one reusable iOS text-input bridge
     while egui remains the visual renderer. A tap anywhere in the 48-point field focuses it and the
     bridge supports the system keyboard, cursor movement, selection, marked text, native copy, cut
     and paste menus, dictation and hardware keyboards in generated forms, first-run setup and chat.
