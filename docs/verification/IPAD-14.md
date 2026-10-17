@@ -1,6 +1,6 @@
 # IPAD-14 verification in progress
 
-Date: 2026-10-14, America/Los_Angeles.
+Date: 2026-10-16, America/Los_Angeles.
 
 The reusable bridge is implemented in `mote-client-core::native_text`. The iOS shell uses one
 transparent `UITextField` over the active egui field. Egui remains the visual renderer. The native
@@ -49,6 +49,27 @@ observed the system keyboard, typed `abcd`, moved the cursor left with a hardwar
 `X` to produce `abcXd`, and exercised the native Paste, Copy and Cut menu items. Cut cleared the
 field. A long press exposed Paste and restored `pasted`. The result bundle contains the attachment
 `native-text-edit-menu`.
+
+A second launch-only UI test uses UIKit's public text-input methods on the same transparent field.
+It sets `かな` as marked text and waits across multiple egui render frames. The test advances only
+if `markedTextRange` and the composed text both survive. It then calls `unmarkText` and verifies the
+committed value. `UITextField` does not implement the optional `insertDictationResult:` method, so
+UIKit documents `insertText:` as its dictation delivery fallback. The test sends
+` Mote dictation works` through that path and observes the final value through XCTest.
+
+Command:
+
+```text
+xcodebuild test -project ios/Mote/Mote.xcodeproj -scheme Mote -configuration Debug \
+  -destination 'platform=iOS Simulator,id=43F2F6ED-5C86-4121-B03F-40FE38891C4E' \
+  -derivedDataPath /private/tmp/mote-native-text-green-sequence2 \
+  -resultBundlePath /private/tmp/mote-native-text-green-sequence2.xcresult \
+  CODE_SIGNING_ALLOWED=NO \
+  -only-testing:MoteUITests/MoteUITests/testNativeTextBridgePreservesMarkedTextAndAcceptsDictationFallback
+```
+
+Output: `TEST SUCCEEDED`. The test passed in 8.099 seconds. The result bundle reports one passed test,
+zero failures and the attachment `native-text-composition-dictation`.
 
 ## Physical iPad verification
 

@@ -219,7 +219,41 @@ const char *mote_ios_documents(void) {
 @end
 
 static MoteTextInputProxy *MoteTextInput;
+static BOOL MoteNativeInputTestEnabled;
+static BOOL MoteNativeInputTestStarted;
 static void refreshMoteAccessibilityElements(void);
+
+static void failMoteNativeInputTest(NSString *reason) {
+    MoteTextInput.text = [@"mote-test-failed:" stringByAppendingString:reason];
+    [MoteTextInput sendActionsForControlEvents:UIControlEventEditingChanged];
+}
+
+static void startMoteNativeInputTest(void) {
+    if (!MoteNativeInputTestEnabled || MoteNativeInputTestStarted ||
+        !MoteTextInput.isFirstResponder) return;
+    MoteNativeInputTestStarted = YES;
+    [MoteTextInput setMarkedText:@"かな" selectedRange:NSMakeRange(2, 0)];
+    [MoteTextInput sendActionsForControlEvents:UIControlEventEditingChanged];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC),
+                   dispatch_get_main_queue(), ^{
+        if (MoteTextInput.markedTextRange == nil ||
+            ![MoteTextInput.text isEqualToString:@"かな"]) {
+            failMoteNativeInputTest(@"marked-text-lost");
+            return;
+        }
+        [MoteTextInput unmarkText];
+        [MoteTextInput sendActionsForControlEvents:UIControlEventEditingChanged];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC),
+                       dispatch_get_main_queue(), ^{
+            if (MoteTextInput.markedTextRange != nil ||
+                ![MoteTextInput.text isEqualToString:@"かな"]) {
+                failMoteNativeInputTest(@"marked-text-not-committed");
+                return;
+            }
+            [MoteTextInput insertText:@" Mote dictation works"];
+        });
+    });
+}
 
 void mote_ios_text_input_publish(const uint8_t *bytes, size_t length) {
     @autoreleasepool {
@@ -287,6 +321,7 @@ void mote_ios_text_input_publish(const uint8_t *bytes, size_t length) {
         MoteTextInput.hidden = NO;
         MoteTextInput.userInteractionEnabled = YES;
         if (changedField || !MoteTextInput.isFirstResponder) [MoteTextInput becomeFirstResponder];
+        startMoteNativeInputTest();
         refreshMoteAccessibilityElements();
     }
 }
@@ -444,6 +479,8 @@ int main(int argc, char *argv[]) {
         if (pasteboard != NSNotFound && pasteboard + 1 < arguments.count) {
             UIPasteboard.generalPasteboard.string = arguments[pasteboard + 1];
         }
+        MoteNativeInputTestEnabled =
+            [arguments containsObject:@"--mote-test-native-input-sequence"];
         mote_ios_main();
     }
 }

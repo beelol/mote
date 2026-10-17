@@ -10,8 +10,10 @@ chat. It exposes a 48-point native editing surface with the system keyboard, cur
 state, marked text, dictation, hardware-keyboard events and native copy, cut and paste menus.
 
 Automated physical-device verification now passes for edge focus, typing, cursor movement and the
-native Copy, Cut and Paste flows. Manual marked-text composition and dictation remain to be observed
-on the physical iPad before IPAD-14 can be marked complete.
+native Copy, Cut and Paste flows. A launch-only UIKit sequence now verifies that marked text survives
+multiple egui frames before commit and that the documented `UITextField` dictation fallback reaches
+the field. The same sequence passes in the iPad Simulator. Its physical-iPad run is prepared and is
+waiting for the locked device to become available.
 
 ## Current implementation state
 
@@ -46,14 +48,17 @@ paste test change. The physical UI test passed in 24.743 seconds with result bun
 keyboard, typing, hardware-keyboard cursor movement and native Copy, Cut and Paste.
 
 An earlier Simulator run passed in 29.122 seconds with result bundle
-`/private/tmp/mote-native-text-sim15.xcresult`. A rerun against the latest test code currently stops
-because the Simulator software keyboard is hidden. Toggling Device Hub's software keyboard setting
-requires owner confirmation. This does not invalidate the previous passing Simulator result.
+`/private/tmp/mote-native-text-sim15.xcresult`. The new composition and dictation-fallback test passed
+in 8.099 seconds with result bundle `/private/tmp/mote-native-text-green-sequence2.xcresult`. A
+combined rerun confirmed the new test again, but the older edit-menu test stopped because the
+Simulator software keyboard is hidden. Toggling Device Hub's software keyboard setting requires
+owner confirmation. This does not invalidate the previous passing Simulator result.
 
-The Mote app is installed and opens on the physical iPad. Finish IPAD-14 by entering and committing
-text with a composition keyboard, then clearing the field and entering a short phrase with dictation.
-Record the observations in `docs/verification/IPAD-14.md`, check the README criterion, rerun the
-required workspace checks, commit and push.
+The updated physical test build is signed with the existing Mote-only profiles at
+`/private/tmp/mote-native-text-physical-marked1`. Its active `xcodebuild test-without-building` run
+is waiting at device preflight because the iPad locked itself. Unlock the iPad before that process
+times out. After it passes, record the result in `docs/verification/IPAD-14.md`, check the README
+criterion, rerun the required workspace checks, commit and push.
 
 The requested Mac host lifecycle command is a bounded follow-up. The proposed interface is
 `mote host start|status|restart|stop`. It should manage only Mote's launchd service, enable LAN

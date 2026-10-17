@@ -146,6 +146,22 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     [self assertValue:@"pasted" element:editable];
     [self capture:@"native-text-edit-menu" app:app];
 }
+
+- (void)testNativeTextBridgePreservesMarkedTextAndAcceptsDictationFallback {
+    XCUIApplication *app = [XCUIApplication new];
+    app.launchArguments = @[@"--mote-offline", @"--mote-test-native-input-sequence"];
+    [app launch];
+    XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+
+    XCUIElement *field = [self nativeElement:@"Preview note" app:app];
+    XCTAssertTrue([field waitForExistenceWithTimeout:10]);
+    [field tap];
+
+    XCUIElement *editable = app.textFields[@"mote.native-text-input"];
+    XCTAssertTrue([editable waitForExistenceWithTimeout:5]);
+    [self assertValue:@"かな Mote dictation works" element:editable];
+    [self capture:@"native-text-composition-dictation" app:app];
+}
 - (UIImage *)windowImage:(XCUIApplication *)app {
     UIImage *source = app.windows.firstMatch.screenshot.image;
     CGSize size = app.windows.firstMatch.frame.size;
