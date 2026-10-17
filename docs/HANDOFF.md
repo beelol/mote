@@ -1,71 +1,81 @@
 # Current development handoff
 
-Updated 2026-10-16 in America/Los_Angeles. This file is a replacement snapshot.
+Updated 2026-10-17 in America/Los_Angeles. This file is a replacement snapshot.
 
 ## Current goal
 
-IPAD-14 adds one reusable UIKit text-input bridge beneath Matrix and egui fields. Egui remains the
-visual renderer. The bridge covers generated fields, first-run pairing, offline preview and live
-chat. It exposes a 48-point native editing surface with the system keyboard, cursor and selection
-state, marked text, dictation, hardware-keyboard events and native copy, cut and paste menus.
+Close the remaining Mote iPad and local-host delivery criteria on `main`: V0-53, HOST-05,
+IPAD-06, IPAD-08, IPAD-12 and IPAD-13. The separate memory comparison and broader Matrix runtime
+backlog are out of scope. Keep Mote signing, provisioning, App Store Connect, TestFlight and CI
+resources isolated from every other app.
 
-Automated physical-device verification now passes for edge focus, typing, cursor movement and the
-native Copy, Cut and Paste flows. A launch-only UIKit sequence now verifies that marked text survives
-multiple egui frames before commit and that the documented `UITextField` dictation fallback reaches
-the field. The same sequence passes in the iPad Simulator and on the physical iPad. IPAD-14 is
-complete.
+## Current state
 
-## Current implementation state
+IPAD-14 is complete and pushed at `b729d37`. The physical M4 iPad is connected as
+`00008132-001104661AB9001C` on iPadOS 26.5. The prior Mote-only signed test bundle is at
+`/private/tmp/mote-native-text-physical-marked2`. A temporary copy at
+`/private/tmp/mote-ipad06-fixed-signed` contains the corrected gallery locator test binary.
 
-The Mac daemon listens on local IPv4 interfaces and Bonjour advertises it on the LAN. Incoming
-gateway peers are restricted to loopback, private and link-local ranges. The iPad accepts only local
-discovery endpoints. First-run setup discovers hosts, validates the selected fingerprint against the
-pairing offer and waits for authenticated completion. Owner pairing commands are available through
-the local daemon socket. `MOTE_GATEWAY_BIND` exists so isolated integration tests can use an
-ephemeral local port while the real daemon owns port 47810.
+The host lifecycle command is a bounded proposed change. The presented interface is
+`moted host start|status|restart|stop`. It manages only `com.mote.moted`, preserves configuration
+and data on stop, and retains `moted install|uninstall` for persistent login management. Product
+code must wait for explicit owner approval of that short design.
 
-The physical device is iPad Pro 11-inch (M4), UDID `00008132-001104661AB9001C`, iPadOS 26.5. The
-app bundle is `com.beelol.mote`. The Mote-only test plug-in bundle is
-`com.beelol.mote.xctrunner` with profile `Mote UI Tests Development`. The runner host bundle is
-`com.beelol.mote.xctrunner.xctrunner` with profile `Mote UI Test Runner Host Development`. The app
-and runner are installed on the iPad. Do not reuse another app's provisioning resources.
+HOST-05 has complete automated reconnect, replay, resync, state and isolation coverage. The literal
+Mac sleep and wake run and live iPad connection-state evidence remain open. A physical-iPad Wi-Fi
+interruption and recovery may provide the live disconnect evidence, but it does not replace the
+criterion's explicit Mac sleep and wake clause.
 
-The physical test runner cannot set the device pasteboard directly. The app accepts the test-only
-launch argument `--mote-test-pasteboard <text>` and seeds the system pasteboard before Rust starts.
-This makes native paste verification deterministic without changing the normal application flow.
-Commit `ca5d947` contains that change.
+IPAD-06 now has a passing physical gallery run in portrait and landscape. Physical native
+accessibility elements, reduced-motion launch, foreground survival, native text input and a
+landscape Dashboard select also pass. Literal center and edge taps for every control, split view,
+paired background recovery, the local-network privacy prompt, system light and dark appearance,
+the system Reduce Motion setting and actual VoiceOver navigation remain open.
 
-The App Store Connect record remains Mote Agent, Apple ID `6822101041`. Build `0.1.0 (1)` is in the
-internal Testing group. The manual-only `.github/workflows/mote-testflight.yml` workflow remains
-guarded and separate from other apps. Its Mote-specific App Store profile exists, but the App Store
-Connect API key and Apple Distribution certificate secrets are still absent.
+IPAD-13 has headless transition timing and paired Simulator integration evidence. Its live paired
+replacement captures and immediate changed-control action remain open. A UI audit found a real
+Reduce Motion gap. `MoteApp::draw` applies the transition setting only on the offline gallery path.
+First-run and live paired rendering return before it is applied. The iOS system Reduce Motion
+preference is also not bridged into Rust. Fix this before claiming physical Reduce Motion or paired
+IPAD-13 evidence.
 
-## Verification and next actions
+Mote Agent is App Store Connect app `6822101041`, bundle ID `com.beelol.mote`, SKU
+`mote-ipad-001`, team `FQ6YGD7554`. Build `0.1.0 (1)` is processed and assigned only to the internal
+Testing group. IPAD-08 still requires installing through TestFlight and repeating the named
+journeys. TestFlight is not installed on the connected iPad.
 
-`cargo test --workspace` and `cargo clippy --workspace -- -D warnings` passed after the deterministic
-paste test change. The physical UI test passed in 24.743 seconds with result bundle
-`/private/tmp/mote-native-text-green-signed2.xcresult`. It covered right-edge focus, the system
-keyboard, typing, hardware-keyboard cursor movement and native Copy, Cut and Paste.
+IPAD-12 still requires isolated Mote CI credentials and one manual upload run from `main`. GitHub
+environment `mote-testflight` is restricted to exact branch `main`. It contains only
+`MOTE_PROFILE_BASE64` and `MOTE_KEYCHAIN_PASSWORD`. Build-only runs `38336516684` and `38349927919`
+passed and skipped distribution. The missing upload secrets are `MOTE_ASC_API_KEY_ID`,
+`MOTE_ASC_ISSUER_ID`, `MOTE_ASC_API_KEY_P8`, `MOTE_CERT_P12_BASE64` and `MOTE_CERT_PASSWORD`.
+The Mac has a team Apple Distribution identity and files named `AuthKey_L783ML8SXN.p8` and
+`dist.p12`, but they are not proven Mote-owned. Do not reuse or upload them without verifying their
+scope and provenance.
 
-An earlier Simulator run passed in 29.122 seconds with result bundle
-`/private/tmp/mote-native-text-sim15.xcresult`. The new composition and dictation-fallback test passed
-in 8.099 seconds with result bundle `/private/tmp/mote-native-text-green-sequence2.xcresult`. A
-combined rerun confirmed the new test again, but the older edit-menu test stopped because the
-Simulator software keyboard is hidden. Toggling Device Hub's software keyboard setting requires
-owner confirmation. This does not invalidate the previous passing Simulator result.
+## Latest verified work
 
-The physical composition and dictation-delivery test passed in 6.046 seconds with result bundle
-`/private/tmp/mote-native-text-physical-marked2.xcresult`. It preserved active marked text across
-multiple egui frames, committed the composition and accepted the documented UIKit dictation
-fallback. `docs/verification/IPAD-14.md` contains the complete commands and observed results.
+The full physical gallery and locator regression passed with zero failures in
+`/private/tmp/mote-ipad06-gallery-fixed2.xcresult`. The gallery run took 267.002 seconds. It visited
+all eight pages, exercised the existing control journeys, scrolled to and activated item 20,
+entered text with the system keyboard and repeated in portrait and landscape. The focused locator
+test took 0.039 seconds. `docs/verification/IPAD-06.md` records the commands and results.
 
-The requested Mac host lifecycle command is a bounded follow-up. The proposed interface is
-`mote host start|status|restart|stop`. It should manage only Mote's launchd service, enable LAN
-advertising, show the reachable address and shut down cleanly. Implementation must wait for explicit
-approval of that short design under the repository workflow.
+The live daemon advertises the same paired host identity through Bonjour. A normal physical app
+launch migrated its saved endpoint from `169.254.9.119:47810` to the Mac Wi-Fi endpoint
+`192.168.50.184:47810` without repairing and preserved cursor sequence 9.
 
-IPAD-06, IPAD-08, IPAD-12 and IPAD-13 remain separate open criteria. The memory backend comparison
-remains a separate goal with SQLite as the production default. External testing, App Review, public
-release and cloud relay stay out of scope.
+The physical timing probe is invalid because `--mote-timing-probe` is intentionally Simulator-only.
+Do not include it in physical selections. The separate physical reduced-motion launch test already
+passed, but it is not proof of the iPad system preference.
 
-Preserve unrelated `.DS_Store` and `.superpowers/` files.
+Next add literal center and edge coverage, physical appearance, split-view, background,
+local-network permission and VoiceOver evidence. Fix Reduce Motion propagation. Complete the live
+paired transition capture. Then finish TestFlight and the hosted upload.
+
+## Required delivery loop
+
+Record completed evidence in `docs/verification/<ID>.md`. Do not weaken a Verify clause. Run
+`cargo test --workspace` and `cargo clippy --workspace -- -D warnings` before every commit. Make
+small conventional commits on `main` and push each verified change. Preserve the unrelated
+`.DS_Store` and `.superpowers/` files.

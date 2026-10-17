@@ -37,6 +37,43 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     return [texts componentsJoinedByString:@" "];
 }
 
+static CGRect textTargetBox(NSArray<NSDictionary *> *fragments, NSString *target, CGFloat height) {
+    NSString *compactTarget = compactText(target);
+    for (NSInteger exact = 1; exact >= 0; exact--) {
+        for (NSDictionary *fragment in fragments) {
+            NSString *text = compactText(fragment[@"text"]);
+            if (exact ? [text isEqualToString:compactTarget] : [text containsString:compactTarget]) {
+                return [fragment[@"box"] CGRectValue];
+            }
+        }
+    }
+    for (NSDictionary *anchor in fragments) {
+        CGFloat center = CGRectGetMidY([anchor[@"box"] CGRectValue]);
+        NSMutableArray<NSDictionary *> *row = [NSMutableArray array];
+        for (NSDictionary *fragment in fragments) {
+            if (fabs(CGRectGetMidY([fragment[@"box"] CGRectValue]) - center) * height <= 4) {
+                [row addObject:fragment];
+            }
+        }
+        [row sortUsingComparator:^NSComparisonResult(NSDictionary *left, NSDictionary *right) {
+            CGFloat x1 = CGRectGetMinX([left[@"box"] CGRectValue]);
+            CGFloat x2 = CGRectGetMinX([right[@"box"] CGRectValue]);
+            return x1 < x2 ? NSOrderedAscending : x1 > x2 ? NSOrderedDescending : NSOrderedSame;
+        }];
+        for (NSUInteger start = 0; start < row.count; start++) {
+            NSMutableString *joined = [NSMutableString string];
+            CGRect box = CGRectNull;
+            for (NSUInteger end = start; end < row.count; end++) {
+                [joined appendString:compactText(row[end][@"text"])];
+                box = CGRectIsNull(box) ? [row[end][@"box"] CGRectValue]
+                                             : CGRectUnion(box, [row[end][@"box"] CGRectValue]);
+                if ([joined containsString:compactTarget]) return box;
+            }
+        }
+    }
+    return CGRectNull;
+}
+
 @interface MoteUITests : XCTestCase
 @property(nonatomic) NSUInteger recognitionMisses;
 @end
@@ -272,20 +309,16 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     [self addAttachment:capture];
 }
 
-- (VNRecognizedTextObservation *)findText:(NSString *)text app:(XCUIApplication *)app {
-    __block VNRecognizedTextObservation *found = nil;
+- (CGRect)findTextBox:(NSString *)text app:(XCUIApplication *)app {
+    __block CGRect found = CGRectNull;
     NSPredicate *predicate = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
-        NSArray *items = [self recognize:app];
-        for (NSInteger exact = 1; exact >= 0; exact--) {
-            for (VNRecognizedTextObservation *item in items) {
-                NSString *line = [item topCandidates:1].firstObject.string;
-                if (exact ? [line isEqualToString:text] : [line containsString:text]) {
-                    found = item;
-                    return YES;
-                }
-            }
+        NSMutableArray *fragments = [NSMutableArray array];
+        for (VNRecognizedTextObservation *item in [self recognize:app]) {
+            [fragments addObject:@{@"text": [item topCandidates:1].firstObject.string,
+                                   @"box": [NSValue valueWithCGRect:item.boundingBox]}];
         }
-        return NO;
+        found = textTargetBox(fragments, text, app.windows.firstMatch.frame.size.height);
+        return !CGRectIsNull(found);
     }];
     XCTNSPredicateExpectation *expectation = [[XCTNSPredicateExpectation alloc] initWithPredicate:predicate object:app];
     XCTAssertEqual([XCTWaiter waitForExpectations:@[expectation] timeout:8], XCTWaiterResultCompleted,
@@ -294,20 +327,20 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
 }
 
 - (void)tapText:(NSString *)text app:(XCUIApplication *)app {
-    CGRect box = [self findText:text app:app].boundingBox;
+    CGRect box = [self findTextBox:text app:app];
     CGVector normalized = CGVectorMake(CGRectGetMidX(box), 1.0 - CGRectGetMidY(box));
     NSLog(@"MOTE TAP %@ point=(%.2f, %.2f)", text, normalized.dx * app.windows.firstMatch.frame.size.width, normalized.dy * app.windows.firstMatch.frame.size.height);
     [[app.windows.firstMatch coordinateWithNormalizedOffset:normalized] tap];
 }
 
 - (CGRect)moveSlider:(XCUIApplication *)app {
-    VNRecognizedTextObservation *item = [self findText:@"Volume" app:app];
+    CGRect item = [self findTextBox:@"Volume" app:app];
     CGRect window = app.windows.firstMatch.frame;
-    CGPoint point = CGPointMake(CGRectGetMinX(item.boundingBox) * window.size.width + 4.0,
-                                (1.0 - CGRectGetMinY(item.boundingBox)) * window.size.height + 16.0);
+    CGPoint point = CGPointMake(CGRectGetMinX(item) * window.size.width + 4.0,
+                                (1.0 - CGRectGetMinY(item)) * window.size.height + 16.0);
     NSLog(@"MOTE SLIDER point=(%.2f, %.2f)", point.x, point.y);
     [[[app.windows.firstMatch coordinateWithNormalizedOffset:CGVectorMake(0, 0)] coordinateWithOffset:CGVectorMake(point.x, point.y)] tap];
-    return item.boundingBox;
+    return item;
 }
 
 - (void)assertSliderThumbAtMinimum:(BOOL)expected label:(CGRect)label app:(XCUIApplication *)app {
@@ -478,7 +511,7 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     app.launchArguments = @[@"--mote-offline", @"--mote-fixture", @"slider-layout"];
     [app launch];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
-    CGRect sliderLabel = [self findText:@"Volume" app:app].boundingBox;
+    CGRect sliderLabel = [self findTextBox:@"Volume" app:app];
     [self assertSliderThumbAtMinimum:NO label:sliderLabel app:app];
     sliderLabel = [self moveSlider:app];
     [self assertText:@"Changed volume: 0.0" app:app];
@@ -520,6 +553,19 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     XCTAssertTrue(statusTextMatches(@"Changed volume: 0.0 \n", @"Changed volume: 0.0"));
     XCTAssertFalse(statusTextMatches(@"Changed volume: 0.01", @"Changed volume: 0.0"));
     XCTAssertFalse(statusTextMatches(@"Changed volume: 0.0 extra", @"Changed volume: 0.0"));
+}
+
+- (void)testTextTargetCombinesAdjacentFragmentsInOneRow {
+    NSArray *fragments = @[
+        @{@"text": @"Open item", @"box": [NSValue valueWithCGRect:CGRectMake(0.10, 0.50, 0.20, 0.03)]},
+        @{@"text": @"20", @"box": [NSValue valueWithCGRect:CGRectMake(0.31, 0.50, 0.04, 0.03)]},
+        @{@"text": @"Unrelated", @"box": [NSValue valueWithCGRect:CGRectMake(0.50, 0.40, 0.20, 0.03)]}
+    ];
+    CGRect box = textTargetBox(fragments, @"Open item 20", 1000);
+    XCTAssertFalse(CGRectIsNull(box));
+    XCTAssertEqualWithAccuracy(CGRectGetMinX(box), 0.10, 0.001);
+    XCTAssertEqualWithAccuracy(CGRectGetMaxX(box), 0.35, 0.001);
+    XCTAssertTrue(CGRectIsNull(textTargetBox(fragments, @"Open item 21", 1000)));
 }
 
 - (void)testOptInTimingProbeInBothOrientations {
@@ -653,7 +699,7 @@ static NSString *textInRow(NSArray<NSDictionary *> *fragments, NSString *prefix,
     NSLog(@"MOTE BROWSER DENIED OBSERVED");
     [self assertExactLine:@"Pending" timeout:20 app:app];
     [self capture:@"browser-pending-approve" app:app];
-    CGRect box = [self findText:@"Approve" app:app].boundingBox;
+    CGRect box = [self findTextBox:@"Approve" app:app];
     CGVector normalized = CGVectorMake(CGRectGetMidX(box), 1.0 - CGRectGetMidY(box));
     NSLog(@"MOTE BROWSER REPEAT TAP point=(%.2f, %.2f)", normalized.dx * app.windows.firstMatch.frame.size.width, normalized.dy * app.windows.firstMatch.frame.size.height);
     XCUICoordinate *approval = [app.windows.firstMatch coordinateWithNormalizedOffset:normalized];

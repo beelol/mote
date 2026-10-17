@@ -69,3 +69,71 @@ Each result bundle summary was read with `xcrun xcresulttool get test-results su
 Command: `cargo test --workspace` with local fixture socket access and `cargo clippy --workspace -- -D warnings` after recording this evidence.
 
 Output: both exited 0. The live native tests above were run separately because the default workspace suite correctly leaves them ignored without their explicit fixture environment.
+
+## Physical gallery and Wi-Fi endpoint verification
+
+Date: 2026-10-17, America/Los_Angeles.
+
+Environment: iPad Pro 11-inch (M4), UDID `00008132-001104661AB9001C`, iPadOS
+26.5, Xcode 27.0. The app, UI-test plug-in and XCTest runner used only the existing
+Mote bundle identities and Mote development profiles on team `FQ6YGD7554`.
+
+The paired app initially retained the direct-link endpoint `169.254.9.119:47810`.
+The Mac daemon advertised the matching host identity `040bf4649b7e678c06ea460e` through
+Bonjour on Wi-Fi. After a normal app launch, the saved endpoint became
+`192.168.50.184:47810`. The full host identity and cursor sequence 9 remained unchanged.
+This verifies authenticated endpoint migration to Wi-Fi without repairing. It does not replace
+the remaining interruption and recovery journey.
+
+The first physical gallery run exposed a test-harness defect. Vision recognized the visible
+`Open item 20` label as adjacent fragments. The assertion saw the joined text, but the tap locator
+required one observation to contain the entire label. A focused regression now requires adjacent
+fragments on the same visual row to produce the smallest combined target box. The red build failed
+because `textTargetBox` did not exist. The focused Simulator test passed after the implementation.
+
+Commands:
+
+```text
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug -sdk iphonesimulator \
+  -derivedDataPath /private/tmp/mote-locator-green \
+  CODE_SIGNING_ALLOWED=NO build-for-testing
+
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,id=43F2F6ED-5C86-4121-B03F-40FE38891C4E' \
+  -derivedDataPath /private/tmp/mote-locator-green \
+  -resultBundlePath /private/tmp/mote-locator-green.xcresult \
+  -collect-test-diagnostics never \
+  -only-testing:MoteUITests/MoteUITests/testTextTargetCombinesAdjacentFragmentsInOneRow test
+```
+
+Output: both exited 0. The focused result bundle reported one passed test and zero failures.
+
+The updated test binary was placed into a copy of the previously verified Mote-only signed test
+bundle. The test plug-in and runner host were re-signed with the Apple Development identity for
+team `FQ6YGD7554`. Their preserved bundle identities were `com.beelol.mote.xctrunner` and
+`com.beelol.mote.xctrunner.xctrunner`. Deep signature verification passed.
+
+Command:
+
+```text
+xcodebuild test-without-building \
+  -xctestrun /private/tmp/mote-ipad06-fixed-signed/Build/Products/Mote_iphoneos27.0-arm64.xctestrun \
+  -destination 'platform=iOS,id=00008132-001104661AB9001C' \
+  -resultBundlePath /private/tmp/mote-ipad06-gallery-fixed2.xcresult \
+  -collect-test-diagnostics never \
+  -only-testing:MoteUITests/MoteUITests/testTextTargetCombinesAdjacentFragmentsInOneRow \
+  -only-testing:MoteUITests/MoteUITests/testGalleryPagesAndControlsInBothOrientations
+```
+
+Output: `TEST EXECUTE SUCCEEDED`. The physical gallery test passed in 267.002 seconds. The
+locator regression passed in 0.039 seconds. The run visited all eight gallery pages, exercised the
+existing Layout, Toggle, Slider, Select, List, Form, Dashboard and Fixture journeys, scrolled to
+and activated item 20, entered text through the system keyboard, repeated the journey in portrait
+and landscape, and retained screenshots in the result bundle.
+
+IPAD-06 remains open. This run does not yet satisfy the literal requirement for center and edge
+taps on every control. Split view, paired background recovery, the physical local-network privacy
+prompt, system light and dark appearance, the system Reduce Motion setting and actual VoiceOver
+navigation also remain to be recorded.
