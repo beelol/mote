@@ -1,9 +1,11 @@
 # HOST-05 partial verification
 
 Status: automated recovery checks pass. The acceptance criterion remains unchecked.
+The owner deferred the literal Mac sleep and wake check to an isolated test session.
 
-The literal live Mac sleep and wake run has not been performed. An unattended sleep can strand
-the driver without a safe wake mechanism. No Mac sleep command was issued.
+The literal live Mac sleep and wake run is not claimed as verified. Do not run it during ordinary
+development. Run it only in an isolated session with a controlled wake path and a physical iPad
+observer.
 
 ## Environment
 
@@ -265,3 +267,16 @@ bundle retains `physical-wifi-online-before`, `physical-wifi-disconnected` and
 
 This verifies the live physical iPad connection-state and recovery journey. HOST-05 remains open
 because its Verify clause separately requires a literal Mac sleep and wake run.
+
+## Deferred isolated sleep run, 2026-10-17
+
+The physical iPad observer captured the paired host online and retained its cursor. The Mac then
+accepted a one-time relative wake and a `pmset sleepnow` request. The owner asked to stop before
+the observer completed the offline and recovered-online assertions. The test process was
+interrupted. No result bundle from this attempt is accepted as evidence. A subsequent
+`pmset -g sched` showed no pending user-created wake event.
+
+The owner deferred this literal sleep and wake check to an isolated test session. HOST-05 remains
+unchecked. The isolated rerun must retain the iPad's before-sleep online state, visible offline or
+connecting state, recovered online state, unchanged host identity and unchanged cursor before this
+criterion can close.

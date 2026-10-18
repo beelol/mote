@@ -86,7 +86,7 @@ Continue mote from repository state at ~/projects/mote without relying on chat h
 
 Read AGENTS.md, docs/rfcs/v0.md, docs/superpowers/specs/2026-10-11-ipad-host.md, root README.md -> Ready for Go, and docs/HANDOFF.md if present. IPAD-06, IPAD-11 and IPAD-13 are verified. Active device-delivery ACs are IPAD-08 and IPAD-12. HOST-05 under Native iPad Simulator host and V0-53 under the v0 build list also remain open. Do not mark them passed or remove their Verify clauses without completing their literal checks. Recheck affected physical behavior after distribution changes. Backlog, external testing, App Review, public release and cloud relay remain out of scope.
 
-Complete the Mote-only manual CI upload path, install the processed build through internal TestFlight and repeat the named IPAD-08 journeys on the connected physical iPad. The final outcome remains the same Rust immediate-mode Matrix UI, paired host gateway, inferred surfaces and browser approval on that iPad. It must not collide with any existing app. TestFlight does not make the Mac reachable from another city. Do not claim remote use without a separately verified route. Keep models.local_only true, use only the approved Ollama models, ledger every model call and redact stored events.
+Complete the Mote-only manual CI upload path and repeat the named IPAD-08 journeys against the installed internal TestFlight build on the connected physical iPad. The final outcome remains the same Rust immediate-mode Matrix UI, paired host gateway, inferred surfaces and browser approval on that iPad. It must not collide with any existing app. TestFlight does not make the Mac reachable from another city. Do not claim remote use without a separately verified route. Keep models.local_only true, use only the approved Ollama models, ledger every model call and redact stored events.
 
 Choose the smallest actionable AC or coherent dependency set. Inspect existing code and Apple account state first. If delegation is available and authorized, send bounded work to the least costly capable subagent with AC IDs, owned files, dependencies and evidence requirements. Inspect every result. Otherwise work directly. Add an AC for any discovered in-scope gap and reopen its parent. Never remove or weaken an unmet requirement.
 
@@ -220,7 +220,8 @@ Work top to bottom. Each item stands alone: what, how to verify, and the section
 
 The Simulator, inferred UI and local browser approval journeys are complete. The owner activated
 the distinct device build and internal TestFlight phase on 2026-10-11. HOST-05's literal Mac sleep
-and wake run stays open for later and is not counted as device distribution evidence.
+and wake run is deferred to an isolated test session and is not counted as device distribution
+evidence.
 The [approved design](docs/superpowers/specs/2026-10-11-ipad-host.md) defines the journeys,
 security boundary, incorporated Matrix and browser behavior, and deferred physical delivery.
 Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-ipad-simulator-host.md),

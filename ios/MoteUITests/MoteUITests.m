@@ -1772,6 +1772,77 @@ PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixtureLandscape, @"Fixture", UIDeviceO
     [self capture:@"physical-wifi-reconnected" app:app];
 }
 
+- (void)testPhysicalInstallMoteFromInternalTestFlight {
+#if TARGET_OS_SIMULATOR
+    XCTSkip(@"Requires a physical iPad with the owner's TestFlight account");
+#endif
+    self.executionTimeAllowance = 600;
+    XCUIApplication *testFlight =
+        [[XCUIApplication alloc] initWithBundleIdentifier:@"com.apple.TestFlight"];
+    [testFlight launch];
+    XCTAssertTrue([testFlight waitForState:XCUIApplicationStateRunningForeground timeout:30]);
+
+    XCUIElement *continueButton = testFlight.buttons[@"Continue"];
+    if ([continueButton waitForExistenceWithTimeout:2]) {
+        [continueButton tap];
+    }
+
+    XCUIElement *mote = [[[testFlight descendantsMatchingType:XCUIElementTypeAny]
+        matchingPredicate:[NSPredicate predicateWithFormat:@"label == 'Mote Agent'"]] firstMatch];
+    if (![mote waitForExistenceWithTimeout:2]) {
+        XCUIElement *sidebar = testFlight.buttons[@"Show Sidebar"];
+        XCTAssertTrue([sidebar waitForExistenceWithTimeout:5]);
+        [sidebar tap];
+    }
+    if (![mote waitForExistenceWithTimeout:20]) {
+        [self attachPhysicalState:@"testflight-mote-unavailable" app:testFlight
+            details:@{@"expected_app":@"Mote Agent"}];
+        XCTFail(@"The signed-in TestFlight account does not expose Mote Agent");
+        return;
+    }
+    [mote tap];
+    XCUIElementQuery *hideSidebarButtons = [testFlight.buttons
+        matchingPredicate:[NSPredicate predicateWithFormat:@"label == 'Hide Sidebar'"]];
+    if ([hideSidebarButtons.firstMatch waitForExistenceWithTimeout:2]) {
+        for (XCUIElement *button in hideSidebarButtons.allElementsBoundByIndex) {
+            if (button.hittable) {
+                [button tap];
+                break;
+            }
+        }
+    }
+
+    XCUIElement *open = testFlight.buttons[@"TestFlight.offerButton.open"];
+    if (![open waitForExistenceWithTimeout:3]) {
+        BOOL installationStarted = NO;
+        XCUIElement *replaceAlert = [[testFlight.alerts
+            matchingPredicate:[NSPredicate predicateWithFormat:
+                @"label == 'You already have this app installed.'"]] firstMatch];
+        if ([replaceAlert waitForExistenceWithTimeout:2]) {
+            XCUIElement *confirmInstall = replaceAlert.buttons[@"Install"];
+            XCTAssertTrue([confirmInstall waitForExistenceWithTimeout:2]);
+            [confirmInstall tap];
+            installationStarted = YES;
+        }
+        XCUIElement *install = testFlight.buttons[@"TestFlight.offerButton.install"];
+        if ([install waitForExistenceWithTimeout:10]) {
+            [install tap];
+            installationStarted = YES;
+            if ([replaceAlert waitForExistenceWithTimeout:5]) {
+                XCUIElement *confirmInstall = replaceAlert.buttons[@"Install"];
+                XCTAssertTrue([confirmInstall waitForExistenceWithTimeout:2]);
+                [confirmInstall tap];
+            }
+        }
+        XCUIElement *inProgress = [[[testFlight descendantsMatchingType:XCUIElementTypeAny]
+            matchingPredicate:[NSPredicate predicateWithFormat:@"label == 'In Progress'"]] firstMatch];
+        XCTAssertTrue(installationStarted || [inProgress waitForExistenceWithTimeout:5]);
+        XCTAssertTrue([open waitForExistenceWithTimeout:300]);
+    }
+    [self attachPhysicalState:@"testflight-mote-installed" app:testFlight
+        details:@{@"app":@"Mote Agent", @"terminal_control":open.label ?: @""}];
+}
+
 - (NSDictionary *)backgroundObservationsForApp:(XCUIApplication *)app springboard:(XCUIApplication *)springboard {
     BOOL homeIcon = NO;
     for (XCUIElement *icon in springboard.icons.allElementsBoundByIndex) {

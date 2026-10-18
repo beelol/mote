@@ -1,0 +1,4 @@
+{
+    app = "Mote Agent";
+    "terminal_control" = Open;
+}

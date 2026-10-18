@@ -41,14 +41,17 @@ test and clippy gates passed before the pending commit.
 
 ## Remaining closeout
 
-HOST-05 still needs the literal Mac sleep and wake run. V0-53 still needs literal
-logout and login before uninstall. IPAD-08 needs installation through TestFlight and
-the named device journeys. IPAD-12 needs Mote-only upload credentials and one manual
-workflow upload from `main`.
+HOST-05 still needs the literal Mac sleep and wake run. The owner deferred it to an
+isolated test session. Do not run Mac sleep as part of ordinary development. V0-53
+still needs literal logout and login before uninstall. IPAD-08 has installed Mote Agent
+through internal TestFlight and still needs the named device journeys against that app.
+IPAD-12 needs Mote-only upload credentials and one manual workflow upload from `main`.
 
 Mote Agent is App Store Connect app `6822101041`, bundle ID `com.beelol.mote`, SKU
 `mote-ipad-001`, team `FQ6YGD7554`. Build `0.1.0 (1)` is processed and assigned
-only to the internal Testing group. TestFlight is not installed on the iPad.
+only to the internal Testing group. Mote Agent `0.1.0 (1)` is installed through TestFlight
+on the physical iPad. The passing installation bundle is
+`/private/tmp/mote-ipad08-testflight-install12.xcresult`.
 
 GitHub environment `mote-testflight` is restricted to exact branch `main`. It has
 only `MOTE_PROFILE_BASE64` and `MOTE_KEYCHAIN_PASSWORD`. The missing isolated

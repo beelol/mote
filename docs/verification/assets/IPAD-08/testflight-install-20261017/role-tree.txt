@@ -1,0 +1,124 @@
+Attributes: Application, 0x109ed8500, pid: 2580, label: 'TestFlight'
+Element subtree:
+ →Application, 0x109ed8500, pid: 2580, label: 'TestFlight'
+    Window (Main), 0x109eda440, {{0.0, 0.0}, {834.0, 1210.0}}
+      Other, 0x109eda580, {{0.0, 0.0}, {834.0, 1210.0}}
+        Other, 0x109eda080, {{0.0, 0.0}, {834.0, 1210.0}}
+          Other, 0x109eda300, {{0.0, 0.0}, {834.0, 1210.0}}
+            Other, 0x109ed9e00, {{0.0, 0.0}, {834.0, 1210.0}}
+              Other, 0x109eda6c0, {{0.0, 0.0}, {834.0, 1210.0}}
+                Other, 0x109eda800, {{0.0, 32.0}, {834.0, 1158.0}}
+                Other, 0x109eda940, {{0.0, 0.0}, {834.0, 1210.0}}
+                  Other, 0x109edae40, {{0.0, 0.0}, {834.0, 1210.0}}
+                    Other, 0x109edaf80, {{0.0, 0.0}, {834.0, 1210.0}}
+                      Other, 0x109edb0c0, {{0.0, 0.0}, {834.0, 1210.0}}
+                        NavigationBar, 0x109edb200, {{0.0, 32.0}, {834.0, 54.0}}, identifier: 'App Details'
+                          Button, 0x109edb340, {{14.0, 36.0}, {36.0, 36.0}}, label: 'Show Sidebar'
+                          StaticText, 0x109edb840, {{395.0, 32.0}, {44.0, 44.0}}, label: 'App Details'
+                            Other, 0x109edb980, {{395.0, 32.0}, {44.0, 44.0}}
+                              Image, 0x109edbe80, {{395.0, 32.0}, {44.0, 44.0}}, label: 'App Icon'
+                                Image, 0x109edbd40, {{395.0, 32.0}, {44.0, 44.0}}
+                        Other, 0x109edbac0, {{0.0, 0.0}, {834.0, 1210.0}}
+                          Other, 0x109edbc00, {{0.0, 0.0}, {834.0, 1210.0}}
+                            Other, 0x109edb700, {{0.0, 0.0}, {834.0, 1210.0}}
+                              Other, 0x109edb480, {{0.0, 0.0}, {834.0, 1210.0}}
+                                ScrollView, 0x109edb5c0, {{0.0, 0.0}, {834.0, 1210.0}}, identifier: 'AppDetails'
+                                  Other, 0x109edaa80, {{0.0, 0.0}, {834.0, 1210.0}}
+                                    Other, 0x109ed8640, {{0.0, 0.0}, {834.0, 140.8}}
+                                  Other, 0x109ed8000, {{0.0, 0.0}, {834.0, 1210.0}}
+                                  Other, 0x109ed9f40, {{0.0, 86.0}, {834.0, 800.0}}
+                                    Other, 0x109edad00, {{78.0, 80.0}, {322.0, 140.0}}
+                                      Image, 0x109edabc0, {{78.0, 80.0}, {140.0, 140.0}}, label: 'App Icon'
+                                        Image, 0x109eda1c0, {{78.0, 80.0}, {140.0, 140.0}}
+                                      StaticText, 0x109eedf40, {{248.0, 103.0}, {152.0, 37.5}}, identifier: 'TestFlight.appDetails.title', label: 'Mote Agent'
+                                      Button, 0x109eee080, {{248.0, 150.5}, {82.5, 46.5}}, identifier: 'TestFlight.offerButton.open', label: 'Open'
+                                        Button, 0x109eee1c0, {{248.0, 150.5}, {82.5, 46.5}}, label: 'Open'
+                                    StaticText, 0x109eed540, {{88.5, 300.2}, {75.5, 70.8}}, identifier: 'DEVELOPER', label: 'DEVELOPER: STATION 42'
+                                      StaticText, 0x109eedcc0, {{93.0, 300.2}, {66.5, 15.5}}, label: 'DEVELOPER'
+                                      Image, 0x109eeef80, {{116.5, 325.0}, {20.0, 20.0}}, identifier: 'person.crop.square', label: 'Selfie'
+                                      StaticText, 0x109eeea80, {{88.5, 353.0}, {75.5, 18.0}}, label: 'STATION 42'
+                                    StaticText, 0x109eede00, {{292.5, 300.2}, {54.5, 70.8}}, identifier: 'TestFlight.appDetails.shortVersion', label: 'VERSION:0 . 1 . 0 Build 1'
+                                      StaticText, 0x109eedb80, {{294.8, 300.2}, {50.0, 15.5}}, label: 'VERSION'
+                                      StaticText, 0x109eef0c0, {{292.5, 320.5}, {54.5, 29.0}}, label: '0.1.0'
+                                      StaticText, 0x109eee940, {{299.2, 353.0}, {41.0, 18.0}}, label: 'Build 1'
+                                    StaticText, 0x109eeebc0, {{489.5, 300.2}, {47.5, 70.8}}, identifier: 'TestFlight.appDetails.expiration', label: 'EXPIRES:85 Days'
+                                      StaticText, 0x109eeee40, {{489.5, 300.2}, {47.5, 15.5}}, label: 'EXPIRES'
+                                      StaticText, 0x109eef5c0, {{497.8, 320.5}, {31.0, 29.0}}, label: '85'
+                                      StaticText, 0x109eef200, {{498.0, 353.0}, {30.5, 18.0}}, label: 'Days'
+                                    StaticText, 0x109eef480, {{683.0, 300.2}, {48.5, 70.8}}, identifier: 'SIZE', label: 'SIZE:10.3 MB'
+                                      StaticText, 0x109eef340, {{694.8, 300.2}, {25.0, 15.5}}, label: 'SIZE'
+                                      StaticText, 0x109eef700, {{683.0, 320.5}, {48.5, 29.0}}, label: '10.3'
+                                      StaticText, 0x109eefac0, {{697.0, 353.0}, {20.5, 18.0}}, label: 'MB'
+                                    StaticText, 0x109eef840, {{46.0, 426.0}, {128.5, 22.5}}, label: 'App Information'
+                                    ScrollView, 0x109eef980, {{30.0, 460.5}, {380.5, 375.5}}
+                                      Other, 0x109eefe80, {{30.0, 460.5}, {380.5, 375.5}}
+                                        StaticText, 0x109eefd40, {{30.0, 460.5}, {380.5, 46.5}}, label: 'Developer, STATION 42'
+                                          StaticText, 0x109eeed00, {{46.0, 472.5}, {78.0, 22.5}}, label: 'Developer'
+                                          StaticText, 0x109eefc00, {{293.5, 472.5}, {93.0, 22.5}}, label: 'STATION 42'
+                                        StaticText, 0x109eee580, {{30.0, 507.5}, {380.5, 46.5}}, label: 'Release Date, Oct 12, 2026'
+                                          StaticText, 0x109eee800, {{46.0, 519.5}, {100.0, 22.5}}, label: 'Release Date'
+                                          StaticText, 0x109eee6c0, {{288.0, 519.5}, {98.5, 22.5}}, label: 'Oct 12, 2026'
+                                        StaticText, 0x109eeda40, {{30.0, 554.5}, {380.5, 46.5}}, label: 'Version, 0 . 1 . 0 (1)'
+                                          StaticText, 0x109eee440, {{46.0, 566.5}, {57.0, 22.5}}, label: 'Version'
+                                          StaticText, 0x109eee300, {{327.5, 566.5}, {59.0, 22.5}}, label: '0 . 1 . 0 (1)'
+                                        StaticText, 0x109eed400, {{30.0, 601.5}, {380.5, 46.5}}, label: 'Size, 10 . 3 MB'
+                                          StaticText, 0x109eed900, {{46.0, 613.5}, {32.0, 22.5}}, label: 'Size'
+                                          StaticText, 0x109eed7c0, {{325.5, 613.5}, {61.0, 22.5}}, label: '10 . 3 MB'
+                                        StaticText, 0x109eed680, {{30.0, 648.5}, {380.5, 46.5}}, label: 'Expires, Jan 10, 2027 at 3:27 PM'
+                                          StaticText, 0x109eed040, {{46.0, 660.5}, {55.5, 22.5}}, label: 'Expires'
+                                          StaticText, 0x109eed2c0, {{205.5, 660.5}, {181.0, 22.5}}, label: 'Jan 10, 2027 at 3:27 PM'
+                                        Button, 0x109eed180, {{30.0, 695.5}, {380.5, 46.5}}, label: 'Compatibility, Works on this iPad'
+                                          StaticText, 0x109eecc80, {{46.0, 707.5}, {100.5, 22.5}}, label: 'Compatibility'
+                                          StaticText, 0x109eecf00, {{227.5, 707.5}, {140.5, 22.5}}, label: 'Works on this iPad'
+                                          Image, 0x109eecdc0, {{378.0, 714.5}, {14.5, 8.5}}, identifier: 'chevron.down', label: 'Go Down'
+                                        StaticText, 0x109f90f00, {{30.0, 742.5}, {380.5, 46.5}}, label: 'Apple Watch, No'
+                                          StaticText, 0x109f90dc0, {{46.0, 754.5}, {97.0, 22.5}}, label: 'Apple Watch'
+                                          StaticText, 0x109f90140, {{364.5, 754.5}, {22.0, 22.5}}, label: 'No'
+                                        StaticText, 0x109f90280, {{30.0, 789.5}, {380.5, 46.5}}, label: 'iMessage, No'
+                                          StaticText, 0x109f903c0, {{46.0, 801.5}, {72.5, 22.5}}, label: 'iMessage'
+                                          StaticText, 0x109f908c0, {{364.5, 801.5}, {22.0, 22.5}}, label: 'No'
+                                      Other, 0x109f90000, {{377.5, 460.5}, {30.0, 375.5}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                                        Other, 0x109f90780, {{404.5, 826.0}, {3.0, 7.0}}
+                                      Other, 0x109f90500, {{377.5, 460.5}, {30.0, 375.5}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                                        Other, 0x109f90a00, {{404.5, 826.0}, {3.0, 7.0}}
+                                    Other, 0x109f90640, {{423.5, 458.5}, {380.5, 44.0}}
+                                      Switch, 0x109f90c80, {{423.5, 458.5}, {380.5, 44.0}}, identifier: 'TestFlight.appDetails.automaticUpdatesSwitch', label: 'Automatic Updates', value: 1
+                                        StaticText, 0x109f912c0, {{439.5, 469.2}, {146.0, 22.5}}, label: 'Automatic Updates'
+                                        Switch, 0x109f90b40, {{727.0, 466.5}, {63.0, 28.0}}, value: 1
+                                    Other, 0x109f91400, {{423.5, 503.0}, {380.5, 44.0}}
+                                      Button, 0x109f91540, {{423.5, 503.0}, {380.5, 44.0}}, identifier: 'TestFlight.appDetails.versionsAndBuildGroupsButton', label: 'Previous Builds, 0 . 1 . 0 (1)'
+                                        StaticText, 0x109f91680, {{439.5, 513.8}, {116.5, 22.5}}, label: 'Previous Builds'
+                                        StaticText, 0x109f91180, {{708.5, 513.8}, {59.0, 22.5}}, label: '0 . 1 . 0 (1)'
+                                        Image, 0x109f91040, {{778.5, 518.0}, {8.5, 14.5}}, identifier: 'chevron.right', label: 'Forward'
+                                    Other, 0x109f917c0, {{423.5, 579.0}, {380.5, 92.5}}
+                                      Switch, 0x109f91b80, {{442.5, 589.0}, {342.5, 28.0}}, label: 'Push Notifications', value: 1
+                                        StaticText, 0x109f91a40, {{442.5, 591.8}, {138.5, 22.5}}, label: 'Push Notifications'
+                                        Switch, 0x109f91900, {{724.0, 589.0}, {63.0, 28.0}}, value: 1
+                                      Switch, 0x109f91cc0, {{442.5, 633.5}, {342.5, 28.0}}, label: 'Email Notifications', value: 1
+                                        StaticText, 0x109f92080, {{442.5, 636.2}, {141.0, 22.5}}, label: 'Email Notifications'
+                                        Switch, 0x109f91f40, {{724.0, 633.5}, {63.0, 28.0}}, value: 1
+                                    Button, 0x109f91e00, {{423.5, 703.5}, {380.5, 46.5}}, label: 'Report a Problem'
+                                      Link, 0x109f921c0, {{423.5, 715.5}, {380.5, 22.5}}, label: 'Report a Problem'
+                                        Button, 0x109f92440, {{423.5, 715.5}, {380.5, 22.5}}, label: 'Report a Problem'
+                                          Image, 0x109f92580, {{441.0, 718.5}, {17.5, 16.0}}, identifier: 'exclamationmark.triangle', label: 'Warning'
+                                          StaticText, 0x109f92300, {{423.5, 715.5}, {380.5, 22.5}}, label: 'Report a Problem'
+                                    Button, 0x109f88c80, {{423.5, 782.0}, {380.5, 46.5}}, identifier: 'TestFlight.appDetails.stopTestingButton', label: 'Stop Testing'
+                                      Button, 0x109f88dc0, {{423.5, 782.0}, {380.5, 46.5}}, label: 'Stop Testing'
+                                  Other, 0x109f88f00, {{801.0, 86.0}, {30.0, 1094.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                                    Other, 0x109f88a00, {{828.0, 393.0}, {3.0, 784.0}}
+                                  Other, 0x109f88b40, {{801.0, 86.0}, {30.0, 1094.0}}, label: 'Vertical scroll bar, 1 page', value: 0%
+                                    Other, 0x109f88780, {{828.0, 393.0}, {3.0, 784.0}}
+                        Other, 0x109f888c0, {{0.0, 0.0}, {834.0, 1210.0}}
+                          Other, 0x109f88500, {{0.0, 0.0}, {834.0, 1210.0}}
+                  Other, 0x109f88640, {{0.0, 0.0}, {834.0, 1210.0}}
+                    Other, 0x109f88280, {{0.0, 0.0}, {834.0, 1210.0}}
+    Window, 0x109f883c0, {{0.0, 0.0}, {834.0, 1210.0}}
+      Other, 0x109f88000, {{0.0, 0.0}, {834.0, 1210.0}}
+        Other, 0x109f88140, {{0.0, 0.0}, {834.0, 1210.0}}
+Path to element:
+ →Application, 0x109ed8500, pid: 2580, label: 'TestFlight'
+Query chain:
+ →Find: Application 'com.apple.TestFlight'
+  Output: {
+    Application, 0x109f89e00, pid: 2580, label: 'TestFlight'
+  }
