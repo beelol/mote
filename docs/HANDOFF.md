@@ -5,91 +5,30 @@ Updated 2026-10-18 in America/Los_Angeles. This file is a replacement snapshot.
 ## Active goal
 
 Deliver the owner-activated Phase 2 runtime, shared voice foundations and replaceable memory
-backends on `main`. Active criteria are P2-02 through P2-12, P2V-01 through P2V-10 and MBE-01
-through MBE-08. P2-13 is not authorized. SQLite remains default. OpenCode remains default until
-P2-12 proves a change. Physical iPad voice checks and external Apple work are deferred.
+backends on `main`. OpenCode and SQLite remain the defaults. Local-only model rules remain in
+force. Physical iPad voice checks and external Apple work are deferred until a complete build is
+ready.
 
-## Current checkout
+## Repository state
 
-The checkout is `main`. The plan batch follows pushed activation evidence `3c72556`. The
-configured remote is `origin`. Existing untracked `.DS_Store` and `.superpowers/` belong to the
-owner and must remain untouched.
+The checkout is `main` and pushes to `origin`. Preserve the owner's untracked `.DS_Store` and
+`.superpowers/`. Commits `37b00ab` and `765e0f4` added the guarded OpenCode adapter and routed
+completed think turns through it only when `MOTE_HRNS_OPENCODE_COMPAT=1`. P2-05 remains open
+because durable tool continuation is not wired through the daemon.
 
-## Completed and pushed design batch
+The current verified increment adds canonical action request hashes, durable commit receipts,
+revision-guarded claim, commit, deny and fail operations, no-redispatch recovery after an
+interrupted claim, HRNS-bound browser approval records and idempotent HRNS-bound file-write
+approval creation. Evidence is in `docs/verification/P2-07.md`. P2-07 remains open until the daemon
+uses this path end to end.
 
-The root Ready for Go board now activates Phase 2. `docs/phase2/README.md` names the active
-criteria and driver goal. These new design files define the stable boundaries:
-
-- `docs/superpowers/specs/2026-10-17-phase2-runtime.md`
-- `docs/superpowers/specs/2026-10-17-shared-voice.md`
-- `docs/superpowers/specs/2026-10-17-memory-backends.md`
-
-The voice design audits Overseer revision
-`2b1a19a9b6e639628367a22e16155af20df4f86a`. The memory design pins TencentDB Agent Memory
-revision `e9a82935b52741e0c798c75326e90b7144eb4d5f` for the candidate comparison.
-
-The owner approved the runtime, voice and memory architecture on 2026-10-18. The shared crates
-remain in Mote's conventional `crates/` workspace now. Overseer pins the product-neutral subset.
-The subset moves into its own repository later when the owner establishes that project.
-
-The owner-facing plan is `docs/phase2/README.md`. The detailed technical plans are:
-
-- `docs/superpowers/plans/2026-10-18-phase2-runtime.md`
-- `docs/superpowers/plans/2026-10-18-shared-voice.md`
-- `docs/superpowers/plans/2026-10-18-memory-backends.md`
-
-No runtime code or default changed in this batch. Full workspace tests and strict clippy passed
-before commit `c8ddbcd` was pushed. P2-01 activation evidence is recorded in
-`docs/verification/P2-01.md`. The same required gates passed for that evidence batch.
-
-## Existing delivery work
-
-The separate iPad and TestFlight work remains open. IPAD-08 and IPAD-12 are not closed. HOST-05
-and V0-53 still require their literal owner-hardware checks. Do not run the deferred Mac sleep
-test during ordinary Phase 2 development.
+Required verification passed on 2026-10-18. The focused action, driver, store and approval tests
+passed. `cargo test --workspace` passed outside the sandbox because the browser fixture needs a
+loopback listener. `cargo clippy --workspace -- -D warnings` and `git diff --check` passed.
 
 ## Next action
 
-The owner authorized continuing on 2026-10-18. Execute directly without another planning gate.
-The first pushed `mote-hrns` slice defines tasks, scoped identities, actions, checkpoints, model
-replies and the harness interface.
-
-The current batch adds guarded task and action transitions, atomic event-log mutations and the
-first durable task store. Scoped reads, FIFO promotion, revision checks and one-active-task
-enforcement survive reopen. Targeted tests pass: 14 event-log tests, 4 contract tests, 5 store
-tests and 4 transition tests. Partial evidence is in `docs/verification/P2-02.md` and
-`docs/verification/P2-03.md`.
-
-Commit `cd35f39` is pushed to `main` and matches `origin/main`. The complete workspace test suite
-and strict clippy passed for it.
-
-Commit `ee2fbf1` adds durable actions and checkpoints to `HrnsStore` and is pushed to `main`.
-Focused store tests pass: 7 passed, 0 failed. The fresh complete workspace test, strict workspace
-clippy, package formatting and `git diff --check` all passed before the commit.
-
-Commit `3103793` implements the one-step driver, idempotent executor boundary,
-durable model-step checkpoints and restart reconciliation. Targeted results pass: 4 contract
-tests, 6 driver tests, 10 store tests and 4 transition tests. Package clippy, formatting and
-`git diff --check` pass. The tests cover both harness selections, FIFO work, one active task,
-every persisted task state, interrupted final checkpoints, interrupted action checkpoints,
-adapter failure, cancellation, stale model responses, durable completion and input text,
-redacted step events and one effect across an executor failure and restart.
-
-The complete workspace test and strict workspace clippy passed. P2-02 and P2-03 are complete,
-and commit `3103793` is pushed to `main` and matches `origin/main`.
-
-Commit `37b00ab` is pushed to `main`. It adds an OpenCode server factory, a guarded single-step API
-and `OpenCodeAdapter`. The adapter emits common model steps, stores only versioned opaque state,
-binds checkpoints to task IDs, reconstructs each continuation from Mote state and fails closed on
-already executed tool streams. Its fresh-server restart fixture and focused package tests pass.
-The required complete workspace test and strict clippy gate pass. The sandboxed workspace test
-was rerun outside the sandbox because the browser fixture needs a loopback listener. Partial
-evidence is in `docs/verification/P2-05.md`.
-
-The current uncommitted follow-up routes completed think turns through the adapter only when
-`MOTE_HRNS_OPENCODE_COMPAT=1`. The default stays on the original v0 path. The guarded OpenCode
-configuration denies built-ins, exposes only Mote MCP and requires permission for `moted_*` tools.
-Tool proposals are held and fail closed. Focused adapter, daemon, config, local-only and clippy
-tests pass. The complete workspace test and strict workspace clippy also pass. P2-05 remains open
-until P2-07 supplies durable receipts and proves daemon restart through a held tool without a
-duplicate action. Commit and push this flagged integration next, then begin P2-07.
+Commit and push the guarded receipt increment. Then wire the durable driver and bound approval
+reconciliation into the daemon behind the existing compatibility flag so a held OpenCode tool
+survives restart without duplicate dispatch. Keep the default v0 path unchanged. Once P2-07 and
+P2-05 close together, continue with Task 6, bounded task context.

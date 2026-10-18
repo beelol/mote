@@ -84,7 +84,7 @@ impl ActionExecutor for FakeExecutor {
         self.0.effects.fetch_add(1, Ordering::Relaxed);
         let receipt = ActionReceipt {
             action_id: action.id.clone(),
-            request_hash: format!("hash-{}", action.id.as_str()),
+            request_hash: action_request_hash(action),
             status: ReceiptStatus::Committed,
             committed_at: 1,
             result_ref: Some("result-1".into()),
@@ -188,7 +188,7 @@ fn fifo_uses_only_the_selected_harness_and_never_starts_two_tasks() {
 }
 
 #[test]
-fn tool_effect_is_idempotent_across_failure_and_driver_restart() {
+fn failed_action_attempt_is_terminal_and_never_retried_after_restart() {
     let fixture = Fixture::new();
     let script = Script::new([
         Ok(HarnessReply {
@@ -244,15 +244,71 @@ fn tool_effect_is_idempotent_across_failure_and_driver_restart() {
     ));
     assert!(matches!(
         driver.step().unwrap(),
-        DriverOutcome::Committed { .. }
-    ));
-    assert!(matches!(
-        driver.step().unwrap(),
         DriverOutcome::Completed { .. }
     ));
     assert_eq!(executor.effects.load(Ordering::Relaxed), 1);
-    assert_eq!(executor.attempts.load(Ordering::Relaxed), 2);
+    assert_eq!(executor.attempts.load(Ordering::Relaxed), 1);
     assert_eq!(script.requests.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn restart_after_claim_marks_action_indeterminate_without_dispatch() {
+    let fixture = Fixture::new();
+    let script = Script::new([
+        Ok(HarnessReply {
+            step: ModelStep::Tool {
+                name: "browser.submit".into(),
+                arguments: serde_json::from_value(json!({"node":"submit"})).unwrap(),
+            },
+            adapter_checkpoint: None,
+        }),
+        complete("not dispatched"),
+    ]);
+    let executor = ExecutorState::default();
+    let empty = Script::new([]);
+    let mut driver = make_driver(
+        fixture.open(),
+        script.clone(),
+        empty.clone(),
+        executor.clone(),
+    );
+    driver
+        .enqueue(task("claimed", HarnessKind::Opencode))
+        .unwrap();
+    assert!(matches!(driver.step().unwrap(), DriverOutcome::Started(_)));
+    let action = match driver.step().unwrap() {
+        DriverOutcome::Proposed(action) => action,
+        other => panic!("unexpected {other:?}"),
+    };
+    assert!(matches!(
+        driver.step().unwrap(),
+        DriverOutcome::AwaitingApproval { .. }
+    ));
+    driver
+        .store()
+        .transition_action(&scope(), &action.id, 1, ActionState::Ready)
+        .unwrap();
+    assert!(matches!(driver.step().unwrap(), DriverOutcome::Resumed(_)));
+    assert!(matches!(driver.step().unwrap(), DriverOutcome::Claimed(_)));
+    drop(driver);
+
+    let mut restarted = make_driver(fixture.open(), script, empty, executor.clone());
+    assert!(matches!(
+        restarted.step(),
+        Err(DriverError::Action(ActionError::Indeterminate))
+    ));
+    assert_eq!(executor.attempts.load(Ordering::Relaxed), 0);
+    assert_eq!(executor.effects.load(Ordering::Relaxed), 0);
+    assert_eq!(
+        restarted
+            .store()
+            .action(&scope(), &action.id)
+            .unwrap()
+            .unwrap()
+            .0
+            .state,
+        ActionState::Failed
+    );
 }
 
 #[test]

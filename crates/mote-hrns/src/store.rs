@@ -1,5 +1,6 @@
 use crate::{
-    Action, ActionId, ActionState, Checkpoint, HarnessKind, Scope, Task, TaskId, TaskState,
+    action_request_hash, Action, ActionId, ActionReceipt, ActionState, Checkpoint, HarnessKind,
+    ReceiptStatus, Scope, Task, TaskId, TaskState,
 };
 use mote_eventlog::EventLog;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
@@ -118,6 +119,13 @@ impl HrnsStore {
                 task_id TEXT PRIMARY KEY,
                 revision INTEGER NOT NULL,
                 checkpoint TEXT NOT NULL,
+                FOREIGN KEY(task_id) REFERENCES hrns_task(id));
+             CREATE TABLE IF NOT EXISTS hrns_action_receipt(
+                action_id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL,
+                request_hash TEXT NOT NULL,
+                receipt TEXT NOT NULL,
+                FOREIGN KEY(action_id) REFERENCES hrns_action(id),
                 FOREIGN KEY(task_id) REFERENCES hrns_task(id));",
         )?;
         Ok(Self {
@@ -405,6 +413,139 @@ impl HrnsStore {
             )?;
             Ok(action)
         }).map(|(action,_)| action)
+    }
+
+    pub fn claim_action(
+        &self,
+        scope: &Scope,
+        id: &ActionId,
+        revision: u64,
+    ) -> rusqlite::Result<Action> {
+        let current = self
+            .action(scope, id)?
+            .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+        if current.0.state != ActionState::Ready || current.1 != revision {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        self.transition_action(scope, id, revision, ActionState::Running)
+    }
+
+    pub fn commit_action(
+        &self,
+        scope: &Scope,
+        id: &ActionId,
+        revision: u64,
+        receipt: ActionReceipt,
+    ) -> rusqlite::Result<(Action, ActionReceipt)> {
+        if receipt.action_id != *id || receipt.status != ReceiptStatus::Committed {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        if let Some(existing) = self.receipt(scope, id)? {
+            let (action, _) = self
+                .action(scope, id)?
+                .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+            if action.state == ActionState::Committed && existing == receipt {
+                return Ok((action, existing));
+            }
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        let event_scope = serde_json::to_string(scope)
+            .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
+        let payload = serde_json::json!({
+            "action_id": id,
+            "state": "committed",
+            "request_hash": receipt.request_hash,
+            "result_ref": receipt.result_ref,
+        });
+        self.events
+            .append_with(&event_scope, "action.committed", &payload, |tx| {
+                let (text, stored_revision): (String, u64) = tx.query_row(
+                    "SELECT a.action,a.revision FROM hrns_action a JOIN hrns_task t ON t.id=a.task_id WHERE a.id=?1 AND t.account=?2 AND t.realm=?3",
+                    params![id.as_str(), scope.account.as_str(), scope.realm.as_str()],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )?;
+                if stored_revision != revision {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+                let mut action: Action = decode(text)?;
+                if action.state != ActionState::Running
+                    || receipt.request_hash != action_request_hash(&action)
+                {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+                action
+                    .transition(ActionState::Running, ActionState::Committed)
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?;
+                tx.execute(
+                    "INSERT INTO hrns_action_receipt(action_id,task_id,request_hash,receipt) VALUES(?1,?2,?3,?4)",
+                    params![
+                        id.as_str(),
+                        action.task_id.as_str(),
+                        receipt.request_hash.as_str(),
+                        encode(&receipt)?
+                    ],
+                )?;
+                tx.execute(
+                    "UPDATE hrns_action SET state='committed',action=?1,revision=revision+1 WHERE id=?2 AND revision=?3 AND state='running'",
+                    params![encode(&action)?, id.as_str(), revision],
+                )?;
+                Ok((action, receipt))
+            })
+            .map(|(value, _)| value)
+    }
+
+    pub fn receipt(
+        &self,
+        scope: &Scope,
+        id: &ActionId,
+    ) -> rusqlite::Result<Option<ActionReceipt>> {
+        let connection = self.reader.lock().unwrap();
+        connection
+            .query_row(
+                "SELECT r.receipt FROM hrns_action_receipt r JOIN hrns_task t ON t.id=r.task_id WHERE r.action_id=?1 AND t.account=?2 AND t.realm=?3",
+                params![id.as_str(), scope.account.as_str(), scope.realm.as_str()],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .map(decode)
+            .transpose()
+    }
+
+    pub fn deny_action(
+        &self,
+        scope: &Scope,
+        id: &ActionId,
+        revision: u64,
+    ) -> rusqlite::Result<Action> {
+        let current = self
+            .action(scope, id)?
+            .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+        if current.0.state != ActionState::AwaitingApproval || current.1 != revision {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        self.transition_action(scope, id, revision, ActionState::Denied)
+    }
+
+    pub fn fail_action(
+        &self,
+        scope: &Scope,
+        id: &ActionId,
+        revision: u64,
+    ) -> rusqlite::Result<Action> {
+        let current = self
+            .action(scope, id)?
+            .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+        if !matches!(
+            current.0.state,
+            ActionState::Proposed
+                | ActionState::AwaitingApproval
+                | ActionState::Ready
+                | ActionState::Running
+        ) || current.1 != revision
+        {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        self.transition_action(scope, id, revision, ActionState::Failed)
     }
 
     pub fn write_checkpoint(

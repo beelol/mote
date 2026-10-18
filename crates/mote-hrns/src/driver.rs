@@ -1,9 +1,10 @@
 use crate::{
-    Action, ActionId, ActionState, Checkpoint, Harness, HarnessError, HarnessKind, HarnessRequest,
-    HrnsStore, ModelStep, Scope, Task, TaskId, TaskState,
+    action_request_hash, Action, ActionError, ActionExecutor, ActionId, ActionReceipt, ActionState,
+    Checkpoint, Harness, HarnessError, HarnessKind, HarnessRequest, HrnsStore, ModelStep,
+    ReceiptStatus, Scope, Task, TaskId, TaskState,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::collections::HashSet;
 
 pub struct HarnessAdapters {
     pub opencode: Box<dyn Harness>,
@@ -25,43 +26,6 @@ pub struct NewTask {
     pub scope: Scope,
     pub outcome: String,
     pub harness: HarnessKind,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ReceiptStatus {
-    Committed,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ActionReceipt {
-    pub action_id: ActionId,
-    pub request_hash: String,
-    pub status: ReceiptStatus,
-    pub committed_at: u64,
-    pub result_ref: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ActionError {
-    Unavailable,
-    Failed,
-}
-
-impl std::fmt::Display for ActionError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(match self {
-            Self::Unavailable => "action executor unavailable",
-            Self::Failed => "action execution failed",
-        })
-    }
-}
-
-impl std::error::Error for ActionError {}
-
-pub trait ActionExecutor: Send {
-    fn execute(&mut self, action: &Action) -> Result<ActionReceipt, ActionError>;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -136,6 +100,7 @@ pub struct Driver {
     store: HrnsStore,
     adapters: HarnessAdapters,
     executor: Box<dyn ActionExecutor>,
+    claimed: HashSet<ActionId>,
 }
 
 impl Driver {
@@ -148,6 +113,7 @@ impl Driver {
             store,
             adapters,
             executor,
+            claimed: HashSet::new(),
         }
     }
 
@@ -327,31 +293,48 @@ impl Driver {
                     self.checkpoint(&resumed, Some(action.id), None)?;
                     return Ok(Some(DriverOutcome::Resumed(resumed)));
                 }
-                let claimed = self.store.transition_action(
+                let claimed = self.store.claim_action(
                     &task.scope,
                     &action.id,
                     action_revision,
-                    ActionState::Running,
                 )?;
+                self.claimed.insert(claimed.id.clone());
                 self.checkpoint(task, Some(claimed.id.clone()), None)?;
                 Ok(Some(DriverOutcome::Claimed(claimed)))
             }
             ActionState::Running => {
-                let receipt = self
-                    .executor
-                    .execute(&action)
-                    .map_err(DriverError::Action)?;
+                if !self.claimed.remove(&action.id) {
+                    let failed = self.store.fail_action(
+                        &task.scope,
+                        &action.id,
+                        action_revision,
+                    )?;
+                    self.checkpoint(task, Some(failed.id), None)?;
+                    return Err(DriverError::Action(ActionError::Indeterminate));
+                }
+                let receipt = match self.executor.execute(&action) {
+                    Ok(receipt) => receipt,
+                    Err(error) => {
+                        let failed = self.store.fail_action(
+                            &task.scope,
+                            &action.id,
+                            action_revision,
+                        )?;
+                        self.checkpoint(task, Some(failed.id), None)?;
+                        return Err(DriverError::Action(error));
+                    }
+                };
                 if receipt.action_id != action.id
                     || receipt.status != ReceiptStatus::Committed
-                    || receipt.request_hash.trim().is_empty()
+                    || receipt.request_hash != action_request_hash(&action)
                 {
                     return Err(DriverError::InvalidReceipt);
                 }
-                let committed = self.store.transition_action(
+                let (committed, receipt) = self.store.commit_action(
                     &task.scope,
                     &action.id,
                     action_revision,
-                    ActionState::Committed,
+                    receipt,
                 )?;
                 self.checkpoint(task, Some(committed.id.clone()), None)?;
                 Ok(Some(DriverOutcome::Committed {

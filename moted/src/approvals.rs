@@ -90,6 +90,8 @@ pub struct ApprovalRecord {
     pub claimed_at: Option<i64>,
     pub completed_at: Option<i64>,
     pub result: Option<String>,
+    pub hrns_action_id: Option<String>,
+    pub hrns_request_hash: Option<String>,
 }
 
 impl ApprovalRecord {
@@ -167,13 +169,17 @@ pub fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         ("claimed_at", "INTEGER"),
         ("completed_at", "INTEGER"),
         ("result", "TEXT"),
+        ("hrns_action_id", "TEXT"),
+        ("hrns_request_hash", "TEXT"),
     ] {
         if !columns.iter().any(|column| column == name) {
             conn.execute_batch(&format!("ALTER TABLE approvals ADD COLUMN {name} {ty}"))?;
         }
     }
     conn.execute_batch(
-        "CREATE INDEX IF NOT EXISTS approvals_host_pending ON approvals(host_id,status,id)",
+        "CREATE INDEX IF NOT EXISTS approvals_host_pending ON approvals(host_id,status,id);
+         CREATE UNIQUE INDEX IF NOT EXISTS approvals_hrns_action
+         ON approvals(host_id,hrns_action_id) WHERE hrns_action_id IS NOT NULL",
     )?;
     Ok(())
 }
@@ -215,6 +221,51 @@ impl<'a> ApprovalStore<'a> {
         now: i64,
         expires_at: i64,
     ) -> rusqlite::Result<ApprovalRecord> {
+        self.create_impl(
+            thread_id,
+            intent,
+            page_state_hash,
+            now,
+            expires_at,
+            None,
+        )
+    }
+
+    pub fn create_for_action(
+        &self,
+        thread_id: &str,
+        intent: ApprovalIntent,
+        page_state_hash: ActionDigest,
+        now: i64,
+        expires_at: i64,
+        action: (&str, &str),
+    ) -> rusqlite::Result<ApprovalRecord> {
+        let (action_id, request_hash) = action;
+        if action_id.trim().is_empty()
+            || request_hash.len() != 64
+            || !request_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        self.create_impl(
+            thread_id,
+            intent,
+            page_state_hash,
+            now,
+            expires_at,
+            Some((action_id, request_hash)),
+        )
+    }
+
+    fn create_impl(
+        &self,
+        thread_id: &str,
+        intent: ApprovalIntent,
+        page_state_hash: ActionDigest,
+        now: i64,
+        expires_at: i64,
+        action: Option<(&str, &str)>,
+    ) -> rusqlite::Result<ApprovalRecord> {
         if thread_id.is_empty() || expires_at <= now {
             return Err(rusqlite::Error::InvalidQuery);
         }
@@ -235,18 +286,49 @@ impl<'a> ApprovalStore<'a> {
             return Err(rusqlite::Error::InvalidQuery);
         }
         let display = redact_json(json!({"site":origin,"effect":format!("{effect:?}")}));
-        self.conn.execute("INSERT INTO approvals(host_id,thread_id,kind,payload,status,expires_at,created_at,action_hash,origin,node_ref,request_fingerprint,page_state_hash)
-            VALUES(?1,?2,'browser',?3,'pending',?4,?5,?6,?7,?8,?9,?10)",rusqlite::params![self.host_id.as_str(),thread_id,display.to_string(),expires_at,now,action_hash.as_str(),origin,node_ref,request_fingerprint.as_str(),page_state_hash.as_str()])?;
+        if let Some((action_id, request_hash)) = action {
+            if let Some(existing) = self.record_for_action(action_id)? {
+                if existing.thread_id == thread_id
+                    && existing.action_hash == action_hash
+                    && existing.page_state_hash == page_state_hash
+                    && existing.hrns_request_hash.as_deref() == Some(request_hash)
+                {
+                    return Ok(existing);
+                }
+                return Err(rusqlite::Error::InvalidQuery);
+            }
+            self.conn.execute("INSERT INTO approvals(host_id,thread_id,kind,payload,status,expires_at,created_at,action_hash,origin,node_ref,request_fingerprint,page_state_hash,hrns_action_id,hrns_request_hash)
+                VALUES(?1,?2,'browser',?3,'pending',?4,?5,?6,?7,?8,?9,?10,?11,?12)",rusqlite::params![self.host_id.as_str(),thread_id,display.to_string(),expires_at,now,action_hash.as_str(),origin,node_ref,request_fingerprint.as_str(),page_state_hash.as_str(),action_id,request_hash])?;
+        } else {
+            self.conn.execute("INSERT INTO approvals(host_id,thread_id,kind,payload,status,expires_at,created_at,action_hash,origin,node_ref,request_fingerprint,page_state_hash)
+                VALUES(?1,?2,'browser',?3,'pending',?4,?5,?6,?7,?8,?9,?10)",rusqlite::params![self.host_id.as_str(),thread_id,display.to_string(),expires_at,now,action_hash.as_str(),origin,node_ref,request_fingerprint.as_str(),page_state_hash.as_str()])?;
+        }
         self.record(self.conn.last_insert_rowid())?
             .ok_or(rusqlite::Error::QueryReturnedNoRows)
     }
 
     pub fn record(&self, id: i64) -> rusqlite::Result<Option<ApprovalRecord>> {
-        self.conn.query_row("SELECT id,host_id,thread_id,kind,payload,action_hash,page_state_hash,status,expires_at,created_at,claimed_at,completed_at,result,origin,node_ref,request_fingerprint
+        self.conn.query_row("SELECT id,host_id,thread_id,kind,payload,action_hash,page_state_hash,status,expires_at,created_at,claimed_at,completed_at,result,origin,node_ref,request_fingerprint,hrns_action_id,hrns_request_hash
             FROM approvals WHERE id=?1 AND host_id=?2 AND kind='browser'",rusqlite::params![id,self.host_id.as_str()], |row| {
             let invalid = |_| rusqlite::Error::InvalidQuery;
-            Ok(ApprovalRecord { id: row.get(0)?,host_id: HostId::new(row.get::<_,String>(1)?).map_err(invalid)?,thread_id:row.get(2)?,kind:row.get(3)?,display:serde_json::from_str(&row.get::<_,String>(4)?).map_err(database_json)?,action_hash:ActionDigest::new(row.get::<_,String>(5)?).map_err(invalid)?,page_state_hash:ActionDigest::new(row.get::<_,String>(6)?).map_err(invalid)?,status:ApprovalStatus::parse(&row.get::<_,String>(7)?)?,expires_at:row.get(8)?,created_at:row.get(9)?,claimed_at:row.get(10)?,completed_at:row.get(11)?,result:row.get(12)?,origin:row.get(13)?,node_ref:row.get(14)?,request_fingerprint:ActionDigest::new(row.get::<_,String>(15)?).map_err(invalid)? })
+            Ok(ApprovalRecord { id: row.get(0)?,host_id: HostId::new(row.get::<_,String>(1)?).map_err(invalid)?,thread_id:row.get(2)?,kind:row.get(3)?,display:serde_json::from_str(&row.get::<_,String>(4)?).map_err(database_json)?,action_hash:ActionDigest::new(row.get::<_,String>(5)?).map_err(invalid)?,page_state_hash:ActionDigest::new(row.get::<_,String>(6)?).map_err(invalid)?,status:ApprovalStatus::parse(&row.get::<_,String>(7)?)?,expires_at:row.get(8)?,created_at:row.get(9)?,claimed_at:row.get(10)?,completed_at:row.get(11)?,result:row.get(12)?,origin:row.get(13)?,node_ref:row.get(14)?,request_fingerprint:ActionDigest::new(row.get::<_,String>(15)?).map_err(invalid)?,hrns_action_id:row.get(16)?,hrns_request_hash:row.get(17)? })
         }).optional()
+    }
+
+    pub fn record_for_action(&self, action_id: &str) -> rusqlite::Result<Option<ApprovalRecord>> {
+        let id = self
+            .conn
+            .query_row(
+                "SELECT id FROM approvals WHERE host_id=?1 AND hrns_action_id=?2",
+                rusqlite::params![self.host_id.as_str(), action_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        id.map(|id| {
+            self.record(id)?
+                .ok_or(rusqlite::Error::QueryReturnedNoRows)
+        })
+        .transpose()
     }
 
     fn matches(&self, decision: &ApprovalDecision) -> rusqlite::Result<Option<ApprovalRecord>> {
@@ -300,7 +382,10 @@ impl<'a> ApprovalStore<'a> {
             Ok(()) => ("approved", None),
             Err(reason) => ("failed", Some(mote_redact::redact(&reason))),
         };
-        self.conn.execute("UPDATE approvals SET status=?1,completed_at=?2,result=?3 WHERE id=?4 AND host_id=?5 AND action_hash=?6 AND claimed_at=?7 AND status='claimed'",rusqlite::params![status,now,result,claim.record.id,self.host_id.as_str(),claim.record.action_hash.as_str(),claim.claimed_at])?;
+        let changed = self.conn.execute("UPDATE approvals SET status=?1,completed_at=?2,result=?3 WHERE id=?4 AND host_id=?5 AND action_hash=?6 AND claimed_at=?7 AND status='claimed'",rusqlite::params![status,now,result,claim.record.id,self.host_id.as_str(),claim.record.action_hash.as_str(),claim.claimed_at])?;
+        if changed != 1 {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
         self.record(claim.record.id)?
             .ok_or(rusqlite::Error::QueryReturnedNoRows)
     }
@@ -532,6 +617,49 @@ mod tests {
                 changed.action_hash().unwrap()
             );
         }
+    }
+
+    #[test]
+    fn hrns_action_binding_is_idempotent_and_rejects_altered_requests() {
+        let conn = Connection::open_in_memory().unwrap();
+        let store = open_store(&conn);
+        let first = store
+            .create_for_action(
+                "thread",
+                intent(),
+                page(),
+                100,
+                200,
+                ("task:1", &"c".repeat(64)),
+            )
+            .unwrap();
+        let repeated = store
+            .create_for_action(
+                "thread",
+                intent(),
+                page(),
+                100,
+                200,
+                ("task:1", &"c".repeat(64)),
+            )
+            .unwrap();
+        assert_eq!(repeated.id, first.id);
+        assert_eq!(repeated.hrns_action_id.as_deref(), Some("task:1"));
+        assert_eq!(
+            repeated.hrns_request_hash.as_deref(),
+            Some("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
+        );
+        assert!(store
+            .create_for_action(
+                "thread",
+                intent(),
+                page(),
+                100,
+                200,
+                ("task:1", &"d".repeat(64)),
+            )
+            .is_err());
+        assert_eq!(store.pending_for_host(101).unwrap().len(), 1);
     }
 
     #[test]

@@ -7,7 +7,8 @@
 
 use chrono::{TimeZone, Utc};
 use mote_eventlog::EventLog;
-use rusqlite::Connection;
+use mote_hrns::ActionId;
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::ffi::{CString, OsString};
@@ -90,6 +91,15 @@ struct ResolvedWriteTarget {
     parent: PathBuf,
     filename: OsString,
     expectation: TargetExpectation,
+}
+
+struct FileWriteRequest<'a> {
+    data_dir: &'a Path,
+    thread_id: &'a str,
+    path: &'a Path,
+    content: &'a str,
+    now: i64,
+    binding: Option<(&'a ActionId, &'a str)>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -212,6 +222,30 @@ impl Watchers {
         self.request_file_write_impl(data_dir, thread_id, path, content, now, || Ok(()))
     }
 
+    #[allow(dead_code)]
+    pub fn request_file_write_for_action(
+        &self,
+        data_dir: &Path,
+        thread_id: &str,
+        path: &Path,
+        content: &str,
+        now: i64,
+        action: (&ActionId, &str),
+    ) -> Result<WriteDecision, ApprovalError> {
+        let (action_id, request_hash) = action;
+        self.request_file_write_bound_impl(
+            FileWriteRequest {
+                data_dir,
+                thread_id,
+                path,
+                content,
+                now,
+                binding: Some((action_id, request_hash)),
+            },
+            || Ok(()),
+        )
+    }
+
     #[cfg(test)]
     fn request_file_write_with_hook(
         &self,
@@ -222,12 +256,15 @@ impl Watchers {
         now: i64,
         before_target_open: impl FnOnce() -> std::io::Result<()>,
     ) -> Result<WriteDecision, ApprovalError> {
-        self.request_file_write_impl(
-            data_dir,
-            thread_id,
-            path,
-            content,
-            now,
+        self.request_file_write_bound_impl(
+            FileWriteRequest {
+                data_dir,
+                thread_id,
+                path,
+                content,
+                now,
+                binding: None,
+            },
             before_target_open,
         )
     }
@@ -241,6 +278,32 @@ impl Watchers {
         now: i64,
         before_target_open: impl FnOnce() -> std::io::Result<()>,
     ) -> Result<WriteDecision, ApprovalError> {
+        self.request_file_write_bound_impl(
+            FileWriteRequest {
+                data_dir,
+                thread_id,
+                path,
+                content,
+                now,
+                binding: None,
+            },
+            before_target_open,
+        )
+    }
+
+    fn request_file_write_bound_impl(
+        &self,
+        request: FileWriteRequest<'_>,
+        before_target_open: impl FnOnce() -> std::io::Result<()>,
+    ) -> Result<WriteDecision, ApprovalError> {
+        let FileWriteRequest {
+            data_dir,
+            thread_id,
+            path,
+            content,
+            now,
+            binding,
+        } = request;
         let resolved = resolve_write_target(path)?;
         if resolved.path.starts_with(data_dir.canonicalize()?) {
             write_resolved(&resolved, content, before_target_open)?;
@@ -254,11 +317,50 @@ impl Watchers {
         };
         let hash = intent_digest(&intent)?;
         let payload = display_payload(&intent).to_string();
-        self.conn.execute(
-            "INSERT INTO approvals(thread_id, kind, payload, status, expires_at, created_at, action_hash,host_id)
-             VALUES(?1, 'file_write', ?2, 'pending', ?3, ?4, ?5,(SELECT host_id FROM approval_owner WHERE id=1))",
-            rusqlite::params![thread_id, payload, now + APPROVAL_TTL_MS, now, hash.as_str()],
-        )?;
+        if let Some((action_id, request_hash)) = binding {
+            if request_hash.len() != 64
+                || !request_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+            {
+                return Err(rusqlite::Error::InvalidQuery.into());
+            }
+            let host: String = self.conn.query_row(
+                "SELECT host_id FROM approval_owner WHERE id=1",
+                [],
+                |row| row.get(0),
+            )?;
+            let existing: Option<(i64, String, String, String, String)> = self
+                .conn
+                .query_row(
+                    "SELECT id,thread_id,action_hash,hrns_request_hash,status FROM approvals WHERE host_id=?1 AND hrns_action_id=?2",
+                    rusqlite::params![host, action_id.as_str()],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                )
+                .optional()?;
+            if let Some((id, stored_thread, stored_action_hash, stored_request_hash, status)) =
+                existing
+            {
+                if stored_thread != thread_id
+                    || stored_action_hash != hash.as_str()
+                    || stored_request_hash != request_hash
+                    || status != "pending"
+                {
+                    return Err(rusqlite::Error::InvalidQuery.into());
+                }
+                self.intents.lock().unwrap().entry(id).or_insert(intent);
+                return Ok(WriteDecision::Pending(id));
+            }
+            self.conn.execute(
+                "INSERT INTO approvals(thread_id,kind,payload,status,expires_at,created_at,action_hash,host_id,hrns_action_id,hrns_request_hash)
+                 VALUES(?1,'file_write',?2,'pending',?3,?4,?5,?6,?7,?8)",
+                rusqlite::params![thread_id,payload,now + APPROVAL_TTL_MS,now,hash.as_str(),host,action_id.as_str(),request_hash],
+            )?;
+        } else {
+            self.conn.execute(
+                "INSERT INTO approvals(thread_id, kind, payload, status, expires_at, created_at, action_hash,host_id)
+                 VALUES(?1, 'file_write', ?2, 'pending', ?3, ?4, ?5,(SELECT host_id FROM approval_owner WHERE id=1))",
+                rusqlite::params![thread_id, payload, now + APPROVAL_TTL_MS, now, hash.as_str()],
+            )?;
+        }
         let id = self.conn.last_insert_rowid();
         self.intents.lock().unwrap().insert(id, intent);
         Ok(WriteDecision::Pending(id))
@@ -645,6 +747,61 @@ mod tests {
     fn action_hash_covers_canonical_exact_intent() {
         let intent = FileWritePayload { path: "/selected".into(), resolved_path: "/resolved".into(), expectation: TargetExpectation::Missing, content: "secret".into() };
         assert_eq!(intent_digest(&intent).unwrap().as_str(), "e11c1aa5f1bfb0f02d6fe781cb5366229208a1a971db55f0c0dd6a8666c82e1c");
+    }
+
+    #[test]
+    fn hrns_file_write_approval_is_created_once_and_bound_to_exact_request() {
+        let root = temp_root("hrns-binding");
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let target = root.join("held.txt");
+        let watchers = Watchers::open_in_memory().unwrap();
+        let host = HostId::from_public_key(&[9; 32]);
+        watchers.bind_local_host(&host).unwrap();
+        let action_id = ActionId::new("task:1").unwrap();
+        let request_hash = "a".repeat(64);
+        let first = watchers
+            .request_file_write_for_action(
+                &data,
+                "main",
+                &target,
+                "exact content",
+                1000,
+                (&action_id, &request_hash),
+            )
+            .unwrap();
+        let repeated = watchers
+            .request_file_write_for_action(
+                &data,
+                "main",
+                &target,
+                "exact content",
+                1001,
+                (&action_id, &request_hash),
+            )
+            .unwrap();
+        assert_eq!(repeated, first);
+        assert!(watchers
+            .request_file_write_for_action(
+                &data,
+                "main",
+                &target,
+                "altered content",
+                1002,
+                (&action_id, &request_hash),
+            )
+            .is_err());
+        let count: i64 = watchers
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM approvals WHERE hrns_action_id='task:1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+        assert!(!target.exists());
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
