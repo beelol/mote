@@ -105,10 +105,21 @@ evidence that the local signed-in account was unavailable during the attempt, no
 build 2 reached TestFlight. The release directory retains `upload-attempt.json`, and the guard
 forbids a blind retry. App Store Connect must be inspected before choosing the next build number.
 
+App Store Connect was inspected after the failed attempt on 2026-10-17. The Mote Agent iOS Builds
+table showed only version `0.1.0`, build `1`, with status `Testing`, group `Internal Testing`, one
+invite and one install. Build 2 was absent. This confirms the pre-transport diagnosis and makes
+build 3 the next reserved number. No group, tester or app record was changed during this check.
+
+Xcode 27.1 Apple Accounts settings showed `Sign in to your Apple Account` and no configured account.
+The login keychain also exposed zero valid code-signing identities while the Mac session was locked.
+A build 3 manifest and current inventory snapshot were prepared outside Git, but its preflight
+correctly stopped before archive with `No local Apple Distribution signing identity for the selected
+team`. No upload was attempted.
+
 ## Remaining verification
 
-Inspect App Store Connect for build 2. If it is absent, upload a fresh build number from current
-`main`; otherwise wait for its terminal processing state. Assign the processed build only to the
+Sign in to Xcode and unlock the login keychain, then archive and upload build 3 from current `main`.
+Assign the processed build only to the
 internal Testing group, install it, then repeat pairing, live chat, generated Matrix UI, browser approval, reconnect and
 host-switch isolation against the installed `com.beelol.mote` TestFlight app. Retain each physical
 result bundle and the required screenshots, role trees and observations before checking IPAD-08.

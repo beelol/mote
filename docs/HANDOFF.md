@@ -59,6 +59,13 @@ before transport because no available signed-in account exposed App Store Connec
 number. Do not delete the marker or retry build 2 blindly. Future failed uploads preserve an
 owner-only `upload.log` beside the marker.
 
+A later App Store Connect inspection showed only `0.1.0 (1)`. Build 2 is absent, so build 3 is the
+next reserved number. Xcode 27.1 Apple Accounts settings contains no configured account, and the
+locked login keychain currently exposes no signing identity. The build 3 manifest and inventory are
+prepared under `/private/tmp`, but preflight stopped before archive. After the Mac is unlocked, sign
+in to Xcode, rerun build 3 preflight and archive, then upload deliberately. Do not create or reuse a
+team API key without a separate approval.
+
 Mote Agent is App Store Connect app `6822101041`, bundle ID `com.beelol.mote`, SKU
 `mote-ipad-001`, team `FQ6YGD7554`. Build `0.1.0 (1)` is processed and assigned
 only to the internal Testing group. Mote Agent `0.1.0 (1)` is installed through TestFlight

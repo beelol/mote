@@ -32,3 +32,8 @@ manual GitHub upload path and does not complete IPAD-12.
 The release tool now preserves failed Xcode output in an owner-only `upload.log` outside Git. Unit
 coverage verifies the diagnostic file content and mode while the existing attempt guard remains
 fail-closed.
+
+A read-only GitHub environment inspection on 2026-10-17 again listed only
+`MOTE_KEYCHAIN_PASSWORD` and `MOTE_PROFILE_BASE64`. The latest two manual workflow runs remained the
+successful build-only runs `38336516684` and `38349927919`; both predate current `main`, and neither
+ran the upload job. No credential, secret or workflow dispatch was changed during this inspection.
