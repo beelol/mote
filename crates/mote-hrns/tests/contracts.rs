@@ -39,11 +39,14 @@ fn steps_roundtrip_and_refuse_unrecognized_or_missing_fields() {
 
 struct FakeHarness;
 impl Harness for FakeHarness {
-    fn step(&mut self, request: HarnessRequest) -> Result<ModelStep, HarnessError> {
+    fn step(&mut self, request: HarnessRequest) -> Result<HarnessReply, HarnessError> {
         assert_eq!(request.task.scope, Scope::new("owner", "personal").unwrap());
-        Ok(ModelStep::Complete {
-            text: request.task.outcome,
-            sources: vec![],
+        Ok(HarnessReply {
+            step: ModelStep::Complete {
+                text: request.task.outcome,
+                sources: vec![],
+            },
+            adapter_checkpoint: None,
         })
     }
 }
@@ -80,13 +83,16 @@ fn adapters_share_task_and_checkpoint_contracts() {
         let adapter: &mut dyn Harness = &mut FakeHarness;
         assert!(matches!(
             adapter.step(request),
-            Ok(ModelStep::Complete { .. })
+            Ok(HarnessReply {
+                step: ModelStep::Complete { .. },
+                ..
+            })
         ));
     }
 }
 
 #[test]
-fn actions_and_checkpoints_roundtrip_without_adapter_state() {
+fn actions_and_checkpoints_roundtrip_with_opaque_adapter_state() {
     for state in [
         ActionState::Proposed,
         ActionState::AwaitingApproval,
@@ -117,11 +123,19 @@ fn actions_and_checkpoints_roundtrip_without_adapter_state() {
         step: Some(ModelStep::WaitForInput {
             question: "Which city?".into(),
         }),
+        adapter: Some(json!({"session_id":"opaque"})),
     };
     let mut value = serde_json::to_value(&checkpoint).unwrap();
     assert_eq!(
         serde_json::from_value::<Checkpoint>(value.clone()).unwrap(),
         checkpoint
+    );
+    value.as_object_mut().unwrap().remove("adapter");
+    assert_eq!(
+        serde_json::from_value::<Checkpoint>(value.clone())
+            .unwrap()
+            .adapter,
+        None
     );
     value["opencode_session"] = json!("foreign");
     assert!(serde_json::from_value::<Checkpoint>(value).is_err());

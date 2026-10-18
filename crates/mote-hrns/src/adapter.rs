@@ -9,6 +9,13 @@ pub struct HarnessRequest {
     pub checkpoint: Option<Checkpoint>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HarnessReply {
+    pub step: ModelStep,
+    pub adapter_checkpoint: Option<serde_json::Value>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HarnessError {
     Unavailable,
@@ -29,5 +36,5 @@ impl std::fmt::Display for HarnessError {
 impl std::error::Error for HarnessError {}
 
 pub trait Harness: Send {
-    fn step(&mut self, request: HarnessRequest) -> Result<ModelStep, HarnessError>;
+    fn step(&mut self, request: HarnessRequest) -> Result<HarnessReply, HarnessError>;
 }

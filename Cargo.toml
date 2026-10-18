@@ -39,6 +39,7 @@ mote-host-client = { path = "crates/mote-host-client" }
 mote-ipc = { path = "crates/mote-ipc" }
 mote-localmodel = { path = "crates/mote-localmodel" }
 mote-harness = { path = "crates/mote-harness" }
+mote-hrns = { path = "crates/mote-hrns" }
 mote-context = { path = "crates/mote-context" }
 mote-ui = { path = "crates/mote-ui" }
 mote-client-core = { path = "crates/mote-client-core" }

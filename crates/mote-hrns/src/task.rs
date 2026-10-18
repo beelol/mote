@@ -142,4 +142,6 @@ pub struct Checkpoint {
     pub state: TaskState,
     pub last_action: Option<ActionId>,
     pub step: Option<ModelStep>,
+    #[serde(default)]
+    pub adapter: Option<serde_json::Value>,
 }

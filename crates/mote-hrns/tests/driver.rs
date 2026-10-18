@@ -43,12 +43,12 @@ impl Drop for Fixture {
 
 #[derive(Clone)]
 struct Script {
-    steps: Arc<Mutex<VecDeque<Result<ModelStep, HarnessError>>>>,
+    steps: Arc<Mutex<VecDeque<Result<HarnessReply, HarnessError>>>>,
     requests: Arc<Mutex<Vec<HarnessRequest>>>,
 }
 
 impl Script {
-    fn new(steps: impl IntoIterator<Item = Result<ModelStep, HarnessError>>) -> Self {
+    fn new(steps: impl IntoIterator<Item = Result<HarnessReply, HarnessError>>) -> Self {
         Self {
             steps: Arc::new(Mutex::new(steps.into_iter().collect())),
             requests: Arc::new(Mutex::new(Vec::new())),
@@ -59,7 +59,7 @@ impl Script {
 struct FakeHarness(Script);
 
 impl Harness for FakeHarness {
-    fn step(&mut self, request: HarnessRequest) -> Result<ModelStep, HarnessError> {
+    fn step(&mut self, request: HarnessRequest) -> Result<HarnessReply, HarnessError> {
         self.0.requests.lock().unwrap().push(request);
         self.0.steps.lock().unwrap().pop_front().unwrap()
     }
@@ -109,10 +109,13 @@ fn scope() -> Scope {
     Scope::new("owner", "personal").unwrap()
 }
 
-fn complete(text: &str) -> Result<ModelStep, HarnessError> {
-    Ok(ModelStep::Complete {
-        text: text.into(),
-        sources: vec![],
+fn complete(text: &str) -> Result<HarnessReply, HarnessError> {
+    Ok(HarnessReply {
+        step: ModelStep::Complete {
+            text: text.into(),
+            sources: vec![],
+        },
+        adapter_checkpoint: None,
     })
 }
 
@@ -188,9 +191,12 @@ fn fifo_uses_only_the_selected_harness_and_never_starts_two_tasks() {
 fn tool_effect_is_idempotent_across_failure_and_driver_restart() {
     let fixture = Fixture::new();
     let script = Script::new([
-        Ok(ModelStep::Tool {
-            name: "browser.read".into(),
-            arguments: serde_json::from_value(json!({"url":"https://example.test"})).unwrap(),
+        Ok(HarnessReply {
+            step: ModelStep::Tool {
+                name: "browser.read".into(),
+                arguments: serde_json::from_value(json!({"url":"https://example.test"})).unwrap(),
+            },
+            adapter_checkpoint: Some(json!({"session_id":"session-1"})),
         }),
         complete("done"),
     ]);
@@ -273,6 +279,7 @@ fn recovery_repairs_interrupted_action_and_terminal_checkpoints_once() {
                 state: TaskState::Running,
                 last_action: None,
                 step: None,
+                adapter: None,
             },
         )
         .unwrap();
@@ -368,6 +375,7 @@ fn every_persisted_task_state_recovers_idempotently() {
                     state,
                     last_action: None,
                     step: None,
+                    adapter: None,
                 },
             )
             .unwrap();
@@ -430,8 +438,11 @@ fn cancellation_and_harness_failure_are_durable() {
 #[test]
 fn input_question_survives_restart_without_another_model_call() {
     let fixture = Fixture::new();
-    let script = Script::new([Ok(ModelStep::WaitForInput {
-        question: "Which city?".into(),
+    let script = Script::new([Ok(HarnessReply {
+        step: ModelStep::WaitForInput {
+            question: "Which city?".into(),
+        },
+        adapter_checkpoint: None,
     })]);
     let empty = Script::new([]);
     let mut driver = make_driver(

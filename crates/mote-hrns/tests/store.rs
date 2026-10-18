@@ -218,6 +218,7 @@ fn actions_and_checkpoints_are_scoped_guarded_and_durable() {
         state: TaskState::Running,
         last_action: Some(proposed.id.clone()),
         step: None,
+        adapter: None,
     };
     store
         .write_checkpoint(&scope(), checkpoint.clone())
@@ -260,6 +261,7 @@ fn invalid_checkpoint_and_failed_action_event_leave_no_partial_state() {
                 state: TaskState::Running,
                 last_action: Some(foreign),
                 step: None,
+                adapter: None,
             },
         )
         .is_err());
@@ -294,6 +296,7 @@ fn model_step_and_checkpoint_roll_back_as_one_transition() {
                 state: TaskState::Running,
                 last_action: None,
                 step: None,
+                adapter: None,
             },
         )
         .unwrap();
@@ -309,6 +312,7 @@ fn model_step_and_checkpoint_roll_back_as_one_transition() {
             text: "done".into(),
             sources: vec![],
         }),
+        adapter: None,
     };
     assert!(store
         .record_step(&scope(), &task.id, 1, Some(TaskState::Complete), checkpoint,)
@@ -349,6 +353,7 @@ fn stale_model_revision_cannot_publish_a_tool_proposal() {
             name: action.name.clone(),
             arguments: action.arguments.clone(),
         }),
+        adapter: None,
     };
     let before = log.max_seq().unwrap();
     assert!(store
@@ -376,6 +381,7 @@ fn durable_model_step_event_is_redacted() {
         step: Some(ModelStep::Message {
             text: format!("result {secret}"),
         }),
+        adapter: None,
     };
     store
         .record_step(&scope(), &task.id, 1, None, checkpoint.clone())

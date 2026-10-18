@@ -1,5 +1,6 @@
 mod action;
 mod adapter;
+pub mod adapters;
 mod driver;
 mod model;
 mod store;

@@ -2794,6 +2794,7 @@ name = "mote-hrns"
 version = "0.0.0"
 dependencies = [
  "mote-eventlog",
+ "mote-harness",
  "rusqlite",
  "serde",
  "serde_json",

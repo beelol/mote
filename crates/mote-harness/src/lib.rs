@@ -150,6 +150,47 @@ pub struct OpenCodeServer {
     child: std::process::Child,
 }
 
+pub trait OpenCodeSession: Send + Sync {
+    fn create_session(&self) -> Result<String, String>;
+    fn run_step(
+        &self,
+        session: &str,
+        model: &str,
+        system: Option<&str>,
+        prompt: &str,
+        timeout: std::time::Duration,
+    ) -> Result<(Vec<ThinkEvent>, std::time::Duration), String>;
+    fn run_turn(
+        &self,
+        session: &str,
+        model: &str,
+        system: Option<&str>,
+        prompt: &str,
+        timeout: std::time::Duration,
+    ) -> Result<(Vec<ThinkEvent>, std::time::Duration), String>;
+}
+
+pub trait ServerFactory: Send + Sync {
+    fn start(&self) -> Result<std::sync::Arc<dyn OpenCodeSession>, String>;
+}
+
+pub struct ProcessServerFactory {
+    cwd: std::path::PathBuf,
+    ready: std::time::Duration,
+}
+
+impl ProcessServerFactory {
+    pub fn new(cwd: impl Into<std::path::PathBuf>, ready: std::time::Duration) -> Self {
+        Self { cwd: cwd.into(), ready }
+    }
+}
+
+impl ServerFactory for ProcessServerFactory {
+    fn start(&self) -> Result<std::sync::Arc<dyn OpenCodeSession>, String> {
+        Ok(std::sync::Arc::new(OpenCodeServer::start(&self.cwd, self.ready)?))
+    }
+}
+
 impl OpenCodeServer {
     /// Spawn `opencode serve` in `cwd` on an ephemeral loopback port and wait until it is listening
     /// or `ready` elapses.
@@ -233,6 +274,32 @@ impl OpenCodeServer {
         prompt: &str,
         timeout: std::time::Duration,
     ) -> Result<(Vec<ThinkEvent>, std::time::Duration), String> {
+        self.run_events(session, model, system, prompt, timeout, false)
+    }
+
+    /// Run until the model finishes or proposes its first tool call. Adapter callers must pair
+    /// this with OpenCode permissions that require approval for every exposed MCP tool. On a tool
+    /// proposal the session is aborted, so OpenCode cannot own execution or task continuity.
+    pub fn run_step(
+        &self,
+        session: &str,
+        model: &str,
+        system: Option<&str>,
+        prompt: &str,
+        timeout: std::time::Duration,
+    ) -> Result<(Vec<ThinkEvent>, std::time::Duration), String> {
+        self.run_events(session, model, system, prompt, timeout, true)
+    }
+
+    fn run_events(
+        &self,
+        session: &str,
+        model: &str,
+        system: Option<&str>,
+        prompt: &str,
+        timeout: std::time::Duration,
+        stop_at_tool: bool,
+    ) -> Result<(Vec<ThinkEvent>, std::time::Duration), String> {
         use std::io::{BufRead, BufReader};
 
         let (provider, model_id) = model.split_once('/').unwrap_or(("ollama", model));
@@ -275,8 +342,9 @@ impl OpenCodeServer {
                 }
                 for ev in stream.feed(&v) {
                     let done = matches!(ev, ThinkEvent::Done { .. });
+                    let tool = matches!(ev, ThinkEvent::ToolCall { .. });
                     events.push(ev);
-                    if done {
+                    if done || (stop_at_tool && tool) {
                         let _ = tx.send((events, first));
                         return;
                     }
@@ -300,7 +368,19 @@ impl OpenCodeServer {
         });
 
         match rx.recv_timeout(timeout) {
-            Ok((events, first)) => Ok((events, first.unwrap_or_else(|| start.elapsed()))),
+            Ok((events, first)) => {
+                if stop_at_tool
+                    && events
+                        .iter()
+                        .any(|event| matches!(event, ThinkEvent::ToolCall { .. }))
+                {
+                    let _ = self
+                        .agent
+                        .post(&format!("{}/session/{}/abort", self.base_url, session))
+                        .send_json(serde_json::json!({}));
+                }
+                Ok((events, first.unwrap_or_else(|| start.elapsed())))
+            }
             Err(_) => {
                 let _ = self
                     .agent
@@ -316,6 +396,34 @@ impl Drop for OpenCodeServer {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+impl OpenCodeSession for OpenCodeServer {
+    fn create_session(&self) -> Result<String, String> {
+        OpenCodeServer::create_session(self)
+    }
+
+    fn run_step(
+        &self,
+        session: &str,
+        model: &str,
+        system: Option<&str>,
+        prompt: &str,
+        timeout: std::time::Duration,
+    ) -> Result<(Vec<ThinkEvent>, std::time::Duration), String> {
+        OpenCodeServer::run_step(self, session, model, system, prompt, timeout)
+    }
+
+    fn run_turn(
+        &self,
+        session: &str,
+        model: &str,
+        system: Option<&str>,
+        prompt: &str,
+        timeout: std::time::Duration,
+    ) -> Result<(Vec<ThinkEvent>, std::time::Duration), String> {
+        OpenCodeServer::run_turn(self, session, model, system, prompt, timeout)
     }
 }
 

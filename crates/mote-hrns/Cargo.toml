@@ -9,4 +9,5 @@ rust-version.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 mote-eventlog.workspace = true
+mote-harness.workspace = true
 rusqlite.workspace = true

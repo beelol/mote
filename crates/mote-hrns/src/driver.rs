@@ -256,8 +256,8 @@ impl Driver {
             context: task.outcome.clone(),
             checkpoint,
         };
-        let step = match self.adapters.selected(task.harness).step(request) {
-            Ok(step) => step,
+        let reply = match self.adapters.selected(task.harness).step(request) {
+            Ok(reply) => reply,
             Err(error) => {
                 let failed =
                     self.store
@@ -266,7 +266,7 @@ impl Driver {
                 return Err(DriverError::Harness(error));
             }
         };
-        self.apply_model_step(task, revision, step)
+        self.apply_model_step(task, revision, reply)
     }
 
     fn step_action(
@@ -383,15 +383,17 @@ impl Driver {
         &self,
         task: Task,
         revision: u64,
-        step: ModelStep,
+        reply: crate::HarnessReply,
     ) -> Result<DriverOutcome, DriverError> {
-        match step {
+        let adapter = reply.adapter_checkpoint;
+        match reply.step {
             ModelStep::Message { text } => {
-                let checkpoint = self.next_checkpoint(
+                let mut checkpoint = self.next_checkpoint(
                     &task,
                     self.latest_action_id(&task)?,
                     Some(ModelStep::Message { text: text.clone() }),
                 )?;
+                checkpoint.adapter = adapter;
                 self.store
                     .record_step(&task.scope, &task.id, revision, None, checkpoint)?;
                 Ok(DriverOutcome::Message {
@@ -401,11 +403,12 @@ impl Driver {
             }
             ModelStep::Tool { name, arguments } => {
                 let action = self.next_action(&task, name.clone(), arguments.clone())?;
-                let checkpoint = self.next_checkpoint(
+                let mut checkpoint = self.next_checkpoint(
                     &task,
                     Some(action.id.clone()),
                     Some(ModelStep::Tool { name, arguments }),
                 )?;
+                checkpoint.adapter = adapter;
                 self.store.propose_action_with_checkpoint(
                     &task.scope,
                     action.clone(),
@@ -417,7 +420,7 @@ impl Driver {
             ModelStep::Complete { text, sources } => {
                 let mut projected = task.clone();
                 projected.state = TaskState::Complete;
-                let checkpoint = self.next_checkpoint(
+                let mut checkpoint = self.next_checkpoint(
                     &projected,
                     self.latest_action_id(&task)?,
                     Some(ModelStep::Complete {
@@ -425,6 +428,7 @@ impl Driver {
                         sources: sources.clone(),
                     }),
                 )?;
+                checkpoint.adapter = adapter;
                 let (completed, _) = self.store.record_step(
                     &task.scope,
                     &task.id,
@@ -441,13 +445,14 @@ impl Driver {
             ModelStep::WaitForInput { question } => {
                 let mut projected = task.clone();
                 projected.state = TaskState::WaitingForInput;
-                let checkpoint = self.next_checkpoint(
+                let mut checkpoint = self.next_checkpoint(
                     &projected,
                     self.latest_action_id(&task)?,
                     Some(ModelStep::WaitForInput {
                         question: question.clone(),
                     }),
                 )?;
+                checkpoint.adapter = adapter;
                 let (waiting, _) = self.store.record_step(
                     &task.scope,
                     &task.id,
@@ -504,16 +509,18 @@ impl Driver {
         last_action: Option<ActionId>,
         step: Option<ModelStep>,
     ) -> Result<Checkpoint, DriverError> {
-        let revision = self
-            .store
-            .checkpoint(&task.scope, &task.id)?
+        let current = self.store.checkpoint(&task.scope, &task.id)?;
+        let revision = current
+            .as_ref()
             .map_or(0, |checkpoint| checkpoint.revision + 1);
+        let adapter = current.and_then(|checkpoint| checkpoint.adapter);
         Ok(Checkpoint {
             task_id: task.id.clone(),
             revision,
             state: task.state,
             last_action,
             step,
+            adapter,
         })
     }
 

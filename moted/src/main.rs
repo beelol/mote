@@ -35,7 +35,7 @@ use lanes::{
     TalkOutcome, TALK_BUDGET, THINK_BUDGET,
 };
 use mote_context::ContextStore;
-use mote_harness::OpenCodeServer;
+use mote_harness::{OpenCodeSession, ProcessServerFactory, ServerFactory};
 use mote_localmodel::Ollama;
 use mote_eventlog::{EventLog, Subscription};
 use mote_ipc::{codes, Actor, Dispatch, RpcError, Server};
@@ -56,7 +56,7 @@ const THINK_TIMEOUT: Duration = Duration::from_secs(180);
 struct ThinkServers {
     data_dir: PathBuf,
     moted_exe: PathBuf,
-    servers: HashMap<String, Arc<OpenCodeServer>>,
+    servers: HashMap<String, Arc<dyn OpenCodeSession>>,
 }
 
 impl ThinkServers {
@@ -66,7 +66,11 @@ impl ThinkServers {
     }
 
     /// Get the thread's server, starting one (with its `opencode.json`) on first use.
-    fn get(&mut self, thread_id: &str, think_model: &str) -> Result<Arc<OpenCodeServer>, String> {
+    fn get(
+        &mut self,
+        thread_id: &str,
+        think_model: &str,
+    ) -> Result<Arc<dyn OpenCodeSession>, String> {
         if let Some(s) = self.servers.get(thread_id) {
             return Ok(s.clone());
         }
@@ -78,7 +82,7 @@ impl ThinkServers {
         tool_config["mcp"]["moted"]["environment"] = json!({"MOTE_HOME":self.data_dir,"MOTE_THREAD_ID":thread_id});
         std::fs::write(dir.join("opencode.json"), tool_config.to_string())
             .map_err(|e| format!("write opencode.json: {e}"))?;
-        let server = Arc::new(OpenCodeServer::start(&dir, Duration::from_secs(60))?);
+        let server = ProcessServerFactory::new(&dir, Duration::from_secs(60)).start()?;
         self.servers.insert(thread_id.to_string(), server.clone());
         Ok(server)
     }
