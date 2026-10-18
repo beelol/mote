@@ -63,9 +63,12 @@ tests and 4 transition tests. Partial evidence is in `docs/verification/P2-02.md
 Commit `cd35f39` is pushed to `main` and matches `origin/main`. The complete workspace test suite
 and strict clippy passed for it.
 
-The next uncommitted slice adds durable actions and checkpoints to `HrnsStore`. Focused store
-tests pass: 7 passed, 0 failed. The fresh complete workspace test, strict workspace clippy,
-package formatting and `git diff --check` all pass. Commit and push this slice next. Then
-implement the one-step driver and restart recovery fixtures. P2-02 and P2-03 stay open until
-adapter fixtures and the recovery driver prove their full clauses. No daemon behavior has
-changed yet.
+Commit `ee2fbf1` adds durable actions and checkpoints to `HrnsStore` and is pushed to `main`.
+Focused store tests pass: 7 passed, 0 failed. The fresh complete workspace test, strict workspace
+clippy, package formatting and `git diff --check` all passed before the commit.
+
+Next implement the one-step driver and restart recovery fixtures. The driver must reconcile a
+persisted action that exists without its following checkpoint and a terminal task whose final
+checkpoint was interrupted. It must never start a second task while one is active. P2-02 and
+P2-03 stay open until adapter fixtures and the recovery driver prove their full clauses. No
+daemon behavior has changed yet.
