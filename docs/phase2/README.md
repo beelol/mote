@@ -203,6 +203,7 @@ its events return through a scoped client. No adapter writes Mote state except t
     This records the 2026-10-17 planning decision. It does not activate implementation.
   - [x] **P2-01** The owner explicitly activates Phase 2 implementation. **Verify:** the root
     README moves this board into Ready for Go and names the active child criteria.
+    [Evidence](../verification/P2-01.md).
   - [ ] **P2-02** `mote-hrns` defines the common task, action, checkpoint, model-step and harness
     contracts with no adapter-specific state in those types. **Verify:** contract tests run the
     same state transition fixtures through fake OpenCode and native adapters.

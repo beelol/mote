@@ -1,6 +1,6 @@
 # Current development handoff
 
-Updated 2026-10-17 in America/Los_Angeles. This file is a replacement snapshot.
+Updated 2026-10-18 in America/Los_Angeles. This file is a replacement snapshot.
 
 ## Active goal
 
@@ -11,11 +11,11 @@ P2-12 proves a change. Physical iPad voice checks and external Apple work are de
 
 ## Current checkout
 
-The checkout is `main` at `bd74a43` before the pending design commit. The configured remote is
+The checkout is `main` at `c8ddbcd`, which matches `origin/main`. The configured remote is
 `origin`. Existing untracked `.DS_Store` and `.superpowers/` belong to the owner and must remain
 untouched.
 
-## Pending design batch
+## Completed and pushed design batch
 
 The root Ready for Go board now activates Phase 2. `docs/phase2/README.md` names the active
 criteria and driver goal. These new design files define the stable boundaries:
@@ -28,9 +28,9 @@ The voice design audits Overseer revision
 `2b1a19a9b6e639628367a22e16155af20df4f86a`. The memory design pins TencentDB Agent Memory
 revision `e9a82935b52741e0c798c75326e90b7144eb4d5f` for the candidate comparison.
 
-No runtime code or default changed in this batch. Run `cargo test --workspace` and
-`cargo clippy --workspace -- -D warnings`, inspect the diff, then commit and push the design. The
-owner reviews these specifications before implementation plans or product code.
+No runtime code or default changed in this batch. Full workspace tests and strict clippy passed
+before commit `c8ddbcd` was pushed. P2-01 activation evidence is recorded in
+`docs/verification/P2-01.md`. The same required gates passed for that evidence batch.
 
 ## Existing delivery work
 
@@ -40,7 +40,7 @@ test during ordinary Phase 2 development.
 
 ## Next action
 
-Verify, commit and push the Phase 2 design batch. Present the specifications for owner review.
-After approval, write the implementation plans. Then execute the smallest dependency-first
-increments with evidence files, workspace tests, strict clippy, small conventional commits and a
-push after every verified increment.
+Commit and push P2-01 evidence. The owner must review the three committed specifications. After
+approval, write the implementation plans. Then execute the smallest dependency-first increments
+with evidence files, workspace tests, strict clippy, small conventional commits and a push after
+every verified increment.
