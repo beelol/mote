@@ -60,8 +60,12 @@ enforcement survive reopen. Targeted tests pass: 14 event-log tests, 4 contract 
 tests and 4 transition tests. Partial evidence is in `docs/verification/P2-02.md` and
 `docs/verification/P2-03.md`.
 
-The complete workspace test suite and strict clippy passed on this batch. Package formatting and
-`git diff --check` passed. Commit and push these changes next. Then add durable actions and
-checkpoints, followed by the one-step driver and restart recovery fixtures. P2-02 and P2-03 stay
-open until adapter fixtures and the recovery driver prove their full clauses. No daemon behavior
-has changed yet.
+Commit `cd35f39` is pushed to `main` and matches `origin/main`. The complete workspace test suite
+and strict clippy passed for it.
+
+The next uncommitted slice adds durable actions and checkpoints to `HrnsStore`. Focused store
+tests pass: 7 passed, 0 failed. The fresh complete workspace test, strict workspace clippy,
+package formatting and `git diff --check` all pass. Commit and push this slice next. Then
+implement the one-step driver and restart recovery fixtures. P2-02 and P2-03 stay open until
+adapter fixtures and the recovery driver prove their full clauses. No daemon behavior has
+changed yet.

@@ -48,6 +48,16 @@ fn enqueue(store: &HrnsStore, name: &str) -> Task {
         .unwrap()
 }
 
+fn action(task: &Task, name: &str) -> Action {
+    Action {
+        id: ActionId::new(name).unwrap(),
+        task_id: task.id.clone(),
+        state: ActionState::Proposed,
+        name: "browser.read".into(),
+        arguments: serde_json::Map::new(),
+    }
+}
+
 #[test]
 fn fifo_and_single_active_survive_reopening() {
     let fixture = Fixture::new();
@@ -173,4 +183,94 @@ fn concurrent_enqueue_preserves_committed_order_and_one_active_task() {
         .map(|handle| usize::from(handle.join().unwrap()))
         .sum::<usize>();
     assert_eq!(successes, 1);
+}
+
+#[test]
+fn actions_and_checkpoints_are_scoped_guarded_and_durable() {
+    let fixture = Fixture::new();
+    let (store, log) = fixture.open();
+    let task = enqueue(&store, "first");
+    let task = store
+        .transition(&scope(), &task.id, 0, TaskState::Running)
+        .unwrap();
+    let proposed = action(&task, "action-1");
+    store.propose_action(&scope(), proposed.clone()).unwrap();
+    let actions = store.actions(&scope(), &task.id).unwrap();
+    assert_eq!(actions.len(), 1);
+    assert_eq!(actions[0], proposed);
+    let wrong = Scope::new("owner", "work").unwrap();
+    assert!(store.action(&wrong, &proposed.id).unwrap().is_none());
+    assert!(store.propose_action(&scope(), proposed.clone()).is_err());
+
+    let ready = store
+        .transition_action(&scope(), &proposed.id, 0, ActionState::Ready)
+        .unwrap();
+    assert_eq!(ready.state, ActionState::Ready);
+    let before = log.max_seq().unwrap();
+    assert!(store
+        .transition_action(&scope(), &proposed.id, 0, ActionState::Running)
+        .is_err());
+    assert_eq!(log.max_seq().unwrap(), before);
+
+    let checkpoint = Checkpoint {
+        task_id: task.id.clone(),
+        revision: 0,
+        state: TaskState::Running,
+        last_action: Some(proposed.id.clone()),
+    };
+    store
+        .write_checkpoint(&scope(), checkpoint.clone())
+        .unwrap();
+    assert!(store
+        .write_checkpoint(&scope(), checkpoint.clone())
+        .is_err());
+    drop(store);
+    drop(log);
+
+    let (store, _) = fixture.open();
+    assert_eq!(
+        store.checkpoint(&scope(), &task.id).unwrap(),
+        Some(checkpoint)
+    );
+    assert_eq!(
+        store.action(&scope(), &proposed.id).unwrap(),
+        Some((ready, 1))
+    );
+}
+
+#[test]
+fn invalid_checkpoint_and_failed_action_event_leave_no_partial_state() {
+    let fixture = Fixture::new();
+    let (store, log) = fixture.open();
+    let task = enqueue(&store, "first");
+    let task = store
+        .transition(&scope(), &task.id, 0, TaskState::Running)
+        .unwrap();
+    let proposed = action(&task, "action-1");
+    store.propose_action(&scope(), proposed.clone()).unwrap();
+    let foreign = ActionId::new("missing").unwrap();
+    let before = log.max_seq().unwrap();
+    assert!(store
+        .write_checkpoint(
+            &scope(),
+            Checkpoint {
+                task_id: task.id.clone(),
+                revision: 0,
+                state: TaskState::Running,
+                last_action: Some(foreign),
+            },
+        )
+        .is_err());
+    assert_eq!(log.max_seq().unwrap(), before);
+
+    let connection = rusqlite::Connection::open(&fixture.path).unwrap();
+    connection.execute_batch("CREATE TRIGGER fail_action_event BEFORE INSERT ON events WHEN NEW.kind='action.changed' BEGIN SELECT RAISE(FAIL,'injected'); END;").unwrap();
+    assert!(store
+        .transition_action(&scope(), &proposed.id, 0, ActionState::Ready)
+        .is_err());
+    assert_eq!(
+        store.action(&scope(), &proposed.id).unwrap(),
+        Some((proposed, 0))
+    );
+    assert_eq!(log.max_seq().unwrap(), before);
 }
