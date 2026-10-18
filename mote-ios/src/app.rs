@@ -122,7 +122,9 @@ impl MoteApp {
         }
         if let Some(live) = &mut self.live {
             live.drain();
-            live.draw(ctx, safe_area, &mut self.composer);
+            if live.draw(ctx, safe_area, &mut self.composer) {
+                self.first_run = Some(crate::first_run::FirstRun::additional(ctx));
+            }
             return;
         }
         let mut status = egui::Frame::side_top_panel(&ctx.style());
@@ -605,6 +607,107 @@ mod tests {
             .unwrap();
         let output = frame(&mut app, &ctx, egui::vec2(834.0, 1210.0), vec![]);
         assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text().contains("Office-only refusal"))));
+    }
+
+    #[test]
+    fn live_shell_opens_additional_pairing_without_dropping_current_host() {
+        use mote_host_client::{HostDirectory, PairedHost};
+        use mote_protocol::VersionRange;
+        let host = PairedHost::new([3; 32], "Home", None, VersionRange::current()).unwrap();
+        let host_id = host.host_id().clone();
+        let mut directory = HostDirectory::default();
+        directory.register(host).unwrap();
+        directory.select_host(&host_id).unwrap();
+        let (persist, rx) = std::sync::mpsc::channel();
+        let mut app = MoteApp {
+            live: Some(crate::live::LiveRuntime {
+                directory,
+                rx,
+                persist,
+                commands: Default::default(),
+                status: Default::default(),
+                approval_requests: Default::default(),
+                authenticated: false,
+            }),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        let size = egui::vec2(834.0, 1210.0);
+        frame(&mut app, &ctx, size, vec![]);
+        let output = frame(&mut app, &ctx, size, vec![]);
+        let center = output
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == "Pair another host" => {
+                    Some(text.pos + text.galley.size() / 2.0)
+                }
+                _ => None,
+            })
+            .expect("live shell must expose additional pairing");
+        frame(
+            &mut app,
+            &ctx,
+            size,
+            vec![
+                egui::Event::PointerMoved(center),
+                egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                },
+                egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+        assert!(app.first_run.is_some());
+        let live = app.live.as_ref().expect("current live session is retained");
+        assert_eq!(live.directory.selected_host(), Some(&host_id));
+        assert_eq!(live.directory.hosts().count(), 1);
+
+        let output = frame(&mut app, &ctx, size, vec![]);
+        let cancel = output
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == "Cancel" => {
+                    Some(text.pos + text.galley.size() / 2.0)
+                }
+                _ => None,
+            })
+            .expect("additional pairing must expose cancel");
+        frame(
+            &mut app,
+            &ctx,
+            size,
+            vec![
+                egui::Event::PointerMoved(cancel),
+                egui::Event::PointerButton {
+                    pos: cancel,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                },
+                egui::Event::PointerButton {
+                    pos: cancel,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+        assert!(app.first_run.is_none());
+        let live = app
+            .live
+            .as_ref()
+            .expect("cancel must retain the live session");
+        assert_eq!(live.directory.selected_host(), Some(&host_id));
+        assert_eq!(live.directory.hosts().count(), 1);
     }
 
     fn frame(

@@ -347,6 +347,52 @@ fn credential_source(config: &HostConfig, credential_exists: bool) -> Credential
     }
 }
 
+fn additional_configs(mut configs: Vec<HostConfig>, config: HostConfig) -> Result<Vec<HostConfig>> {
+    ensure!(
+        config.offer.is_some(),
+        "additional pairing requires a transient code"
+    );
+    ensure!(configs.len() < 8, "paired-host limit reached");
+    let id = HostId::from_public_key(&config.public_key);
+    ensure!(
+        configs
+            .iter()
+            .all(|saved| HostId::from_public_key(&saved.public_key) != id),
+        "host is already paired"
+    );
+    configs.push(config);
+    Ok(configs)
+}
+
+fn persisted_configs(configs: &[HostConfig]) -> Vec<HostConfig> {
+    configs
+        .iter()
+        .filter(|config| config.offer.is_none())
+        .cloned()
+        .collect()
+}
+
+fn commit_paired_config(
+    configs: &mut Vec<HostConfig>,
+    config: &HostConfig,
+    endpoint: SocketAddr,
+) -> Result<()> {
+    let id = HostId::from_public_key(&config.public_key);
+    if let Some(saved) = configs
+        .iter_mut()
+        .find(|saved| HostId::from_public_key(&saved.public_key) == id)
+    {
+        saved.endpoint = endpoint;
+        return Ok(());
+    }
+    ensure!(configs.len() < 8, "paired-host limit reached");
+    let mut saved = config.clone();
+    saved.endpoint = endpoint;
+    saved.offer = None;
+    configs.push(saved);
+    Ok(())
+}
+
 pub struct LiveRuntime {
     pub(crate) directory: HostDirectory,
     pub(crate) rx: Receiver<HostUpdate>,
@@ -395,6 +441,13 @@ impl LiveRuntime {
             "first pairing requires a transient code"
         );
         Self::from_configs(ctx, vec![config], true)
+    }
+
+    pub fn from_additional_pairing(ctx: egui::Context, config: HostConfig) -> Result<Self> {
+        let path = documents()?.join("live-hosts.json");
+        ensure!(path.is_file(), "existing paired-host metadata is missing");
+        let configs: Vec<HostConfig> = serde_json::from_reader(std::fs::File::open(path)?)?;
+        Self::from_configs(ctx, additional_configs(configs, config)?, false)
     }
 
     fn from_configs(ctx: egui::Context, configs: Vec<HostConfig>, fresh: bool) -> Result<Self> {
@@ -451,7 +504,7 @@ impl LiveRuntime {
                 repaint.request_repaint();
             }
         });
-        let saved_configs = Arc::new(Mutex::new(configs.clone()));
+        let saved_configs = Arc::new(Mutex::new(persisted_configs(&configs)));
         let store = Arc::new(Mutex::new(crate::keychain::KeychainStore));
         let mut commands = BTreeMap::new();
         for config in configs {
@@ -563,7 +616,8 @@ impl LiveRuntime {
         false
     }
 
-    pub fn draw(&mut self, ctx: &egui::Context, safe: egui::Margin, composer: &mut String) {
+    pub fn draw(&mut self, ctx: &egui::Context, safe: egui::Margin, composer: &mut String) -> bool {
+        let mut pair_another = false;
         let mut header = egui::Frame::side_top_panel(&ctx.style());
         header.inner_margin.top = header.inner_margin.top.saturating_add(safe.top);
         let selected = self.directory.selected_host().cloned();
@@ -596,6 +650,17 @@ impl LiveRuntime {
                             }
                         });
                     }
+                    let pair = ui.add_sized([160.0, 48.0], egui::Button::new("Pair another host"));
+                    #[cfg(target_os = "ios")]
+                    mote_client_core::native_accessibility::record(
+                        ui,
+                        pair.id,
+                        mote_client_core::native_accessibility::Role::Button,
+                        "Pair another host",
+                        None,
+                        &pair,
+                    );
+                    pair_another = pair.clicked();
                 });
                 if let Some(host) = &selected {
                     if let Ok(state) = self.directory.state(host) {
@@ -882,6 +947,7 @@ impl LiveRuntime {
                 format!("Committed through {snapshot_cursor}"),
             );
         });
+        pair_another
     }
 }
 
@@ -1087,12 +1153,7 @@ fn attach_host<S: CredentialStore<Credential = StoredCredential> + Send + 'stati
         let mut configs = configs
             .lock()
             .map_err(|_| anyhow::anyhow!("host metadata unavailable"))?;
-        if let Some(config) = configs
-            .iter_mut()
-            .find(|config| HostId::from_public_key(&config.public_key) == id)
-        {
-            config.endpoint = network.endpoint();
-        }
+        commit_paired_config(&mut configs, &config, network.endpoint())?;
         save_configs(config_path, &configs)?;
     }
     let snapshot = network.snapshot()?;
@@ -1289,6 +1350,58 @@ mod recovery_tests {
             credential_source(&config, true),
             CredentialSource::Pair("MOTE1-owner-present")
         ));
+    }
+
+    #[test]
+    fn additional_pairing_preserves_saved_hosts_and_rejects_duplicates() {
+        let saved = HostConfig {
+            name: "Home".into(),
+            public_key: [1; 32],
+            endpoint: "192.168.1.10:47810".parse().unwrap(),
+            offer: None,
+        };
+        let added = HostConfig {
+            name: "Office".into(),
+            public_key: [2; 32],
+            endpoint: "192.168.1.11:47810".parse().unwrap(),
+            offer: Some("MOTE1-owner-present".into()),
+        };
+        let combined = additional_configs(vec![saved.clone()], added.clone()).unwrap();
+        assert_eq!(combined.len(), 2);
+        assert_eq!(combined[0].name, "Home");
+        assert_eq!(combined[0].offer, None);
+        assert_eq!(combined[1].name, "Office");
+        assert_eq!(combined[1].offer.as_deref(), Some("MOTE1-owner-present"));
+
+        let duplicate = HostConfig {
+            public_key: saved.public_key,
+            ..added
+        };
+        assert!(additional_configs(vec![saved], duplicate).is_err());
+    }
+
+    #[test]
+    fn staged_pairing_metadata_is_saved_only_after_authentication() {
+        let saved = HostConfig {
+            name: "Home".into(),
+            public_key: [1; 32],
+            endpoint: "192.168.1.10:47810".parse().unwrap(),
+            offer: None,
+        };
+        let staged = HostConfig {
+            name: "Office".into(),
+            public_key: [2; 32],
+            endpoint: "192.168.1.11:47810".parse().unwrap(),
+            offer: Some("MOTE1-owner-present".into()),
+        };
+        let mut persisted = persisted_configs(&[saved.clone(), staged.clone()]);
+        assert_eq!(persisted.len(), 1);
+        assert_eq!(persisted[0].public_key, saved.public_key);
+
+        commit_paired_config(&mut persisted, &staged, staged.endpoint).unwrap();
+        assert_eq!(persisted.len(), 2);
+        assert_eq!(persisted[1].public_key, staged.public_key);
+        assert_eq!(persisted[1].offer, None);
     }
 
     struct Forward<D: Dispatch>(mote_testkit::gateway::LoopbackHost<D>);

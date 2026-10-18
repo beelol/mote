@@ -116,10 +116,50 @@ A build 3 manifest and current inventory snapshot were prepared outside Git, but
 correctly stopped before archive with `No local Apple Distribution signing identity for the selected
 team`. No upload was attempted.
 
+## On-device additional host pairing
+
+Current source exposes a touch-sized `Pair another host` action in the live host header. It reuses
+the Bonjour discovery and native pairing-code field, retains the current live session while the
+pairing view is open and exposes `Cancel` instead of leaving for the offline gallery. A new host is
+not written to `live-hosts.json` until its own authenticated connection reaches `Online`. An already
+online saved host cannot make the new pairing appear complete. Duplicate identities and a ninth host
+are rejected.
+
+Command:
+
+```text
+cargo test -p mote-ios
+```
+
+Output:
+
+```text
+46 library tests passed.
+31 integration tests passed.
+5 native Simulator tests were ignored because MOTE_LIVE was not set.
+0 tests failed.
+```
+
+The localhost-dependent recovery and loopback tests ran with local socket access. The unsigned
+physical target was then rebuilt with:
+
+```text
+xcodebuild -quiet -project ios/Mote/Mote.xcodeproj -scheme Mote \
+  -configuration Debug -destination 'generic/platform=iOS' \
+  -derivedDataPath /private/tmp/mote-add-host-device-closeout \
+  CODE_SIGNING_ALLOWED=NO build-for-testing
+```
+
+The build exited 0. Xcode emitted the existing iOS 16 versus XCTest iOS 17 linker warnings. This
+proves the production path and physical target compile. It does not replace the required two-host
+journey against the installed TestFlight build.
+
 ## Remaining verification
 
 Sign in to Xcode and unlock the login keychain, then archive and upload build 3 from current `main`.
 Assign the processed build only to the
-internal Testing group, install it, then repeat pairing, live chat, generated Matrix UI, browser approval, reconnect and
-host-switch isolation against the installed `com.beelol.mote` TestFlight app. Retain each physical
-result bundle and the required screenshots, role trees and observations before checking IPAD-08.
+internal Testing group and install it. Pair the first Mac, use `Pair another host` to pair a second
+fixture host without developer-only fixture injection, then repeat live chat, generated Matrix UI,
+browser approval, reconnect and host-switch isolation against the installed `com.beelol.mote`
+TestFlight app. Retain each physical result bundle and the required screenshots, role trees and
+observations before checking IPAD-08.

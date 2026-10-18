@@ -4,6 +4,7 @@ use mote_gateway::{
     ClientCredential, GatewayConfig,
 };
 use mote_host_client::ConnectionState;
+use mote_protocol::HostId;
 use std::{
     sync::mpsc::{self, Receiver, TryRecvError},
     time::Duration,
@@ -31,6 +32,15 @@ pub struct FirstRun {
     status: String,
     browse: Option<Receiver<Result<Vec<DiscoveryRecord>>>>,
     pending: Option<crate::live::LiveRuntime>,
+    pending_host: Option<HostId>,
+    mode: PairingMode,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum PairingMode {
+    #[default]
+    First,
+    Additional,
 }
 
 impl Default for FirstRun {
@@ -42,6 +52,8 @@ impl Default for FirstRun {
             status: "Searching for local Mote hosts".into(),
             browse: None,
             pending: None,
+            pending_host: None,
+            mode: PairingMode::First,
         }
     }
 }
@@ -49,6 +61,15 @@ impl Default for FirstRun {
 impl FirstRun {
     pub fn new(ctx: &egui::Context) -> Self {
         let mut panel = Self::default();
+        panel.refresh(ctx);
+        panel
+    }
+
+    pub fn additional(ctx: &egui::Context) -> Self {
+        let mut panel = Self {
+            mode: PairingMode::Additional,
+            ..Self::default()
+        };
         panel.refresh(ctx);
         panel
     }
@@ -95,25 +116,29 @@ impl FirstRun {
         }
         let mut runtime = self.pending.take()?;
         runtime.drain();
-        if runtime.authenticated {
-            self.code.clear();
-            return Some(runtime);
-        }
-        let Some(host) = runtime.directory.selected_host() else {
+        let Some(host) = self.pending_host.as_ref() else {
             self.pending = Some(runtime);
             return None;
         };
         let state = runtime.directory.state(host);
         match state.map(|state| state.connection()) {
-            Ok(ConnectionState::Online) => Some(runtime),
-            Ok(ConnectionState::Offline) => {
+            Ok(ConnectionState::Online) => {
+                self.code.clear();
+                self.pending_host = None;
+                Some(runtime)
+            }
+            Ok(ConnectionState::Connecting) => {
+                self.pending = Some(runtime);
+                None
+            }
+            Ok(ConnectionState::Offline)
+            | Ok(ConnectionState::Incompatible { .. })
+            | Ok(ConnectionState::IdentityChanged)
+            | Err(_) => {
                 self.status =
                     "Pairing did not complete. Confirm the code on the Mac and try again".into();
                 self.code.clear();
-                None
-            }
-            _ => {
-                self.pending = Some(runtime);
+                self.pending_host = None;
                 None
             }
         }
@@ -210,11 +235,22 @@ impl FirstRun {
                 let record = &self.records[self
                     .selected
                     .expect("enabled pair requires a selected host")];
-                match validated_host(record, &self.code).and_then(|host| {
-                    crate::live::LiveRuntime::from_first_pairing(ctx.clone(), host)
-                }) {
-                    Ok(runtime) => {
+                let runtime = validated_host(record, &self.code).and_then(|host| {
+                    let pending_host = HostId::from_public_key(&host.public_key);
+                    let runtime = match self.mode {
+                        PairingMode::First => {
+                            crate::live::LiveRuntime::from_first_pairing(ctx.clone(), host)
+                        }
+                        PairingMode::Additional => {
+                            crate::live::LiveRuntime::from_additional_pairing(ctx.clone(), host)
+                        }
+                    }?;
+                    Ok((runtime, pending_host))
+                });
+                match runtime {
+                    Ok((runtime, pending_host)) => {
                         self.pending = Some(runtime);
+                        self.pending_host = Some(pending_host);
                         self.status = "Waiting for pairing confirmation on the Mac".into();
                     }
                     Err(_) => {
@@ -225,18 +261,20 @@ impl FirstRun {
                 }
             }
             self.label(ui, "status", &self.status);
+            let exit_label = if self.mode == PairingMode::Additional {
+                "Cancel"
+            } else {
+                "View offline gallery"
+            };
             let gallery = ui
                 .add_enabled_ui(self.pending.is_none(), |ui| {
-                    ui.add_sized(
-                        [ui.available_width(), 48.0],
-                        egui::Button::new("View offline gallery"),
-                    )
+                    ui.add_sized([ui.available_width(), 48.0], egui::Button::new(exit_label))
                 })
                 .inner;
             self.control(
                 ui,
                 &gallery,
-                "View offline gallery",
+                exit_label,
                 mote_client_core::native_accessibility::Role::Button,
                 None,
             );
@@ -339,6 +377,81 @@ mod tests {
             mote_client_core::native_accessibility::Role::TextField
         );
         assert_eq!(code.id, egui::Id::new("first-run-pairing-code").value());
+    }
+
+    #[test]
+    fn additional_pairing_exposes_cancel_instead_of_offline_gallery() {
+        let ctx = egui::Context::default();
+        let mut first_run = FirstRun {
+            mode: PairingMode::Additional,
+            ..FirstRun::default()
+        };
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(834.0, 1210.0),
+                )),
+                ..Default::default()
+            },
+            |ctx| {
+                first_run.draw(ctx, egui::Margin::ZERO);
+            },
+        );
+        let texts: Vec<_> = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) => Some(text.galley.text().to_owned()),
+                _ => None,
+            })
+            .collect();
+        assert!(texts.iter().any(|text| text == "Cancel"));
+        assert!(!texts.iter().any(|text| text == "View offline gallery"));
+    }
+
+    #[test]
+    fn additional_pairing_waits_for_the_new_host_not_an_existing_online_host() {
+        use mote_host_client::{HostDirectory, HostUpdate, PairedHost};
+        use mote_protocol::VersionRange;
+        let home = PairedHost::new([1; 32], "Home", None, VersionRange::current()).unwrap();
+        let office = PairedHost::new([2; 32], "Office", None, VersionRange::current()).unwrap();
+        let home_id = home.host_id().clone();
+        let office_id = office.host_id().clone();
+        let mut directory = HostDirectory::default();
+        directory.register(home).unwrap();
+        directory.register(office).unwrap();
+        directory.select_host(&home_id).unwrap();
+        directory
+            .reduce_update(HostUpdate::Connection {
+                host_id: home_id,
+                state: ConnectionState::Online,
+            })
+            .unwrap();
+        directory
+            .reduce_update(HostUpdate::Connection {
+                host_id: office_id.clone(),
+                state: ConnectionState::Connecting,
+            })
+            .unwrap();
+        let (persist, rx) = std::sync::mpsc::channel();
+        let runtime = crate::live::LiveRuntime {
+            directory,
+            rx,
+            persist,
+            commands: Default::default(),
+            status: Default::default(),
+            approval_requests: Default::default(),
+            authenticated: true,
+        };
+        let mut first_run = FirstRun {
+            mode: PairingMode::Additional,
+            pending: Some(runtime),
+            pending_host: Some(office_id),
+            ..FirstRun::default()
+        };
+        assert!(first_run.poll().is_none());
+        assert!(first_run.pending.is_some());
     }
 
     #[test]
