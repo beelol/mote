@@ -2908,6 +2908,7 @@ dependencies = [
  "mote-gateway",
  "mote-harness",
  "mote-host-client",
+ "mote-hrns",
  "mote-ipc",
  "mote-localmodel",
  "mote-paths",

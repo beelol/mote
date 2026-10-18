@@ -39,6 +39,54 @@ impl OpenCodeAdapter {
         self
     }
 
+    pub fn step_with_timing(
+        &mut self,
+        request: HarnessRequest,
+    ) -> Result<(HarnessReply, Duration), HarnessError> {
+        let prior = Self::checkpoint(&request)?;
+        let server = self.server()?;
+        let session_id = server
+            .create_session()
+            .map_err(|_| HarnessError::Unavailable)?;
+        let prompt = if prior.is_some() {
+            let checkpoint = request
+                .checkpoint
+                .as_ref()
+                .ok_or(HarnessError::InvalidOutput)?;
+            let durable = serde_json::to_string(checkpoint)
+                .map_err(|_| HarnessError::InvalidOutput)?;
+            format!(
+                "Continue the task from this Mote-owned durable checkpoint. Do not assume any prior OpenCode session state. Task outcome: {}\nCheckpoint: {durable}",
+                request.task.outcome
+            )
+        } else {
+            request.task.outcome.clone()
+        };
+        let (events, first_token) = server
+            .run_step(
+                &session_id,
+                &self.model,
+                Some(&request.context),
+                &prompt,
+                self.timeout,
+            )
+            .map_err(|error| {
+                if error.contains("timed out") {
+                    HarnessError::Timeout
+                } else {
+                    HarnessError::Unavailable
+                }
+            })?;
+        let reply = Self::convert(
+            events,
+            AdapterCheckpoint {
+                session_id,
+                parser_version: PARSER_VERSION,
+            },
+        )?;
+        Ok((reply, first_token))
+    }
+
     fn server(&mut self) -> Result<Arc<dyn OpenCodeSession>, HarnessError> {
         if let Some(server) = self.server.as_ref() {
             return Ok(server.clone());
@@ -125,47 +173,6 @@ impl OpenCodeAdapter {
 
 impl Harness for OpenCodeAdapter {
     fn step(&mut self, request: HarnessRequest) -> Result<HarnessReply, HarnessError> {
-        let prior = Self::checkpoint(&request)?;
-        let server = self.server()?;
-        let session_id = server
-            .create_session()
-            .map_err(|_| HarnessError::Unavailable)?;
-        let prompt = if prior.is_some() {
-            let checkpoint = request
-                .checkpoint
-                .as_ref()
-                .ok_or(HarnessError::InvalidOutput)?;
-            let durable = serde_json::to_string(checkpoint)
-                .map_err(|_| HarnessError::InvalidOutput)?;
-            format!(
-                "Continue the task from this Mote-owned durable checkpoint. Do not assume any prior OpenCode session state. Task outcome: {}\nCheckpoint: {durable}",
-                request.task.outcome
-            )
-        } else {
-            request.task.outcome.clone()
-        };
-        let events = server
-            .run_step(
-                &session_id,
-                &self.model,
-                Some(&request.context),
-                &prompt,
-                self.timeout,
-            )
-            .map_err(|error| {
-                if error.contains("timed out") {
-                    HarnessError::Timeout
-                } else {
-                    HarnessError::Unavailable
-                }
-            })?
-            .0;
-        Self::convert(
-            events,
-            AdapterCheckpoint {
-                session_id,
-                parser_version: PARSER_VERSION,
-            },
-        )
+        self.step_with_timing(request).map(|(reply, _)| reply)
     }
 }

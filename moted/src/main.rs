@@ -12,6 +12,7 @@ pub(crate) mod config;
 mod embed;
 mod gate;
 mod gateway;
+mod hrns_compat;
 pub(crate) mod host_snapshot;
 pub(crate) mod inferred_ui;
 pub(crate) mod lanes;
@@ -74,17 +75,45 @@ impl ThinkServers {
         if let Some(s) = self.servers.get(thread_id) {
             return Ok(s.clone());
         }
+        let dir = self.prepare(thread_id, think_model, false)?;
+        let server = ProcessServerFactory::new(&dir, Duration::from_secs(60)).start()?;
+        self.servers.insert(thread_id.to_string(), server.clone());
+        Ok(server)
+    }
+
+    fn factory(
+        &self,
+        thread_id: &str,
+        think_model: &str,
+    ) -> Result<Arc<dyn ServerFactory>, String> {
+        let dir = self.prepare(thread_id, think_model, true)?;
+        Ok(Arc::new(ProcessServerFactory::new(
+            dir,
+            Duration::from_secs(60),
+        )))
+    }
+
+    fn prepare(
+        &self,
+        thread_id: &str,
+        think_model: &str,
+        guarded: bool,
+    ) -> Result<PathBuf, String> {
         let safe: String =
             thread_id.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect();
         let dir = self.data_dir.join("think").join(safe);
         std::fs::create_dir_all(&dir).map_err(|e| format!("think dir: {e}"))?;
-        let mut tool_config: Value = serde_json::from_str(&think_config(&self.moted_exe, think_model)).map_err(|error|error.to_string())?;
+        let config = if guarded {
+            guarded_think_config(&self.moted_exe, think_model)
+        } else {
+            think_config(&self.moted_exe, think_model)
+        };
+        let mut tool_config: Value =
+            serde_json::from_str(&config).map_err(|error| error.to_string())?;
         tool_config["mcp"]["moted"]["environment"] = json!({"MOTE_HOME":self.data_dir,"MOTE_THREAD_ID":thread_id});
         std::fs::write(dir.join("opencode.json"), tool_config.to_string())
             .map_err(|e| format!("write opencode.json: {e}"))?;
-        let server = ProcessServerFactory::new(&dir, Duration::from_secs(60)).start()?;
-        self.servers.insert(thread_id.to_string(), server.clone());
-        Ok(server)
+        Ok(dir)
     }
 }
 
@@ -106,6 +135,42 @@ fn think_config(moted_exe: &Path, model: &str) -> String {
             "command": [moted_exe.to_string_lossy(), "mcp"] } }
     })
     .to_string()
+}
+
+fn guarded_think_config(moted_exe: &Path, model: &str) -> String {
+    let mut config: Value = serde_json::from_str(&think_config(moted_exe, model))
+        .expect("the built-in OpenCode configuration is valid JSON");
+    config["permission"] = json!({"*":"deny","moted_*":"ask"});
+    config.to_string()
+}
+
+#[cfg(test)]
+mod think_config_tests {
+    use super::*;
+
+    #[test]
+    fn compatibility_config_holds_mote_tools_and_keeps_builtins_disabled() {
+        let executable = Path::new("/tmp/moted");
+        let baseline: Value =
+            serde_json::from_str(&think_config(executable, "qwen3-coder:30b-64k")).unwrap();
+        let guarded: Value =
+            serde_json::from_str(&guarded_think_config(executable, "qwen3-coder:30b-64k"))
+                .unwrap();
+
+        assert!(baseline.get("permission").is_none());
+        assert_eq!(guarded["tools"], baseline["tools"]);
+        assert!(guarded["tools"]
+            .as_object()
+            .unwrap()
+            .values()
+            .all(|enabled| enabled == false));
+        assert_eq!(guarded["permission"], json!({"*":"deny","moted_*":"ask"}));
+        assert_eq!(
+            guarded["mcp"].as_object().unwrap().keys().collect::<Vec<_>>(),
+            vec!["moted"]
+        );
+        assert_eq!(guarded["model"], "ollama/qwen3-coder:30b-64k");
+    }
 }
 
 pub(crate) fn now_ms() -> i64 {
@@ -704,13 +769,48 @@ impl Daemon {
                 };
                 let (pack, system, turn) = build_think_pack(&think_inputs, think_budget);
                 let full_model = format!("ollama/{think_model}");
-                let server = self.think.lock().unwrap().get(thread_id, &think_model);
-                match server.and_then(|server| {
-                    let session = server.create_session()?;
-                    Ok((server, session))
-                }) {
-                    Ok((server, session)) => {
-                        match run_think_model_call(
+                let think_outcome = if hrns_compat::enabled() {
+                    match self
+                        .think
+                        .lock()
+                        .unwrap()
+                        .factory(thread_id, &think_model)
+                    {
+                        Ok(factory) => run_think_model_call(
+                            &self.log,
+                            &store,
+                            thread_id,
+                            &think_model,
+                            &pack,
+                            &system,
+                            &turn,
+                            || {
+                                hrns_compat::run(
+                                    factory,
+                                    &full_model,
+                                    thread_id,
+                                    &system,
+                                    &turn,
+                                    THINK_TIMEOUT,
+                                )
+                            },
+                        ),
+                        Err(reason) => {
+                            let _ = self.log.append(
+                                thread_id,
+                                "think.failed",
+                                &json!({"reason":reason.clone()}),
+                            );
+                            ThinkOutcome::Failed(reason)
+                        }
+                    }
+                } else {
+                    let server = self.think.lock().unwrap().get(thread_id, &think_model);
+                    match server.and_then(|server| {
+                        let session = server.create_session()?;
+                        Ok((server, session))
+                    }) {
+                        Ok((server, session)) => run_think_model_call(
                             &self.log,
                             &store,
                             thread_id,
@@ -727,32 +827,33 @@ impl Daemon {
                                     THINK_TIMEOUT,
                                 )
                             },
-                        ) {
-                            ThinkOutcome::Done {
-                                ledger_id,
-                                pack_id,
-                                answer,
-                            } => {
-                                lanes::record_turn(&store, thread_id, turn_ts, message, &answer);
-                                (
-                                    json!({
-                                        "status": "think_done", "ledger_id": ledger_id,
-                                        "pack_id": pack_id
-                                    }),
-                                    Some((true, answer)),
-                                )
-                            }
-                            ThinkOutcome::Failed(reason) => {
-                                (json!({ "status": "think_failed", "reason": reason }), None)
-                            }
+                        ),
+                        Err(reason) => {
+                            let _ = self.log.append(
+                                thread_id,
+                                "think.failed",
+                                &json!({"reason":reason.clone()}),
+                            );
+                            ThinkOutcome::Failed(reason)
                         }
                     }
-                    Err(reason) => {
-                        let _ = self.log.append(
-                            thread_id,
-                            "think.failed",
-                            &json!({ "reason": reason.clone() }),
-                        );
+                };
+                match think_outcome {
+                    ThinkOutcome::Done {
+                        ledger_id,
+                        pack_id,
+                        answer,
+                    } => {
+                        lanes::record_turn(&store, thread_id, turn_ts, message, &answer);
+                        (
+                            json!({
+                                "status": "think_done", "ledger_id": ledger_id,
+                                "pack_id": pack_id
+                            }),
+                            Some((true, answer)),
+                        )
+                    }
+                    ThinkOutcome::Failed(reason) => {
                         (json!({ "status": "think_failed", "reason": reason }), None)
                     }
                 }

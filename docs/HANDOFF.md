@@ -78,12 +78,18 @@ redacted step events and one effect across an executor failure and restart.
 The complete workspace test and strict workspace clippy passed. P2-02 and P2-03 are complete,
 and commit `3103793` is pushed to `main` and matches `origin/main`.
 
-The current Task 4 slice adds an OpenCode server factory, a guarded single-step API
+Commit `37b00ab` is pushed to `main`. It adds an OpenCode server factory, a guarded single-step API
 and `OpenCodeAdapter`. The adapter emits common model steps, stores only versioned opaque state,
 binds checkpoints to task IDs, reconstructs each continuation from Mote state and fails closed on
 already executed tool streams. Its fresh-server restart fixture and focused package tests pass.
 The required complete workspace test and strict clippy gate pass. The sandboxed workspace test
 was rerun outside the sandbox because the browser fixture needs a loopback listener. Partial
-evidence is in `docs/verification/P2-05.md`. P2-05 remains open. Next, commit and push this
-verified adapter foundation, then add the daemon's off-by-default compatibility flag and an
-OpenCode config that denies built-ins and holds every Mote MCP tool at a permission boundary.
+evidence is in `docs/verification/P2-05.md`.
+
+The current uncommitted follow-up routes completed think turns through the adapter only when
+`MOTE_HRNS_OPENCODE_COMPAT=1`. The default stays on the original v0 path. The guarded OpenCode
+configuration denies built-ins, exposes only Mote MCP and requires permission for `moted_*` tools.
+Tool proposals are held and fail closed. Focused adapter, daemon, config, local-only and clippy
+tests pass. The complete workspace test and strict workspace clippy also pass. P2-05 remains open
+until P2-07 supplies durable receipts and proves daemon restart through a held tool without a
+duplicate action. Commit and push this flagged integration next, then begin P2-07.
