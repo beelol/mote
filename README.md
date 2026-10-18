@@ -106,16 +106,12 @@ P2-12, P2V-01 through P2V-10 and MBE-01 through MBE-08. P2-13 remains a separate
 The v0 behavior, SQLite memory default, local-model allowlist and iPad approval boundary remain
 authoritative. Physical iPad voice testing and external Apple work are deferred.
 
-[Runtime design](docs/superpowers/specs/2026-10-17-phase2-runtime.md) ·
-[voice design](docs/superpowers/specs/2026-10-17-shared-voice.md) ·
-[memory design](docs/superpowers/specs/2026-10-17-memory-backends.md) ·
-[full Phase 2 board and driver goal](docs/phase2/README.md)
+[Concise Phase 2 plan and driver goal](docs/phase2/README.md) ·
+[technical runtime plan](docs/superpowers/plans/2026-10-18-phase2-runtime.md) ·
+[technical voice plan](docs/superpowers/plans/2026-10-18-shared-voice.md) ·
+[technical memory plan](docs/superpowers/plans/2026-10-18-memory-backends.md)
 
-[Runtime plan](docs/superpowers/plans/2026-10-18-phase2-runtime.md) ·
-[voice plan](docs/superpowers/plans/2026-10-18-shared-voice.md) ·
-[memory plan](docs/superpowers/plans/2026-10-18-memory-backends.md)
-
-- [ ] **[P2 durable personal agent](docs/phase2/README.md#acceptance-criteria)**
+- [ ] **[P2 durable personal agent](docs/phase2/README.md)**
   - [x] **P2-00** The owner chose the native Rust engine direction, one active task plus a queue,
     selectable OpenCode and Mote harnesses and the crate name `mote-hrns`.
   - [x] **P2-01** The owner activated Phase 2 and named the active child criteria in Ready for Go.
@@ -432,11 +428,11 @@ Continue until all authorized MBE criteria are verified and pushed. If one is bl
 ```
 
 - [ ] **[Reliable and replaceable memory](docs/rfcs/memory-backend-comparison.md)**
-  - [ ] **MBE-01** Memory writes are atomic and every indexed vector has a known embedding model that matches query embeddings, including a safe path for existing hash vectors. **Verify:** reproduce the current daemon and MCP paths, inject a failure between node, FTS and vector writes, test rollback and restart/migration, and inspect stored model IDs and search results.
-  - [ ] **MBE-02** The agent's `memory_search` tool and turn packs use the same scoped fused retrieval and return stable Mote source IDs within their budgets. **Verify:** queries that text matching misses return the labelled source through both paths, and limits, unavailable backend and malformed query cases are covered by tests.
-  - [ ] **MBE-03** Every memory write, query, graph expansion, correction and pack enforces explicit account and realm scope. **Verify:** same-name personal and work fixtures, a changed account, restart and a cross-realm edge produce zero unauthorized results in both backends.
-  - [ ] **MBE-04** Context assembly preserves the charter, pinned instructions and newest turn under a long history; older history is bounded or compacted without silently losing source coverage. **Verify:** a deterministic long-history test checks the newest turn and pinned instruction in the final pack, and tests malformed compaction and recovery with ledger counts.
-  - [ ] **MBE-05** The user can inspect why a memory exists, correct it and forget it through exposed controls, with authoritative source pointers and explicit partial-failure state. **Verify:** exercise the visible controls and backend contract; after correction or forget, old text is absent from both search and packs while the audit pointer remains and a failed candidate deletion is reported.
-  - [ ] **MBE-06** SQLite runs behind a narrow memory backend interface without changing its v0 default or event-log authority. **Verify:** backend-neutral contract tests cover write, retrieve, source lookup, correction, forget, scope refusal and unavailable backend; workspace tests and clippy pass.
-  - [ ] **MBE-07** A pinned TencentDB Agent Memory version runs as an opt-in local comparison adapter against only synthetic redacted fixtures, with extraction disabled unless calls pass Mote's local-model ledger. **Verify:** record version, license, setup, network destinations, model calls, teardown and failure behavior; prove no non-loopback call, new model pull or production-store access.
-  - [ ] **MBE-08** Both backends are scored on the same bounded labelled cases and a decision report applies the RFC gate. **Verify:** report recall@5, MRR, corrections, forgets, realm leaks, p50/p95 latency, tokens, model calls, wall time, peak memory and disk growth with commands, outputs and environment. Keep SQLite default unless an opt-in Tencent path passes every gate; do not claim unmeasured superiority.
+  - [ ] **MBE-01** SQLite writes are atomic and never mix embedding models.
+  - [ ] **MBE-02** Agent search and turn context use the same sourced retrieval path.
+  - [ ] **MBE-03** Every memory operation enforces account and realm isolation.
+  - [ ] **MBE-04** Long-history context preserves pinned instructions and the newest turn.
+  - [ ] **MBE-05** Matrix exposes memory source, correction and forget controls.
+  - [ ] **MBE-06** SQLite passes the common backend contract and remains default.
+  - [ ] **MBE-07** Tencent runs only as a pinned, loopback, synthetic-data comparison adapter.
+  - [ ] **MBE-08** A bounded report compares recall, safety, deletion, latency and resources.

@@ -32,7 +32,7 @@ The owner approved the runtime, voice and memory architecture on 2026-10-18. The
 remain in Mote's conventional `crates/` workspace now. Overseer pins the product-neutral subset.
 The subset moves into its own repository later when the owner establishes that project.
 
-The verified implementation plans are:
+The owner-facing plan is `docs/phase2/README.md`. The detailed technical plans are:
 
 - `docs/superpowers/plans/2026-10-18-phase2-runtime.md`
 - `docs/superpowers/plans/2026-10-18-shared-voice.md`
@@ -50,6 +50,6 @@ test during ordinary Phase 2 development.
 
 ## Next action
 
-The owner reviews the plans and selects native or subagent-driven execution. Then execute the
-smallest dependency-first increments with evidence files, workspace tests, strict clippy, small
-conventional commits and a push after every verified increment.
+The owner reviews the concise Phase 2 plan and selects native or subagent-driven execution. Then
+execute the smallest dependency-first increments with evidence files, workspace tests, strict
+clippy, small conventional commits and a push after every verified increment.

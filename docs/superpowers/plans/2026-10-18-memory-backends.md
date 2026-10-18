@@ -211,3 +211,27 @@
 - [ ] **Step 4:** Run corrected SQLite and the pinned Tencent candidate in isolated directories and preserve raw JSON reports.
 - [ ] **Step 5:** Apply the ten-point recall gate, nonlower MRR, zero leak and forget requirements, and v0 latency budget without changing the default.
 - [ ] **Step 6:** Run workspace gates, complete MBE-08 evidence and the parent only if every MBE criterion passes, commit `test: compare memory backends` and push.
+
+## Acceptance contract
+
+This technical section preserves the full checks behind the concise root board.
+
+- **MBE-01:** Memory writes are atomic and indexed vectors identify their embedding model. Verify
+  daemon and MCP paths, injected failure between node, text and vector writes, restart, migration
+  and stored model IDs.
+- **MBE-02:** Agent search and turn packs use the same scoped fused retrieval with stable source
+  IDs. Verify semantic-only matches, budgets, unavailable backend and malformed queries.
+- **MBE-03:** Writes, queries, graph expansion, correction and packs enforce account and realm.
+  Verify personal and work fixtures, account change, restart and a cross-realm edge leak nothing.
+- **MBE-04:** Long-history context preserves the charter, pinned instructions and newest turn.
+  Verify bounded or source-covered compaction, malformed compaction, recovery and ledger counts.
+- **MBE-05:** Matrix exposes sources, correction and forget with partial failure. Verify old text
+  disappears from search and packs, audit pointers remain and candidate deletion failure is shown.
+- **MBE-06:** SQLite satisfies the common backend contract and remains the event-backed default.
+  Verify write, retrieve, source, correction, forget, scope refusal and unavailable behavior.
+- **MBE-07:** Tencent is pinned, opt-in, loopback-only and limited to synthetic redacted data.
+  Record revision, license, setup, destinations, calls, teardown and failure behavior. Verify no
+  non-loopback call, model pull or production-store access.
+- **MBE-08:** Both backends run the same bounded labelled cases. Report recall at five, mean
+  reciprocal rank, correction, forget, realm leaks, latency, tokens, calls, wall time, peak memory
+  and disk growth. Keep SQLite default unless every opt-in gate passes.

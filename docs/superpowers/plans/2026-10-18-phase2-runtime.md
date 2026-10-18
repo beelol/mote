@@ -256,3 +256,36 @@
 - [ ] **Step 4:** Run the deterministic suite for both adapters and record all results without changing the default.
 - [ ] **Step 5:** Run the approved bounded live comparison when the named local models are already installed. Record unavailable cases honestly and pull no model.
 - [ ] **Step 6:** Run the workspace gates, complete P2-10 and P2-12 evidence only if their full Verify clauses pass, commit `test: compare personal task harnesses` and push.
+
+## Acceptance contract
+
+This technical section preserves the full checks behind the concise root board.
+
+- **P2-02:** Common task, action, checkpoint, model-step and harness contracts contain no
+  adapter-specific state. Verify the same state fixtures through fake OpenCode and native
+  adapters.
+- **P2-03:** The store keeps one active task, a FIFO queue and atomic redacted transition events.
+  Verify concurrent enqueue, forced transaction failure and restart without reordering or orphan
+  events.
+- **P2-04:** Startup and live harness selection switch only at a safe checkpoint. Verify idle,
+  model-step, tool-call and approval changes without lost or duplicated work, including revert.
+- **P2-05:** OpenCode runs behind `mote-hrns` with built-in tools disabled and Mote-owned
+  continuity. Verify OpenCode and daemon restart during a multi-step task without duplicate action.
+- **P2-06:** The native adapter uses structured steps through approved local models. Verify
+  malformed output, unknown tools, timeout and unavailable models fail closed with one ledger row
+  per call and no model outside the allowlist.
+- **P2-07:** Stable action IDs, approval state and commit receipts prevent duplicate effects.
+  Verify fault injection at every transition produces either no effect or one committed effect.
+- **P2-08:** Bounded context preserves the charter, pinned instructions and newest owner turn.
+  Verify compaction success and failure, source coverage, realm isolation and tool visibility.
+- **P2-09:** Matrix exposes task, queue, step, approval, harness, checkpoint, cancel, retry and
+  sourced result state. Verify Mac and iPad journeys through disconnect and reconnect without
+  stale controls.
+- **P2-10:** Both harnesses complete the same bounded non-code journeys through Mote-owned tools.
+  Verify sourced research, comparison, planning, scoped recall, browser read and fill, one queued
+  trigger and one held outward action.
+- **P2-11:** Coding delegates to Overseer while task authority stays in Mote. Verify progress and
+  permissions through a worktree fixture, plus a visible unavailable state.
+- **P2-12:** The common benchmark records safety, recovery, quality and latency. Publish
+  side-by-side task success, recovery, approval, duplicate-effect, latency, memory and model-call
+  results before any default change.
