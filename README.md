@@ -103,6 +103,10 @@ Replace docs/HANDOFF.md with current ACs, branch, delegated tasks, uncommitted w
 
 Every other criterion written during planning remains in [docs/backlog.md](docs/backlog.md). The native iPad ACs incorporate their approved Matrix and browser behavior directly and do not activate additional backlog IDs. The older open Matrix parent remains a historical completion record and does not add Raspberry Pi work to the current driver. The owner must explicitly activate anything else.
 
+The approved but unactivated Phase 2 durable personal-agent design and its dormant acceptance
+board are in [docs/phase2/README.md](docs/phase2/README.md). It introduces the planned
+`mote-hrns` Rust crate and an incremental replacement for OpenCode. It does not change v0 scope.
+
 ### v0 build list
 
 Work top to bottom. Each item stands alone: what, how to verify, and the section of [docs/rfcs/v0.md](docs/rfcs/v0.md) that defines it. Nothing here needs an owner decision.

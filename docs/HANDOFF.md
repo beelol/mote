@@ -15,6 +15,7 @@ comparison and broader Matrix runtime backlog remain out of scope.
 - `0a703d2` honors system Reduce Motion.
 - `5dbf6e9` completes IPAD-13, adds system appearance handling, fixes fresh pairing
   precedence and verifies physical background stop, recovery and exactly-once replay.
+- `652655e` adds production pairing for another host without dropping the current iPad session.
 
 The physical iPad is `00008132-001104661AB9001C`, an iPad Pro 11-inch M4 running
 iPadOS 26.5. It is paired over Wi-Fi, connected and unlocked. Auto-lock is disabled.
@@ -69,6 +70,13 @@ team API key without a separate approval.
 The release tool now fails before creating upload files when Xcode's Apple Account list is empty.
 This prevents the known missing-account condition from consuming the build 3 release directory.
 
+Commit `652655e` adds a production `Pair another host` action to the live iPad header. It retains the
+current session during discovery, authenticates the exact new host before completing, saves no
+transient pairing code and returns safely to the existing host on cancel or failure. The full
+workspace test suite, strict workspace clippy and an unsigned generic iOS `build-for-testing` pass.
+This removes the prior need for developer-only fixture injection in the IPAD-08 two-host journey.
+It does not complete the physical TestFlight journey.
+
 Mote Agent is App Store Connect app `6822101041`, bundle ID `com.beelol.mote`, SKU
 `mote-ipad-001`, team `FQ6YGD7554`. Build `0.1.0 (1)` is processed and assigned
 only to the internal Testing group. Mote Agent `0.1.0 (1)` is installed through TestFlight
@@ -80,6 +88,19 @@ only `MOTE_PROFILE_BASE64` and `MOTE_KEYCHAIN_PASSWORD`. The missing isolated
 upload secrets are `MOTE_ASC_API_KEY_ID`, `MOTE_ASC_ISSUER_ID`,
 `MOTE_ASC_API_KEY_P8`, `MOTE_CERT_P12_BASE64` and `MOTE_CERT_PASSWORD`. Do not
 reuse unproven credentials from other apps.
+
+## Planning-only Phase 2
+
+`docs/phase2/README.md` now records the owner-approved direction for a durable personal-agent
+runtime. The planned Rust crate is `mote-hrns`. It owns one active task plus a FIFO queue,
+checkpoints, actions, context and selectable OpenCode or native Mote harnesses. OpenCode is
+replaced incrementally. Coding work delegates to Overseer through the existing work-lane client
+boundary. Shared crates alone do not perform that delegation.
+
+The Phase 2 board is dormant. P2-01 remains open and no Phase 2 implementation is authorized.
+No product code or runtime test was added for this planning change. The root README links the
+plan from Later without changing Ready for Go. Review the plan with the owner before activating
+any P2 child.
 
 ## Delivery loop
 

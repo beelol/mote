@@ -118,7 +118,7 @@ team`. No upload was attempted.
 
 ## On-device additional host pairing
 
-Current source exposes a touch-sized `Pair another host` action in the live host header. It reuses
+Commit `652655e` exposes a touch-sized `Pair another host` action in the live host header. It reuses
 the Bonjour discovery and native pairing-code field, retains the current live session while the
 pairing view is open and exposes `Cancel` instead of leaving for the offline gallery. A new host is
 not written to `live-hosts.json` until its own authenticated connection reaches `Online`. An already
