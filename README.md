@@ -99,13 +99,71 @@ Deliver small verified Conventional Commits to main and push to the confirmed co
 Replace docs/HANDOFF.md with current ACs, branch, delegated tasks, uncommitted work, results, limits, blockers and exact next action. Checkpoint before delegation or long operations and after each edit batch, subtask, test run, commit, push or blocker, at most two minutes apart during active work. Record in-flight handles before blocking calls and checkpoint on return. Save before stopping. On resume reconcile files and commits against the handoff. Delete it only when nothing needs transfer.
 ```
 
+### Phase 2 durable personal agent
+
+The owner activated Phase 2 on 2026-10-17. The active implementation criteria are P2-02 through
+P2-12, P2V-01 through P2V-10 and MBE-01 through MBE-08. P2-13 remains a separate later decision.
+The v0 behavior, SQLite memory default, local-model allowlist and iPad approval boundary remain
+authoritative. Physical iPad voice testing and external Apple work are deferred.
+
+[Runtime design](docs/superpowers/specs/2026-10-17-phase2-runtime.md) ·
+[voice design](docs/superpowers/specs/2026-10-17-shared-voice.md) ·
+[memory design](docs/superpowers/specs/2026-10-17-memory-backends.md) ·
+[full Phase 2 board and driver goal](docs/phase2/README.md)
+
+- [ ] **[P2 durable personal agent](docs/phase2/README.md#acceptance-criteria)**
+  - [x] **P2-00** The owner chose the native Rust engine direction, one active task plus a queue,
+    selectable OpenCode and Mote harnesses and the crate name `mote-hrns`.
+  - [x] **P2-01** The owner activated Phase 2 and named the active child criteria in Ready for Go.
+  - [ ] **P2-02** Common task, action, checkpoint, model-step and harness contracts exist without
+    adapter-specific state.
+  - [ ] **P2-03** One active task, the FIFO queue and atomic redacted transition events survive
+    failure and restart.
+  - [ ] **P2-04** Startup and live harness selection apply only at a safe checkpoint and never
+    fall back silently.
+  - [ ] **P2-05** OpenCode runs behind `mote-hrns` with built-in tools disabled and Mote-owned
+    continuity.
+  - [ ] **P2-06** The native adapter performs ledgered structured steps through approved local
+    models and fails closed.
+  - [ ] **P2-07** Stable action IDs, approvals and commit receipts prevent duplicate effects.
+  - [ ] **P2-08** Bounded context preserves the charter, pinned instructions and newest owner
+    turn while progressively loading skills.
+  - [ ] **P2-09** Matrix exposes task, queue, step, approval, harness, checkpoint, retry, cancel
+    and final sourced result state.
+  - [ ] **P2-10** Both harnesses complete the same bounded non-code personal-task journeys through
+    Mote-owned tools and policy.
+  - [ ] **P2-11** Coding work delegates to Overseer without moving non-code task authority out of
+    Mote.
+  - [ ] **P2-12** The common benchmark records safety, recovery, quality and latency before any
+    default change.
+  - [ ] **P2-13** OpenCode removal waits for a separate owner decision after a stable
+    native-default release. This criterion is not active.
+
+- [ ] **[P2 shared voice foundations](docs/superpowers/specs/2026-10-17-shared-voice.md)**
+  - [ ] **P2V-01** The voice protocol is product-neutral and golden-compatible with the pinned
+    Overseer source without carrying production PCM.
+  - [ ] **P2V-02** PCM, gate, endpoint and word logic run deterministically without OS, model,
+    daemon or network dependencies.
+  - [ ] **P2V-03** The optional macOS crate provides local capture, call detection, Whisper and
+    in-memory speech.
+  - [ ] **P2V-04** The listener enforces audio bounds and opens no outbound socket.
+  - [ ] **P2V-05** `moted` supervises voice behind an off-by-default setting without breaking
+    typed interaction.
+  - [ ] **P2V-06** Final utterances enter `mote-hrns` once while partial events never invoke a
+    harness.
+  - [ ] **P2V-07** Speech interruption preserves played context and outstanding approvals.
+  - [ ] **P2V-08** Matrix shows every voice state on Mac and through the iPad host protocol.
+  - [ ] **P2V-09** Derived crates record source, revision, licenses and redacted fixtures.
+  - [ ] **P2V-10** A clean Overseer worktree consumes the pinned shared crates without boundary
+    regressions.
+
 ### Later
 
 Every other criterion written during planning remains in [docs/backlog.md](docs/backlog.md). The native iPad ACs incorporate their approved Matrix and browser behavior directly and do not activate additional backlog IDs. The older open Matrix parent remains a historical completion record and does not add Raspberry Pi work to the current driver. The owner must explicitly activate anything else.
 
-The approved but unactivated Phase 2 durable personal-agent design and its dormant acceptance
-board are in [docs/phase2/README.md](docs/phase2/README.md). It introduces the planned
-`mote-hrns` Rust crate and an incremental replacement for OpenCode. It does not change v0 scope.
+Phase 2 work outside the active criteria remains in [docs/phase2/README.md](docs/phase2/README.md).
+OpenCode removal, Pi voice, iPad microphone capture, cloud speech and a memory default switch need
+later owner decisions.
 
 ### v0 build list
 

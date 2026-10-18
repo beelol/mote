@@ -1,8 +1,8 @@
 # Mote Phase 2: durable personal agent
 
-Status: approved direction, planning only. The owner approved this direction on 2026-10-17.
-Phase 2 is not active work. The v0 contract and the root README Ready for Go board remain
-authoritative until the owner explicitly activates this board.
+Status: owner-activated on 2026-10-17. The root README Ready for Go board is the completion
+record. P2-02 through P2-12, P2V-01 through P2V-10 and MBE-01 through MBE-08 are active.
+P2-13 remains a separate later decision.
 
 ## Outcome
 
@@ -18,6 +18,12 @@ Mote harness when starting the daemon and while it is running.
 Mote remains authoritative for task state, permissions, memory, context, model accounting,
 events and Matrix UI. A harness proposes model steps. It does not gain direct authority over
 tools or outward effects.
+
+The detailed designs are:
+
+- [durable runtime](../superpowers/specs/2026-10-17-phase2-runtime.md)
+- [shared voice foundations](../superpowers/specs/2026-10-17-shared-voice.md)
+- [replaceable memory backends](../superpowers/specs/2026-10-17-memory-backends.md)
 
 ## What exists now
 
@@ -195,7 +201,7 @@ its events return through a scoped client. No adapter writes Mote state except t
   - [x] **P2-00** The owner chose a native Rust engine, one active task plus a queue, selectable
     OpenCode and Mote harnesses, incremental OpenCode replacement and the crate name `mote-hrns`.
     This records the 2026-10-17 planning decision. It does not activate implementation.
-  - [ ] **P2-01** The owner explicitly activates Phase 2 implementation. **Verify:** the root
+  - [x] **P2-01** The owner explicitly activates Phase 2 implementation. **Verify:** the root
     README moves this board into Ready for Go and names the active child criteria.
   - [ ] **P2-02** `mote-hrns` defines the common task, action, checkpoint, model-step and harness
     contracts with no adapter-specific state in those types. **Verify:** contract tests run the
@@ -242,6 +248,12 @@ its events return through a scoped client. No adapter writes Mote state except t
     with rollback and data migration evidence. **Verify:** the owner decision, compatibility
     window and rollback drill are recorded before deleting the dependency or adapter.
 
+Shared voice uses P2V-01 through P2V-10 in
+[`2026-10-17-shared-voice.md`](../superpowers/specs/2026-10-17-shared-voice.md). Replaceable
+memory uses MBE-01 through MBE-08 in
+[`memory-backend-comparison.md`](../rfcs/memory-backend-comparison.md). Their checkboxes live in
+the root README Ready for Go board.
+
 ### P2 durable personal agent
 
 The parent completes only when P2-01 through P2-13 are fully verified. P2-00 records the approved
@@ -254,16 +266,14 @@ Recurring schedules may enqueue tasks only after recovery and exactly-once behav
 Cloud execution, a cloud relay, paid models, subscription harnesses inside Mote, a Tencent default
 memory backend and automatic public actions remain outside this plan.
 
-## Dormant driver goal
-
-Do not use this goal until P2-01 is checked in the root README.
+## Active driver goal
 
 ```text
 Implement the activated Mote Phase 2 durable personal agent from repository state. Do not rely on chat history.
 
-Read AGENTS.md, docs/rfcs/v0.md, root README.md Ready for Go, docs/phase2/README.md, docs/reuse/work.md, docs/HANDOFF.md if present, and the affected code and tests. Only the P2 criteria explicitly activated in the root README are authorized. Preserve every v0 invariant. Keep models.local_only true. Use only the three approved Ollama models. Ledger every model call. Redact every event before storage. Parse structured model output fail-closed.
+Read AGENTS.md, docs/rfcs/v0.md, root README.md Ready for Go, docs/phase2/README.md, the three linked Phase 2 designs, docs/rfcs/memory-backend-comparison.md, docs/reuse/work.md, docs/HANDOFF.md if present, and the affected code and tests. P2-02 through P2-12, P2V-01 through P2V-10 and MBE-01 through MBE-08 are authorized. P2-13 is not authorized. Preserve every v0 invariant. Keep models.local_only true. Use only the three approved Ollama models. Ledger every model call. Redact every event before storage. Parse structured model output fail-closed.
 
-Build the Rust crate as crates/mote-hrns. Mote owns durable task state, actions, checkpoints, context, approvals and events. Harness adapters never own that state. Support one active task and a FIFO queue first. Keep OpenCode as a compatibility adapter while the native Rust loop is built behind the same contract. Allow startup and live harness selection, but apply a running-task change only at a safe checkpoint. Never silently fall back. Delegate coding to Overseer through its owner-only client boundary. Do not make Mote run coding harnesses or create worktrees.
+Build the Rust crate as crates/mote-hrns. Mote owns durable task state, actions, checkpoints, context, approvals and events. Harness adapters never own that state. Support one active task and a FIFO queue first. Keep OpenCode as a compatibility adapter while the native Rust loop is built behind the same contract. Allow startup and live harness selection, but apply a running-task change only at a safe checkpoint. Never silently fall back. Delegate coding to Overseer through its owner-only client boundary. Do not make Mote run coding harnesses or create worktrees. Extract the reusable Overseer voice foundations at the pinned source revision into the three product-neutral crates in the voice design, then integrate them with moted and Matrix behind an off-by-default setting. Add the memory contract, corrected SQLite adapter and opt-in loopback Tencent adapter. Keep SQLite default.
 
 Choose the smallest actionable unchecked P2 criterion or coherent dependency set. Reproduce defects before fixing them. If the owner authorizes delegation, give a bounded task to a capable subagent with AC IDs, owned files, constraints and evidence requirements. Inspect every result. Keep unrelated work intact.
 
