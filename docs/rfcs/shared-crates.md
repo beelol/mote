@@ -23,8 +23,11 @@ In scope: the nine crates below, the code they take from Overseer, the order to 
 the plan a later driver follows to put Overseer on the same crates. Out of scope: mote's own lanes,
 stores and UI (see [mote](mote.md)), and any change to Overseer before its driver starts.
 
-The crates live in this repository under `crates/`. mote consumes them by path. Overseer consumes
-them by path until mote has a remote, then by git dependency pinned to a revision.
+The crates live in this repository under the conventional Rust workspace directory `crates/`.
+Mote consumes them by path. Overseer consumes the product-neutral subset by Git dependency pinned
+to a Mote revision. When the owner is ready to manage an independent shared project, that subset
+moves into its own repository and both products pin releases or revisions from there. The folder
+name does not imply that every Mote crate is shared or destined to move.
 
 ## Why
 

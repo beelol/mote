@@ -111,6 +111,10 @@ authoritative. Physical iPad voice testing and external Apple work are deferred.
 [memory design](docs/superpowers/specs/2026-10-17-memory-backends.md) ·
 [full Phase 2 board and driver goal](docs/phase2/README.md)
 
+[Runtime plan](docs/superpowers/plans/2026-10-18-phase2-runtime.md) ·
+[voice plan](docs/superpowers/plans/2026-10-18-shared-voice.md) ·
+[memory plan](docs/superpowers/plans/2026-10-18-memory-backends.md)
+
 - [ ] **[P2 durable personal agent](docs/phase2/README.md#acceptance-criteria)**
   - [x] **P2-00** The owner chose the native Rust engine direction, one active task plus a queue,
     selectable OpenCode and Mote harnesses and the crate name `mote-hrns`.

@@ -21,6 +21,15 @@ vocabulary and daemon assumptions. A new shared repository would have clean owne
 would add release and dependency work before either product benefits. The chosen approach hosts
 product-neutral crates in Mote and lets Overseer consume a pinned Git revision.
 
+## Repository lifecycle
+
+The crates begin under Mote's conventional Rust workspace directory `crates/`. This location does
+not make every Mote crate shared. Mote consumes the voice crates by path. Overseer consumes them
+through a dependency pinned to a Mote Git revision. When the owner is ready to operate an
+independent shared project, the product-neutral crates move into their own repository and both
+products pin that repository. The public Rust interfaces and compatibility fixtures are the
+migration boundary, so moving repositories does not merge the product runtimes.
+
 ## Crate split
 
 ```text

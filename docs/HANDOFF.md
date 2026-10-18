@@ -11,9 +11,9 @@ P2-12 proves a change. Physical iPad voice checks and external Apple work are de
 
 ## Current checkout
 
-The checkout is `main` at `c8ddbcd`, which matches `origin/main`. The configured remote is
-`origin`. Existing untracked `.DS_Store` and `.superpowers/` belong to the owner and must remain
-untouched.
+The checkout is `main`. The plan batch follows pushed activation evidence `3c72556`. The
+configured remote is `origin`. Existing untracked `.DS_Store` and `.superpowers/` belong to the
+owner and must remain untouched.
 
 ## Completed and pushed design batch
 
@@ -28,6 +28,16 @@ The voice design audits Overseer revision
 `2b1a19a9b6e639628367a22e16155af20df4f86a`. The memory design pins TencentDB Agent Memory
 revision `e9a82935b52741e0c798c75326e90b7144eb4d5f` for the candidate comparison.
 
+The owner approved the runtime, voice and memory architecture on 2026-10-18. The shared crates
+remain in Mote's conventional `crates/` workspace now. Overseer pins the product-neutral subset.
+The subset moves into its own repository later when the owner establishes that project.
+
+The verified implementation plans are:
+
+- `docs/superpowers/plans/2026-10-18-phase2-runtime.md`
+- `docs/superpowers/plans/2026-10-18-shared-voice.md`
+- `docs/superpowers/plans/2026-10-18-memory-backends.md`
+
 No runtime code or default changed in this batch. Full workspace tests and strict clippy passed
 before commit `c8ddbcd` was pushed. P2-01 activation evidence is recorded in
 `docs/verification/P2-01.md`. The same required gates passed for that evidence batch.
@@ -40,7 +50,6 @@ test during ordinary Phase 2 development.
 
 ## Next action
 
-Commit and push P2-01 evidence. The owner must review the three committed specifications. After
-approval, write the implementation plans. Then execute the smallest dependency-first increments
-with evidence files, workspace tests, strict clippy, small conventional commits and a push after
-every verified increment.
+The owner reviews the plans and selects native or subagent-driven execution. Then execute the
+smallest dependency-first increments with evidence files, workspace tests, strict clippy, small
+conventional commits and a push after every verified increment.

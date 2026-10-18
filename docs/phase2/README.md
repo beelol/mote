@@ -25,6 +25,17 @@ The detailed designs are:
 - [shared voice foundations](../superpowers/specs/2026-10-17-shared-voice.md)
 - [replaceable memory backends](../superpowers/specs/2026-10-17-memory-backends.md)
 
+The owner approved these designs on 2026-10-18. The implementation plans are:
+
+- [durable runtime plan](../superpowers/plans/2026-10-18-phase2-runtime.md)
+- [shared voice plan](../superpowers/plans/2026-10-18-shared-voice.md)
+- [replaceable memory plan](../superpowers/plans/2026-10-18-memory-backends.md)
+
+Execution starts with the memory contract and runtime contracts. The runtime store, driver,
+OpenCode adapter and exactly-once actions follow. SQLite correction and scoped retrieval then
+unblock task context. The native adapter and voice foundations can follow independently. Matrix,
+Overseer consumption and both comparison reports come after their underlying contracts pass.
+
 ## What exists now
 
 The current think lane keeps one `opencode serve` process per Mote thread. It creates OpenCode
