@@ -86,6 +86,25 @@ class DistributionPreflightTests(unittest.TestCase):
             with self.assertRaises(release.ReleaseError):
                 release.signing_preflight("ABCDE12345")
 
+    def test_xcode_account_preflight_requires_a_configured_account(self):
+        empty = plistlib.dumps({
+            "DVTDeveloperAccountManagerAppleIDLists": {
+                "IDE.Prod": [],
+                "IDE.Identifiers.Prod": [],
+            }
+        }).decode("utf-8")
+        with patch.object(release, "tool_output", return_value=empty):
+            with self.assertRaisesRegex(release.ReleaseError, "No Apple Account"):
+                release.xcode_account_preflight()
+        present = plistlib.dumps({
+            "DVTDeveloperAccountManagerAppleIDLists": {
+                "IDE.Prod": ["configured-account"],
+                "IDE.Identifiers.Prod": [],
+            }
+        }).decode("utf-8")
+        with patch.object(release, "tool_output", return_value=present):
+            release.xcode_account_preflight()
+
     def test_bad_output_paths_fail_closed(self):
         with self.assertRaises(release.ReleaseError):
             release.validate_output(Path("relative"), True)
@@ -297,6 +316,8 @@ class DistributionPreflightTests(unittest.TestCase):
                    "API_PRIVATE_KEYS_DIR": str(keys)}
             account_output = Path(directory) / "signed-in-account"
             shutil.copytree(output, account_output)
+            missing_account_output = Path(directory) / "missing-account"
+            shutil.copytree(output, missing_account_output)
             with patch.dict(os.environ, env), patch.object(release, "verify_ipa"), \
                     patch.object(release, "verify_signing") as signing, \
                     patch.object(release, "run_mutation") as run:
@@ -322,8 +343,20 @@ class DistributionPreflightTests(unittest.TestCase):
             self.assertEqual(release.load_json(output / "upload-attempt.json")["identity"], identity)
             with patch.dict(os.environ, {}, clear=True), patch.object(release, "verify_ipa"), \
                     patch.object(release, "verify_signing"), \
+                    patch.object(release, "xcode_account_preflight", side_effect=release.ReleaseError(
+                        "No Apple Account is configured in Xcode"
+                    )), patch.object(release, "run_mutation") as missing_account_run:
+                with self.assertRaisesRegex(release.ReleaseError, "No Apple Account"):
+                    release.upload(identity, missing_account_output, use_xcode_account=True)
+            missing_account_run.assert_not_called()
+            self.assertFalse((missing_account_output / "UploadOptions.plist").exists())
+            self.assertFalse((missing_account_output / "upload-attempt.json").exists())
+            with patch.dict(os.environ, {}, clear=True), patch.object(release, "verify_ipa"), \
+                    patch.object(release, "verify_signing"), \
+                    patch.object(release, "xcode_account_preflight") as account_preflight, \
                     patch.object(release, "run_mutation") as account_run:
                 release.upload(identity, account_output, use_xcode_account=True)
+            account_preflight.assert_called_once_with()
             account_command, account_label, account_failure_log = account_run.call_args.args
             self.assertEqual(account_label, "Upload")
             self.assertEqual(account_failure_log, account_output / "upload.log")

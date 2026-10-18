@@ -33,6 +33,13 @@ The release tool now preserves failed Xcode output in an owner-only `upload.log`
 coverage verifies the diagnostic file content and mode while the existing attempt guard remains
 fail-closed.
 
+The signed-in Xcode upload path now inspects Xcode's Apple Account preference list before writing
+either upload file. Tests cover empty and populated account lists and prove an empty list invokes no
+Xcode mutation, writes no `UploadOptions.plist` and consumes no `upload-attempt.json`. This prevents
+the missing-account failure observed for build 2 from consuming another guarded release directory.
+It does not claim that a configured account has current access to team `FQ6YGD7554`; Xcode remains
+authoritative for that check during upload.
+
 A read-only GitHub environment inspection on 2026-10-17 again listed only
 `MOTE_KEYCHAIN_PASSWORD` and `MOTE_PROFILE_BASE64`. The latest two manual workflow runs remained the
 successful build-only runs `38336516684` and `38349927919`; both predate current `main`, and neither

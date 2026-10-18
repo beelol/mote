@@ -126,6 +126,18 @@ def signing_preflight(team):
         raise ReleaseError("No local Apple Distribution signing identity for the selected team")
 
 
+def xcode_account_preflight():
+    raw = tool_output(["defaults", "export", "com.apple.dt.Xcode", "-"])
+    try:
+        preferences = plistlib.loads(raw.encode("utf-8"))
+    except (TypeError, ValueError, plistlib.InvalidFileException) as error:
+        raise ReleaseError("Xcode Apple Account settings could not be inspected") from error
+    accounts = preferences.get("DVTDeveloperAccountManagerAppleIDLists")
+    if not isinstance(accounts, dict) or not any(
+            isinstance(entries, list) and entries for entries in accounts.values()):
+        raise ReleaseError("No Apple Account is configured in Xcode")
+
+
 def preflight(identity):
     xcode = tool_output(["xcodebuild", "-version"]).strip().replace("\n", ", ")
     sdk = tool_output(["xcrun", "--sdk", "iphoneos", "--show-sdk-version"]).strip()
@@ -357,6 +369,8 @@ def upload(identity, output, use_xcode_account=False, signing_profile=None):
             raise ReleaseError("The selected App Store Connect private key file is missing or unsafe")
         authentication = ["-authenticationKeyPath", str(key_file), "-authenticationKeyID", key,
                           "-authenticationKeyIssuerID", issuer]
+    else:
+        xcode_account_preflight()
     with upload_options.open("xb") as target:
         plistlib.dump(export_options(identity, "upload", signing_profile), target)
     with attempt.open("x", encoding="utf-8") as target:

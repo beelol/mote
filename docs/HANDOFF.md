@@ -66,6 +66,9 @@ prepared under `/private/tmp`, but preflight stopped before archive. After the M
 in to Xcode, rerun build 3 preflight and archive, then upload deliberately. Do not create or reuse a
 team API key without a separate approval.
 
+The release tool now fails before creating upload files when Xcode's Apple Account list is empty.
+This prevents the known missing-account condition from consuming the build 3 release directory.
+
 Mote Agent is App Store Connect app `6822101041`, bundle ID `com.beelol.mote`, SKU
 `mote-ipad-001`, team `FQ6YGD7554`. Build `0.1.0 (1)` is processed and assigned
 only to the internal Testing group. Mote Agent `0.1.0 (1)` is installed through TestFlight
