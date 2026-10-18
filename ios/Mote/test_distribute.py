@@ -19,7 +19,7 @@ SPEC.loader.exec_module(release)
 
 class DistributionPreflightTests(unittest.TestCase):
     def setUp(self):
-        self.today = dt.date(2026, 10, 11)
+        self.today = dt.date.today()
         self.manifest = {
             "display_name": "Mote",
             "bundle_id": "com.example.mote",
@@ -30,7 +30,7 @@ class DistributionPreflightTests(unittest.TestCase):
             "app_store_connect_id": "1234567890",
         }
         self.inventory = {
-            "checked_at": "2026-10-11",
+            "checked_at": self.today.isoformat(),
             "team_id": "ABCDE12345",
             "apps": [{"bundle_id": "com.example.mote", "sku": "MOTE-NEW",
                       "app_store_connect_id": "1234567890", "builds": []}],
@@ -64,7 +64,7 @@ class DistributionPreflightTests(unittest.TestCase):
         with self.assertRaises(release.ReleaseError):
             self.valid()
         self.manifest["app_store_connect_id"] = "1234567890"
-        self.inventory["checked_at"] = "2026-10-09"
+        self.inventory["checked_at"] = (self.today - dt.timedelta(days=2)).isoformat()
         with self.assertRaises(release.ReleaseError):
             self.valid()
 
@@ -251,6 +251,21 @@ class DistributionPreflightTests(unittest.TestCase):
                     release.upload(identity, output)
                 run.assert_not_called()
 
+    def test_failed_mutation_preserves_private_diagnostics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "upload.log"
+            result = subprocess.CompletedProcess(
+                ["xcodebuild"], 70, b"upload started\n", b"account unavailable\n"
+            )
+            with patch.object(release.subprocess, "run", return_value=result):
+                with self.assertRaisesRegex(release.ReleaseError, "exit status 70"):
+                    release.run_mutation(["xcodebuild", "-exportArchive"], "Upload", log)
+            self.assertEqual(
+                log.read_text(encoding="utf-8"),
+                "stdout:\nupload started\n\nstderr:\naccount unavailable\n",
+            )
+            self.assertEqual(log.stat().st_mode & 0o777, 0o600)
+
     def test_upload_rechecks_archive_and_uses_internal_only_xcode_upload(self):
         identity = self.valid()
         with tempfile.TemporaryDirectory() as directory:
@@ -289,8 +304,9 @@ class DistributionPreflightTests(unittest.TestCase):
                 with self.assertRaisesRegex(release.ReleaseError, "already exists"):
                     release.upload(identity, output)
             signing.assert_called_once_with(app, identity, require_distribution=False)
-            command, label = run.call_args.args
+            command, label, failure_log = run.call_args.args
             self.assertEqual(label, "Upload")
+            self.assertEqual(failure_log, output / "upload.log")
             self.assertEqual(command[:3], ["xcodebuild", "-allowProvisioningUpdates", "-exportArchive"])
             self.assertEqual(command[command.index("-archivePath") + 1], str(output / "Mote.xcarchive"))
             self.assertEqual(command[command.index("-authenticationKeyPath") + 1],
@@ -308,8 +324,9 @@ class DistributionPreflightTests(unittest.TestCase):
                     patch.object(release, "verify_signing"), \
                     patch.object(release, "run_mutation") as account_run:
                 release.upload(identity, account_output, use_xcode_account=True)
-            account_command, account_label = account_run.call_args.args
+            account_command, account_label, account_failure_log = account_run.call_args.args
             self.assertEqual(account_label, "Upload")
+            self.assertEqual(account_failure_log, account_output / "upload.log")
             self.assertNotIn("-authenticationKeyPath", account_command)
             self.assertEqual(account_command[account_command.index("-archivePath") + 1],
                              str(account_output / "Mote.xcarchive"))

@@ -82,9 +82,33 @@ loopback-only validation with local-range validation and Bonjour first-run pairi
 therefore cannot satisfy IPAD-08. A new internal TestFlight build from current `main` is required.
 This is retained negative evidence. It does not weaken or complete the criterion.
 
+## Build 2 archive and pre-transport upload failure
+
+Current `main` was archived as Mote `0.1.0 (2)` at
+`target/distribution/0.1.0-2a`. The guarded release tool verified bundle
+`com.beelol.mote`, team `FQ6YGD7554`, App Store Connect app `6822101041`, the signed
+archive and the internal-only IPA. The IPA SHA-256 was
+`380297e88fae4a5df3d3bf6668a22fece5f3c64a7ba05051b2fb69b0aa19a602`.
+
+The explicit signed-in Xcode account upload attempt exited with status 70. A narrow unified-log
+inspection for the exact attempt window reported:
+
+```text
+Failed to find an account with App Store Connect access for team
+<IDEProvisioningBasicTeam ... teamID='FQ6YGD7554' ...>
+Step failed ... "Failed to Use Accounts" ...
+App Store Connect access for “FQ6YGD7554” is required.
+```
+
+Xcode failed in `IDEDistributionUploadAccountStep` before an Apple transport step began. This is
+evidence that the local signed-in account was unavailable during the attempt, not evidence that
+build 2 reached TestFlight. The release directory retains `upload-attempt.json`, and the guard
+forbids a blind retry. App Store Connect must be inspected before choosing the next build number.
+
 ## Remaining verification
 
-Upload and process a new build from current `main`, assign it only to the internal Testing group,
-install it, then repeat pairing, live chat, generated Matrix UI, browser approval, reconnect and
+Inspect App Store Connect for build 2. If it is absent, upload a fresh build number from current
+`main`; otherwise wait for its terminal processing state. Assign the processed build only to the
+internal Testing group, install it, then repeat pairing, live chat, generated Matrix UI, browser approval, reconnect and
 host-switch isolation against the installed `com.beelol.mote` TestFlight app. Retain each physical
 result bundle and the required screenshots, role trees and observations before checking IPAD-08.

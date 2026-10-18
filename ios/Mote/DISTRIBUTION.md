@@ -43,6 +43,8 @@ Upload requires either an App Store Connect API key ID, issuer ID and private ke
 
 Before starting Xcode, the script writes `UploadOptions.plist` and `upload-attempt.json` in the release output directory. It refuses another attempt from that directory. If Xcode reports an error or the result is unclear, inspect App Store Connect before deciding whether to create a new build and output directory. Do not delete the attempt marker just to retry an unknown upload.
 
+When Xcode exits unsuccessfully, the script stores its standard output and error in `upload.log` beside the attempt marker. The file is created with owner-only permissions and stays outside Git. Use it to distinguish a local signing or account failure from an upload that may have reached Apple. The attempt marker still applies even when a diagnostic log exists.
+
 ```sh
 MOTE_ASC_API_KEY_ID=... MOTE_ASC_ISSUER_ID=... API_PRIVATE_KEYS_DIR=/private/path/to/keys python3 -B ios/Mote/distribute.py upload --manifest /private/tmp/mote-release.json --inventory /private/tmp/mote-apps.json --output /Users/bilal/projects/mote/target/distribution/0.1.0-1 --confirm-inventory-current --confirm-native-ui-verified --confirm-upload
 ```

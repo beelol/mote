@@ -52,6 +52,13 @@ message `Host setup failed: invalid Simulator host`. The archived build 1 execut
 literal. It was uploaded before LAN pairing commit `35d90d0`. Build 1 cannot connect to the Mac over
 Wi-Fi. Upload and install a new internal build from current `main` before rerunning IPAD-08.
 
+Current `main` was archived and signed successfully as `0.1.0 (2)` under
+`target/distribution/0.1.0-2a`. The explicit upload failed in Xcode's local account-selection step
+before transport because no available signed-in account exposed App Store Connect access for team
+`FQ6YGD7554`. The attempt marker remains. Inspect App Store Connect before choosing the next build
+number. Do not delete the marker or retry build 2 blindly. Future failed uploads preserve an
+owner-only `upload.log` beside the marker.
+
 Mote Agent is App Store Connect app `6822101041`, bundle ID `com.beelol.mote`, SKU
 `mote-ipad-001`, team `FQ6YGD7554`. Build `0.1.0 (1)` is processed and assigned
 only to the internal Testing group. Mote Agent `0.1.0 (1)` is installed through TestFlight

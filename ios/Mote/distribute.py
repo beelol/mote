@@ -139,13 +139,26 @@ def preflight(identity):
     print("Inventory is a supplied snapshot. Confirm it is complete in App Store Connect.")
 
 
-def run_mutation(command, label):
+def run_mutation(command, label, failure_log=None):
     try:
         result = subprocess.run(command, capture_output=True, check=False)
     except OSError as error:
         raise ReleaseError(f"{label} could not start") from error
     if result.returncode:
-        raise ReleaseError(f"{label} failed with exit status {result.returncode}. Check its state before retrying.")
+        detail = ""
+        if failure_log is not None:
+            log_path = Path(failure_log)
+            data = b"stdout:\n" + result.stdout + b"\nstderr:\n" + result.stderr
+            try:
+                descriptor = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(descriptor, "wb") as target:
+                    target.write(data)
+                detail = f" Diagnostics: {log_path}."
+            except OSError as error:
+                detail = f" Diagnostics could not be saved: {error}."
+        raise ReleaseError(
+            f"{label} failed with exit status {result.returncode}.{detail} Check its state before retrying."
+        )
 
 
 def read_bundle_info(path, identity):
@@ -353,7 +366,7 @@ def upload(identity, output, use_xcode_account=False, signing_profile=None):
     run_mutation(["xcodebuild", *([] if signing_profile else ["-allowProvisioningUpdates"]),
                   "-exportArchive", "-archivePath", str(output / "Mote.xcarchive"),
                   "-exportPath", str(output / "upload"), "-exportOptionsPlist", str(upload_options),
-                  *authentication], "Upload")
+                  *authentication], "Upload", output / "upload.log")
     print("Upload command succeeded. Confirm processing in App Store Connect before TestFlight testing.")
 
 

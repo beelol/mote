@@ -21,3 +21,14 @@ Apple Developer portal on 2026-10-12: created the App Store distribution provisi
 App Store Connect UI refreshed on 2026-10-12: the Mote internal group still showed `0.1.0 (1)` as `Testing`, with one tester and one build. Users and Access showed one Account Holder/Admin user. App Store Connect API showed two active team keys named for AquaFriends and Overseer and zero active individual keys. There was no Mote key to configure without creating new access. Apple states that [team API keys apply across all apps](https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/), while an individual key inherits the associated user's app access. This workflow currently requires a team key and issuer ID because Xcode's `-authenticationKeyPath` mode requires `-authenticationKeyIssuerID` per local `xcodebuild -help`. A separate team key would have a Mote name but would not be app-scoped. No key was created or reused during this inspection.
 
 Pending: configure the App Store Connect API key ID, issuer, private key, Apple Distribution certificate and certificate password as Mote release secrets. Run one deliberate upload dispatch using a fresh Mote build number. Confirm processing and the internal group in App Store Connect, and confirm other apps and groups are unchanged. Until then this criterion remains open. The hosted build does not prove the signing and upload path works.
+
+Local release tooling on 2026-10-17 archived and verified Mote `0.1.0 (2)` from current `main`
+with the exact Mote identity. Its signed-in Xcode account upload failed locally in
+`IDEDistributionUploadAccountStep` because Xcode could not access an App Store Connect account for
+team `FQ6YGD7554`. The unified log contains no later transport step. The attempt marker is retained,
+so the tool will not retry that release directory blindly. This local failure does not verify the
+manual GitHub upload path and does not complete IPAD-12.
+
+The release tool now preserves failed Xcode output in an owner-only `upload.log` outside Git. Unit
+coverage verifies the diagnostic file content and mode while the existing attempt guard remains
+fail-closed.
