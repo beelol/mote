@@ -54,8 +54,37 @@ version `0.1.0`, build `1`, developer STATION 42 and the terminal Open state.
 The TestFlight record remains assigned only to the internal Testing group. No external testing,
 App Review or public release action was enabled during this run.
 
+## Build 1 LAN refusal
+
+The first shipped-app pairing attempt targeted the installed `com.beelol.mote` app explicitly.
+The reusable UI-test harness defaults to the scheme app and accepts a nonempty
+`MOTE_TARGET_BUNDLE_IDENTIFIER` only when a distribution journey opts in. The focused selector
+test and generic iOS test build pass. The physical command was:
+
+```text
+xcodebuild test-without-building \
+  -xctestrun /private/tmp/mote-testflight-install-device/Build/Products/Mote_iphoneos27.1-arm64.xctestrun \
+  -destination 'platform=iOS,id=00008132-001104661AB9001C' \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalTestFlightPairsAndShowsLiveHost \
+  -resultBundlePath /private/tmp/mote-ipad08-testflight-pair1.xcresult
+```
+
+The test failed before pairing. The visible shipped app reported:
+
+```text
+Offline gallery
+Host setup failed: invalid Simulator host
+```
+
+The archived build 1 executable contains the literal `invalid Simulator host`. That build was
+uploaded on 2026-10-12. LAN pairing landed later in commit `35d90d0` on 2026-10-14 and replaced the
+loopback-only validation with local-range validation and Bonjour first-run pairing. Build 1
+therefore cannot satisfy IPAD-08. A new internal TestFlight build from current `main` is required.
+This is retained negative evidence. It does not weaken or complete the criterion.
+
 ## Remaining verification
 
-Repeat pairing, live chat, generated Matrix UI, browser approval, reconnect and host-switch
-isolation against the installed `com.beelol.mote` TestFlight app. Retain each physical result bundle
-and the required screenshots, role trees and observations before checking IPAD-08.
+Upload and process a new build from current `main`, assign it only to the internal Testing group,
+install it, then repeat pairing, live chat, generated Matrix UI, browser approval, reconnect and
+host-switch isolation against the installed `com.beelol.mote` TestFlight app. Retain each physical
+result bundle and the required screenshots, role trees and observations before checking IPAD-08.

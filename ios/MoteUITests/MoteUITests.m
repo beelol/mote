@@ -13,6 +13,11 @@ static NSArray<NSString *> *galleryPages(void) {
     return @[@"Layout",@"Toggle",@"Slider",@"Select",@"List",@"Form",@"Dashboard",@"Fixture"];
 }
 
+static NSString *moteApplicationBundleIdentifier(NSDictionary<NSString *, NSString *> *environment) {
+    NSString *identifier = environment[@"MOTE_TARGET_BUNDLE_IDENTIFIER"];
+    return identifier.length ? identifier : nil;
+}
+
 static CGPoint galleryTapPoint(CGRect frame, NSUInteger position) {
     if (!isfinite(frame.origin.x) || !isfinite(frame.origin.y) ||
         !isfinite(frame.size.width) || !isfinite(frame.size.height) ||
@@ -250,6 +255,14 @@ static CGRect textTargetBox(NSArray<NSDictionary *> *fragments, NSString *target
     self.continueAfterFailure = NO;
 }
 
+- (void)testMoteApplicationBundleSelectionDefaultsToSchemeAndCanTargetTestFlight {
+    XCTAssertNil(moteApplicationBundleIdentifier(@{}));
+    XCTAssertNil(moteApplicationBundleIdentifier(@{@"MOTE_TARGET_BUNDLE_IDENTIFIER":@""}));
+    XCTAssertEqualObjects(
+        moteApplicationBundleIdentifier(@{@"MOTE_TARGET_BUNDLE_IDENTIFIER":@"com.beelol.mote"}),
+        @"com.beelol.mote");
+}
+
 - (void)testNativeMotionPreferenceAndObserverLifetime {
     XCTAssertEqual(mote_ios_reduce_motion_enabled(), (uint8_t)UIAccessibilityIsReduceMotionEnabled());
     XCTAssertEqual(mote_ios_motion_observe(NULL), NULL);
@@ -453,6 +466,12 @@ static CGRect textTargetBox(NSArray<NSDictionary *> *fragments, NSString *target
     self.recognitionMisses = 0;
     XCUIDevice.sharedDevice.orientation = UIDeviceOrientationPortrait;
     [super tearDown];
+}
+
+- (XCUIApplication *)moteApplication {
+    NSString *identifier = moteApplicationBundleIdentifier(NSProcessInfo.processInfo.environment);
+    return identifier ? [[XCUIApplication alloc] initWithBundleIdentifier:identifier]
+                      : [XCUIApplication new];
 }
 
 - (XCUIElement *)nativeElement:(NSString *)label app:(XCUIApplication *)app {
@@ -1648,7 +1667,7 @@ PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixtureLandscape, @"Fixture", UIDeviceO
 }
 
 - (void)testLivePairedHostsChatDashboardAndRelaunch {
-    XCUIApplication *app = [[XCUIApplication alloc] init];
+    XCUIApplication *app = [self moteApplication];
     [app activate];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
     [self assertText:@"Home: online" app:app];
@@ -1737,11 +1756,26 @@ PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixtureLandscape, @"Fixture", UIDeviceO
     return online;
 }
 
+- (void)testPhysicalTestFlightPairsAndShowsLiveHost {
+#if TARGET_OS_SIMULATOR
+    XCTSkip(@"Requires the installed physical TestFlight app");
+#endif
+    XCTAssertEqualObjects(
+        moteApplicationBundleIdentifier(NSProcessInfo.processInfo.environment),
+        @"com.beelol.mote");
+    XCUIApplication *app = [self moteApplication];
+    [app activate];
+    XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+    XCUIElement *online = [self ensurePhysicalHostOnline:app];
+    [self attachPhysicalState:@"testflight-paired-live-host" app:app
+        details:@{@"bundle_identifier":@"com.beelol.mote", @"online_host":online.label ?: @""}];
+}
+
 - (void)testPhysicalPairedHostDisconnectsAndReconnectsWithoutRepairing {
 #if TARGET_OS_SIMULATOR
     XCTSkip(@"Requires a paired physical iPad");
 #endif
-    XCUIApplication *app = [[XCUIApplication alloc] init];
+    XCUIApplication *app = [self moteApplication];
     [app activate];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
 
@@ -1892,7 +1926,7 @@ PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixtureLandscape, @"Fixture", UIDeviceO
     XCTSkip(@"Requires a paired physical iPad");
 #endif
     self.executionTimeAllowance = 900;
-    XCUIApplication *app = [[XCUIApplication alloc] init];
+    XCUIApplication *app = [self moteApplication];
     [app activate];
     XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
 
@@ -1992,7 +2026,7 @@ PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixtureLandscape, @"Fixture", UIDeviceO
 }
 
 - (void)testInferredSurfaceSuccessRetryPreservationAndFallback {
-    XCUIApplication *app = [[XCUIApplication alloc] init];
+    XCUIApplication *app = [self moteApplication];
     [app activate];
     [self assertText:@"Inference: online" app:app];
     [self assertText:@"Prior panel" app:app];
@@ -2028,7 +2062,7 @@ PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixtureLandscape, @"Fixture", UIDeviceO
 }
 
 - (void)testBrowserApprovalDenyApproveRepeatAndNaturalExpiry {
-    XCUIApplication *app = [[XCUIApplication alloc] init];
+    XCUIApplication *app = [self moteApplication];
     [app activate];
     [self assertText:@"Browser: online" app:app];
     [self assertText:@"Browser fixture ready" app:app];

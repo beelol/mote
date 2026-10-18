@@ -47,6 +47,11 @@ still needs literal logout and login before uninstall. IPAD-08 has installed Mot
 through internal TestFlight and still needs the named device journeys against that app.
 IPAD-12 needs Mote-only upload credentials and one manual workflow upload from `main`.
 
+The first direct pairing attempt against installed TestFlight build 1 failed with the visible
+message `Host setup failed: invalid Simulator host`. The archived build 1 executable contains that
+literal. It was uploaded before LAN pairing commit `35d90d0`. Build 1 cannot connect to the Mac over
+Wi-Fi. Upload and install a new internal build from current `main` before rerunning IPAD-08.
+
 Mote Agent is App Store Connect app `6822101041`, bundle ID `com.beelol.mote`, SKU
 `mote-ipad-001`, team `FQ6YGD7554`. Build `0.1.0 (1)` is processed and assigned
 only to the internal Testing group. Mote Agent `0.1.0 (1)` is installed through TestFlight
