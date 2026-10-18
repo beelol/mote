@@ -114,6 +114,9 @@ fn actions_and_checkpoints_roundtrip_without_adapter_state() {
         revision: 1,
         state: TaskState::WaitingForInput,
         last_action: None,
+        step: Some(ModelStep::WaitForInput {
+            question: "Which city?".into(),
+        }),
     };
     let mut value = serde_json::to_value(&checkpoint).unwrap();
     assert_eq!(

@@ -67,8 +67,15 @@ Commit `ee2fbf1` adds durable actions and checkpoints to `HrnsStore` and is push
 Focused store tests pass: 7 passed, 0 failed. The fresh complete workspace test, strict workspace
 clippy, package formatting and `git diff --check` all passed before the commit.
 
-Next implement the one-step driver and restart recovery fixtures. The driver must reconcile a
-persisted action that exists without its following checkpoint and a terminal task whose final
-checkpoint was interrupted. It must never start a second task while one is active. P2-02 and
-P2-03 stay open until adapter fixtures and the recovery driver prove their full clauses. No
-daemon behavior has changed yet.
+The current uncommitted batch implements the one-step driver, idempotent executor boundary,
+durable model-step checkpoints and restart reconciliation. Targeted results pass: 4 contract
+tests, 6 driver tests, 10 store tests and 4 transition tests. Package clippy, formatting and
+`git diff --check` pass. The tests cover both harness selections, FIFO work, one active task,
+every persisted task state, interrupted final checkpoints, interrupted action checkpoints,
+adapter failure, cancellation, stale model responses, durable completion and input text,
+redacted step events and one effect across an executor failure and restart.
+
+The complete workspace test and strict workspace clippy passed. P2-02 and P2-03 evidence and
+acceptance state are updated. Commit `feat: drive one durable task at a time` and push next.
+Then begin Task 4, the OpenCode compatibility adapter behind the common harness boundary. No
+daemon behavior or production default has changed yet.

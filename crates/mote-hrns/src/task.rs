@@ -1,3 +1,4 @@
+use crate::ModelStep;
 use serde::{Deserialize, Serialize};
 
 macro_rules! identity {
@@ -103,6 +104,10 @@ impl TaskState {
                 )
         )
     }
+
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::Complete | Self::Failed | Self::Cancelled)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,4 +141,5 @@ pub struct Checkpoint {
     pub revision: u64,
     pub state: TaskState,
     pub last_action: Option<ActionId>,
+    pub step: Option<ModelStep>,
 }

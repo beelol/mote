@@ -217,6 +217,7 @@ fn actions_and_checkpoints_are_scoped_guarded_and_durable() {
         revision: 0,
         state: TaskState::Running,
         last_action: Some(proposed.id.clone()),
+        step: None,
     };
     store
         .write_checkpoint(&scope(), checkpoint.clone())
@@ -258,6 +259,7 @@ fn invalid_checkpoint_and_failed_action_event_leave_no_partial_state() {
                 revision: 0,
                 state: TaskState::Running,
                 last_action: Some(foreign),
+                step: None,
             },
         )
         .is_err());
@@ -273,4 +275,121 @@ fn invalid_checkpoint_and_failed_action_event_leave_no_partial_state() {
         Some((proposed, 0))
     );
     assert_eq!(log.max_seq().unwrap(), before);
+}
+
+#[test]
+fn model_step_and_checkpoint_roll_back_as_one_transition() {
+    let fixture = Fixture::new();
+    let (store, log) = fixture.open();
+    let task = enqueue(&store, "first");
+    let task = store
+        .transition(&scope(), &task.id, 0, TaskState::Running)
+        .unwrap();
+    store
+        .write_checkpoint(
+            &scope(),
+            Checkpoint {
+                task_id: task.id.clone(),
+                revision: 0,
+                state: TaskState::Running,
+                last_action: None,
+                step: None,
+            },
+        )
+        .unwrap();
+    let before = log.max_seq().unwrap();
+    let connection = rusqlite::Connection::open(&fixture.path).unwrap();
+    connection.execute_batch("CREATE TRIGGER fail_step_event BEFORE INSERT ON events WHEN NEW.kind='task.stepped' BEGIN SELECT RAISE(FAIL,'injected'); END;").unwrap();
+    let checkpoint = Checkpoint {
+        task_id: task.id.clone(),
+        revision: 1,
+        state: TaskState::Complete,
+        last_action: None,
+        step: Some(ModelStep::Complete {
+            text: "done".into(),
+            sources: vec![],
+        }),
+    };
+    assert!(store
+        .record_step(&scope(), &task.id, 1, Some(TaskState::Complete), checkpoint,)
+        .is_err());
+    assert_eq!(store.get(&scope(), &task.id).unwrap().unwrap(), (task, 1));
+    assert_eq!(
+        store
+            .checkpoint(&scope(), &TaskId::new("first").unwrap())
+            .unwrap()
+            .unwrap()
+            .revision,
+        0
+    );
+    assert_eq!(log.max_seq().unwrap(), before);
+}
+
+#[test]
+fn stale_model_revision_cannot_publish_a_tool_proposal() {
+    let fixture = Fixture::new();
+    let (store, log) = fixture.open();
+    let task = enqueue(&store, "first");
+    let task = store
+        .transition(&scope(), &task.id, 0, TaskState::Running)
+        .unwrap();
+    let task = store
+        .transition(&scope(), &task.id, 1, TaskState::Blocked)
+        .unwrap();
+    let task = store
+        .transition(&scope(), &task.id, 2, TaskState::Running)
+        .unwrap();
+    let action = action(&task, "stale-action");
+    let checkpoint = Checkpoint {
+        task_id: task.id.clone(),
+        revision: 0,
+        state: TaskState::Running,
+        last_action: Some(action.id.clone()),
+        step: Some(ModelStep::Tool {
+            name: action.name.clone(),
+            arguments: action.arguments.clone(),
+        }),
+    };
+    let before = log.max_seq().unwrap();
+    assert!(store
+        .propose_action_with_checkpoint(&scope(), action.clone(), 1, checkpoint)
+        .is_err());
+    assert!(store.action(&scope(), &action.id).unwrap().is_none());
+    assert!(store.checkpoint(&scope(), &task.id).unwrap().is_none());
+    assert_eq!(log.max_seq().unwrap(), before);
+}
+
+#[test]
+fn durable_model_step_event_is_redacted() {
+    let fixture = Fixture::new();
+    let (store, log) = fixture.open();
+    let task = enqueue(&store, "first");
+    let task = store
+        .transition(&scope(), &task.id, 0, TaskState::Running)
+        .unwrap();
+    let secret = "sk-abcdefghijklmnopqrstuv";
+    let checkpoint = Checkpoint {
+        task_id: task.id.clone(),
+        revision: 0,
+        state: TaskState::Running,
+        last_action: None,
+        step: Some(ModelStep::Message {
+            text: format!("result {secret}"),
+        }),
+    };
+    store
+        .record_step(&scope(), &task.id, 1, None, checkpoint.clone())
+        .unwrap();
+    let event = log
+        .recent_since(0, 20)
+        .unwrap()
+        .into_iter()
+        .find(|event| event.kind == "task.stepped")
+        .unwrap();
+    assert!(!event.payload.to_string().contains(secret));
+    assert!(event.payload.to_string().contains("[redacted]"));
+    assert_eq!(
+        store.checkpoint(&scope(), &task.id).unwrap(),
+        Some(checkpoint)
+    );
 }

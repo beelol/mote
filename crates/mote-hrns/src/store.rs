@@ -2,7 +2,7 @@ use crate::{
     Action, ActionId, ActionState, Checkpoint, HarnessKind, Scope, Task, TaskId, TaskState,
 };
 use mote_eventlog::EventLog;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -45,6 +45,42 @@ fn action_state_key(state: ActionState) -> &'static str {
         ActionState::Failed => "failed",
         ActionState::Cancelled => "cancelled",
     }
+}
+
+fn write_checkpoint_tx(
+    tx: &Transaction<'_>,
+    checkpoint: &Checkpoint,
+    task_state: TaskState,
+) -> rusqlite::Result<()> {
+    if task_state != checkpoint.state {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    let prior = tx
+        .query_row(
+            "SELECT revision FROM hrns_checkpoint WHERE task_id=?1",
+            [checkpoint.task_id.as_str()],
+            |r| r.get::<_, u64>(0),
+        )
+        .optional()?;
+    let expected = prior.map_or(0, |revision| revision + 1);
+    if checkpoint.revision != expected {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    if let Some(action_id) = checkpoint.last_action.as_ref() {
+        let belongs: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM hrns_action WHERE id=?1 AND task_id=?2)",
+            params![action_id.as_str(), checkpoint.task_id.as_str()],
+            |r| r.get(0),
+        )?;
+        if !belongs {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+    }
+    tx.execute(
+        "INSERT INTO hrns_checkpoint(task_id,revision,checkpoint) VALUES(?1,?2,?3) ON CONFLICT(task_id) DO UPDATE SET revision=excluded.revision,checkpoint=excluded.checkpoint",
+        params![checkpoint.task_id.as_str(),checkpoint.revision,encode(checkpoint)?],
+    )?;
+    Ok(())
 }
 
 impl HrnsStore {
@@ -147,6 +183,44 @@ impl HrnsStore {
         text.map(decode).transpose()
     }
 
+    pub fn active_record(&self) -> rusqlite::Result<Option<(Task, u64)>> {
+        let conn = self.reader.lock().unwrap();
+        conn.query_row(
+            "SELECT task,revision FROM hrns_task WHERE state IN ('running','waiting_for_approval','waiting_for_input','blocked')",
+            [],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?)),
+        )
+        .optional()?
+        .map(|(task, revision)| Ok((decode(task)?, revision)))
+        .transpose()
+    }
+
+    pub fn next_queued_record(&self) -> rusqlite::Result<Option<(Task, u64)>> {
+        let conn = self.reader.lock().unwrap();
+        conn.query_row(
+            "SELECT task,revision FROM hrns_task WHERE state='queued' ORDER BY position LIMIT 1",
+            [],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?)),
+        )
+        .optional()?
+        .map(|(task, revision)| Ok((decode(task)?, revision)))
+        .transpose()
+    }
+
+    pub fn task_records(&self) -> rusqlite::Result<Vec<(Task, u64)>> {
+        let conn = self.reader.lock().unwrap();
+        let mut statement =
+            conn.prepare("SELECT task,revision FROM hrns_task ORDER BY position")?;
+        let records = statement
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?)))?
+            .map(|row| {
+                let (task, revision) = row?;
+                Ok((decode(task)?, revision))
+            })
+            .collect();
+        records
+    }
+
     pub fn transition(
         &self,
         scope: &Scope,
@@ -213,6 +287,58 @@ impl HrnsStore {
             .map(|(action, _)| action)
     }
 
+    pub fn propose_action_with_checkpoint(
+        &self,
+        scope: &Scope,
+        action: Action,
+        task_revision: u64,
+        checkpoint: Checkpoint,
+    ) -> rusqlite::Result<(Action, Checkpoint)> {
+        if action.state != ActionState::Proposed
+            || action.name.trim().is_empty()
+            || checkpoint.task_id != action.task_id
+            || checkpoint.last_action.as_ref() != Some(&action.id)
+            || checkpoint.state != TaskState::Running
+        {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        match checkpoint.step.as_ref() {
+            Some(crate::ModelStep::Tool { name, arguments })
+                if *name == action.name && *arguments == action.arguments => {}
+            _ => return Err(rusqlite::Error::InvalidQuery),
+        }
+        let event_scope = serde_json::to_string(scope)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let payload = serde_json::json!({"task_id":action.task_id,"action_id":action.id,"state":"proposed","step":checkpoint.step});
+        self.events
+            .append_with(&event_scope, "action.proposed", &payload, |tx| {
+                let (task_text, stored_revision): (String, u64) = tx.query_row(
+                    "SELECT task,revision FROM hrns_task WHERE id=?1 AND account=?2 AND realm=?3",
+                    params![
+                        action.task_id.as_str(),
+                        scope.account.as_str(),
+                        scope.realm.as_str()
+                    ],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?;
+                let task: Task = decode(task_text)?;
+                if task.state != TaskState::Running || stored_revision != task_revision {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+                tx.execute(
+                    "INSERT INTO hrns_action(id,task_id,state,action) VALUES(?1,?2,'proposed',?3)",
+                    params![
+                        action.id.as_str(),
+                        action.task_id.as_str(),
+                        encode(&action)?
+                    ],
+                )?;
+                write_checkpoint_tx(tx, &checkpoint, task.state)?;
+                Ok((action, checkpoint))
+            })
+            .map(|(value, _)| value)
+    }
+
     pub fn action(&self, scope: &Scope, id: &ActionId) -> rusqlite::Result<Option<(Action, u64)>> {
         let conn = self.reader.lock().unwrap();
         conn.query_row(
@@ -239,6 +365,19 @@ impl HrnsStore {
             .map(|row| decode(row?))
             .collect();
         actions
+    }
+
+    pub fn latest_action(
+        &self,
+        scope: &Scope,
+        task_id: &TaskId,
+    ) -> rusqlite::Result<Option<(Action, u64)>> {
+        let conn = self.reader.lock().unwrap();
+        conn.query_row(
+            "SELECT a.action,a.revision FROM hrns_action a JOIN hrns_task t ON t.id=a.task_id WHERE a.task_id=?1 AND t.account=?2 AND t.realm=?3 ORDER BY a.position DESC LIMIT 1",
+            params![task_id.as_str(),scope.account.as_str(),scope.realm.as_str()],
+            |r| Ok((r.get::<_,String>(0)?,r.get::<_,u64>(1)?)),
+        ).optional()?.map(|(action,revision)| Ok((decode(action)?,revision))).transpose()
     }
 
     pub fn transition_action(
@@ -276,34 +415,62 @@ impl HrnsStore {
         let event_scope = serde_json::to_string(scope)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         let payload = serde_json::json!({"task_id":checkpoint.task_id,"revision":checkpoint.revision,"state":checkpoint.state});
-        self.events.append_with(&event_scope, "task.checkpointed", &payload, |tx| {
-            let task_state: String = tx.query_row(
-                "SELECT state FROM hrns_task WHERE id=?1 AND account=?2 AND realm=?3",
-                params![checkpoint.task_id.as_str(),scope.account.as_str(),scope.realm.as_str()],
-                |r| r.get(0),
-            )?;
-            if task_state != state_key(checkpoint.state) { return Err(rusqlite::Error::InvalidQuery); }
-            let prior = tx.query_row(
-                "SELECT revision FROM hrns_checkpoint WHERE task_id=?1",
-                [checkpoint.task_id.as_str()],
-                |r| r.get::<_,u64>(0),
-            ).optional()?;
-            let expected = prior.map_or(0, |revision| revision + 1);
-            if checkpoint.revision != expected { return Err(rusqlite::Error::InvalidQuery); }
-            if let Some(action_id) = checkpoint.last_action.as_ref() {
-                let belongs: bool = tx.query_row(
-                    "SELECT EXISTS(SELECT 1 FROM hrns_action WHERE id=?1 AND task_id=?2)",
-                    params![action_id.as_str(),checkpoint.task_id.as_str()],
+        self.events
+            .append_with(&event_scope, "task.checkpointed", &payload, |tx| {
+                let task_text: String = tx.query_row(
+                    "SELECT task FROM hrns_task WHERE id=?1 AND account=?2 AND realm=?3",
+                    params![
+                        checkpoint.task_id.as_str(),
+                        scope.account.as_str(),
+                        scope.realm.as_str()
+                    ],
                     |r| r.get(0),
                 )?;
-                if !belongs { return Err(rusqlite::Error::InvalidQuery); }
-            }
-            tx.execute(
-                "INSERT INTO hrns_checkpoint(task_id,revision,checkpoint) VALUES(?1,?2,?3) ON CONFLICT(task_id) DO UPDATE SET revision=excluded.revision,checkpoint=excluded.checkpoint",
-                params![checkpoint.task_id.as_str(),checkpoint.revision,encode(&checkpoint)?],
-            )?;
-            Ok(checkpoint)
-        }).map(|(checkpoint,_)| checkpoint)
+                let task: Task = decode(task_text)?;
+                write_checkpoint_tx(tx, &checkpoint, task.state)?;
+                Ok(checkpoint)
+            })
+            .map(|(checkpoint, _)| checkpoint)
+    }
+
+    pub fn record_step(
+        &self,
+        scope: &Scope,
+        id: &TaskId,
+        task_revision: u64,
+        next: Option<TaskState>,
+        checkpoint: Checkpoint,
+    ) -> rusqlite::Result<(Task, Checkpoint)> {
+        if checkpoint.task_id != *id || checkpoint.step.is_none() {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        let event_scope = serde_json::to_string(scope)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let payload =
+            serde_json::json!({"task_id":id,"state":checkpoint.state,"step":checkpoint.step});
+        self.events
+            .append_with(&event_scope, "task.stepped", &payload, |tx| {
+                let (task_text, stored_revision): (String, u64) = tx.query_row(
+                    "SELECT task,revision FROM hrns_task WHERE id=?1 AND account=?2 AND realm=?3",
+                    params![id.as_str(), scope.account.as_str(), scope.realm.as_str()],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?;
+                if stored_revision != task_revision {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+                let mut task: Task = decode(task_text)?;
+                if let Some(next) = next {
+                    task.transition(task.state, next)
+                        .map_err(|_| rusqlite::Error::InvalidQuery)?;
+                    tx.execute(
+                        "UPDATE hrns_task SET state=?1,task=?2,revision=revision+1 WHERE id=?3",
+                        params![state_key(next), encode(&task)?, id.as_str()],
+                    )?;
+                }
+                write_checkpoint_tx(tx, &checkpoint, task.state)?;
+                Ok((task, checkpoint))
+            })
+            .map(|(value, _)| value)
     }
 
     pub fn checkpoint(

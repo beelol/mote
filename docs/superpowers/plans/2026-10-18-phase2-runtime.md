@@ -49,11 +49,11 @@
 - Produces: `TaskId`, `ActionId`, `HarnessKind`, `TaskState`, `ActionState`, `Task`, `Action`, `Checkpoint`, `HarnessRequest`, `ModelStep`, `HarnessError` and `Harness::step(&mut self, HarnessRequest) -> Result<ModelStep, HarnessError>`.
 - Produces: `ModelStep::{Message, Tool, Complete, WaitForInput}` with `#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]` payloads.
 
-- [ ] **Step 1:** Write contract tests that round-trip every state and model step, reject unknown fields and prove fake OpenCode and native adapters receive the same request type.
-- [ ] **Step 2:** Run `cargo test -p mote-hrns --test contracts` and confirm it fails because the crate and types do not exist.
-- [ ] **Step 3:** Implement the types and adapter trait with private nonempty string constructors for IDs and no adapter-specific field in `Task`, `Action` or `Checkpoint`.
-- [ ] **Step 4:** Run `cargo test -p mote-hrns --test contracts` and confirm it passes.
-- [ ] **Step 5:** Run the workspace test and clippy gates, create `docs/verification/P2-02.md`, commit `feat: define durable harness contracts` and push.
+- [x] **Step 1:** Write contract tests that round-trip every state and model step, reject unknown fields and prove fake OpenCode and native adapters receive the same request type.
+- [x] **Step 2:** Run `cargo test -p mote-hrns --test contracts` and confirm it fails because the crate and types do not exist.
+- [x] **Step 3:** Implement the types and adapter trait with private nonempty string constructors for IDs and no adapter-specific field in `Task`, `Action` or `Checkpoint`.
+- [x] **Step 4:** Run `cargo test -p mote-hrns --test contracts` and confirm it passes.
+- [x] **Step 5:** Run the workspace test and clippy gates, create `docs/verification/P2-02.md`, commit `feat: define durable harness contracts` and push.
 
 ### Task 2: Atomic task store and transition events
 
@@ -68,13 +68,13 @@
 - Produces: `EventLog::append_with<T, F>(&self, scope: &str, kind: &str, payload: &Value, apply: F) -> rusqlite::Result<(T, Event)>` where `F: FnOnce(&rusqlite::Transaction<'_>) -> rusqlite::Result<T>`.
 - Produces: `HrnsStore::open(path: &Path, events: EventLog)`, `enqueue(NewTask)`, `transition(TaskTransition)`, `checkpoint(CheckpointWrite)`, `active()`, `queued()` and `recover()`.
 
-- [ ] **Step 1:** Add event-log tests proving a failed external mutation rolls back the event and broadcasts nothing.
-- [ ] **Step 2:** Add store tests for concurrent enqueue, FIFO promotion, a forced transition failure, restart recovery and absence of orphan events.
-- [ ] **Step 3:** Run the two targeted test suites and confirm the new APIs are missing.
-- [ ] **Step 4:** Implement `append_with` using the existing redaction, projection, retention, commit and post-commit broadcast path.
-- [ ] **Step 5:** Implement the `hrns_task`, `hrns_action` and `hrns_checkpoint` tables and state-transition guards through `append_with`.
-- [ ] **Step 6:** Run `cargo test -p mote-eventlog` and `cargo test -p mote-hrns --test store` and confirm they pass.
-- [ ] **Step 7:** Run the workspace gates, commit `feat: persist durable task transitions` and push.
+- [x] **Step 1:** Add event-log tests proving a failed external mutation rolls back the event and broadcasts nothing.
+- [x] **Step 2:** Add store tests for concurrent enqueue, FIFO promotion, a forced transition failure, restart recovery and absence of orphan events.
+- [x] **Step 3:** Run the two targeted test suites and confirm the new APIs are missing.
+- [x] **Step 4:** Implement `append_with` using the existing redaction, projection, retention, commit and post-commit broadcast path.
+- [x] **Step 5:** Implement the `hrns_task`, `hrns_action` and `hrns_checkpoint` tables and state-transition guards through `append_with`.
+- [x] **Step 6:** Run `cargo test -p mote-eventlog` and `cargo test -p mote-hrns --test store` and confirm they pass.
+- [x] **Step 7:** Run the workspace gates, commit `feat: persist durable task transitions` and push.
 
 ### Task 3: One-task driver and queue recovery
 
@@ -88,11 +88,11 @@
 - Produces: `Driver::new(store, adapters, executor)`, `Driver::enqueue(NewTask)`, `Driver::step() -> Result<DriverOutcome, DriverError>`, `Driver::cancel(TaskId)` and `Driver::recover()`.
 - Produces: `ActionExecutor::execute(&self, &Action) -> Result<ActionReceipt, ActionError>`.
 
-- [ ] **Step 1:** Write fake-adapter tests for FIFO work, one active task, cancellation, adapter failure and recovery from every persisted checkpoint.
-- [ ] **Step 2:** Run `cargo test -p mote-hrns --test driver` and confirm it fails on missing driver APIs.
-- [ ] **Step 3:** Implement one-step driving so each call performs at most one model proposal or one action transition.
-- [ ] **Step 4:** Run the targeted test and confirm it passes with no second active task under a concurrent enqueue fixture.
-- [ ] **Step 5:** Run the workspace gates, add P2-03 evidence, commit `feat: drive one durable task at a time` and push.
+- [x] **Step 1:** Write fake-adapter tests for FIFO work, one active task, cancellation, adapter failure and recovery from every persisted checkpoint.
+- [x] **Step 2:** Run `cargo test -p mote-hrns --test driver` and confirm it fails on missing driver APIs.
+- [x] **Step 3:** Implement one-step driving so each call performs at most one model proposal or one action transition.
+- [x] **Step 4:** Run the targeted test and confirm it passes with no second active task under a concurrent enqueue fixture.
+- [x] **Step 5:** Run the workspace gates, add P2-03 evidence, commit `feat: drive one durable task at a time` and push.
 
 ### Task 4: OpenCode compatibility adapter
 

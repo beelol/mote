@@ -116,10 +116,10 @@ authoritative. Physical iPad voice testing and external Apple work are deferred.
     selectable OpenCode and Mote harnesses and the crate name `mote-hrns`.
   - [x] **P2-01** The owner activated Phase 2 and named the active child criteria in Ready for Go.
     [evidence](docs/verification/P2-01.md)
-  - [ ] **P2-02** Common task, action, checkpoint, model-step and harness contracts exist without
-    adapter-specific state.
-  - [ ] **P2-03** One active task, the FIFO queue and atomic redacted transition events survive
-    failure and restart.
+  - [x] **P2-02** Common task, action, checkpoint, model-step and harness contracts exist without
+    adapter-specific state. [evidence](docs/verification/P2-02.md)
+  - [x] **P2-03** One active task, the FIFO queue and atomic redacted transition events survive
+    failure and restart. [evidence](docs/verification/P2-03.md)
   - [ ] **P2-04** Startup and live harness selection apply only at a safe checkpoint and never
     fall back silently.
   - [ ] **P2-05** OpenCode runs behind `mote-hrns` with built-in tools disabled and Mote-owned
