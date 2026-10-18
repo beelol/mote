@@ -1,0 +1,176 @@
+use mote_eventlog::EventLog;
+use mote_hrns::*;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+struct Fixture {
+    path: PathBuf,
+}
+impl Fixture {
+    fn new() -> Self {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "mote-hrns-{}-{suffix}-{}",
+            std::process::id(),
+            FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        Self {
+            path: directory.join("tasks.db"),
+        }
+    }
+    fn open(&self) -> (HrnsStore, EventLog) {
+        let log = EventLog::open(&self.path).unwrap();
+        (HrnsStore::open(&self.path, log.clone()).unwrap(), log)
+    }
+}
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(self.path.parent().unwrap());
+    }
+}
+fn scope() -> Scope {
+    Scope::new("owner", "personal").unwrap()
+}
+fn enqueue(store: &HrnsStore, name: &str) -> Task {
+    store
+        .enqueue(
+            TaskId::new(name).unwrap(),
+            scope(),
+            "Research".into(),
+            HarnessKind::Mote,
+        )
+        .unwrap()
+}
+
+#[test]
+fn fifo_and_single_active_survive_reopening() {
+    let fixture = Fixture::new();
+    let (store, log) = fixture.open();
+    let first = enqueue(&store, "first");
+    let second = enqueue(&store, "second");
+    assert!(store
+        .transition(&scope(), &second.id, 0, TaskState::Running)
+        .is_err());
+    store
+        .transition(&scope(), &first.id, 0, TaskState::Running)
+        .unwrap();
+    assert!(store
+        .transition(&scope(), &second.id, 0, TaskState::Running)
+        .is_err());
+    drop(store);
+    drop(log);
+    let (store, _) = fixture.open();
+    assert_eq!(store.active(&scope()).unwrap().unwrap().id, first.id);
+    assert_eq!(store.queued(&scope()).unwrap(), vec![second.clone()]);
+    store
+        .transition(&scope(), &first.id, 1, TaskState::Complete)
+        .unwrap();
+    store
+        .transition(&scope(), &second.id, 0, TaskState::Running)
+        .unwrap();
+}
+
+#[test]
+fn scope_stale_revision_and_duplicate_ids_fail_without_events() {
+    let fixture = Fixture::new();
+    let (store, log) = fixture.open();
+    let task = enqueue(&store, "first");
+    let before = log.max_seq().unwrap();
+    let wrong = Scope::new("owner", "work").unwrap();
+    assert!(store.get(&wrong, &task.id).unwrap().is_none());
+    assert!(store.queued(&wrong).unwrap().is_empty());
+    assert!(store
+        .transition(&wrong, &task.id, 0, TaskState::Running)
+        .is_err());
+    assert!(store
+        .transition(&scope(), &task.id, 9, TaskState::Running)
+        .is_err());
+    assert!(store
+        .enqueue(
+            task.id.clone(),
+            scope(),
+            "Duplicate".into(),
+            HarnessKind::Mote
+        )
+        .is_err());
+    assert_eq!(log.max_seq().unwrap(), before);
+    assert_eq!(store.get(&scope(), &task.id).unwrap().unwrap(), (task, 0));
+}
+
+#[test]
+fn database_mismatch_is_refused() {
+    let first = Fixture::new();
+    let second = Fixture::new();
+    let (_, first_log) = first.open();
+    let (_, second_log) = second.open();
+    assert!(HrnsStore::open(&first.path, second_log).is_err());
+    drop(first_log);
+}
+
+#[test]
+fn projection_failure_rolls_back_the_task_change() {
+    let fixture = Fixture::new();
+    let (store, log) = fixture.open();
+    let task = enqueue(&store, "first");
+    let before = log.max_seq().unwrap();
+    let connection = rusqlite::Connection::open(&fixture.path).unwrap();
+    connection.execute_batch("CREATE TRIGGER fail_task_event BEFORE INSERT ON events WHEN NEW.kind='task.changed' BEGIN SELECT RAISE(FAIL,'injected'); END;").unwrap();
+    assert!(store
+        .transition(&scope(), &task.id, 0, TaskState::Running)
+        .is_err());
+    assert_eq!(store.get(&scope(), &task.id).unwrap().unwrap(), (task, 0));
+    assert_eq!(log.max_seq().unwrap(), before);
+}
+
+#[test]
+fn concurrent_enqueue_preserves_committed_order_and_one_active_task() {
+    let fixture = Fixture::new();
+    let (store, log) = fixture.open();
+    let store = std::sync::Arc::new(store);
+    let threads: Vec<_> = (0..12)
+        .map(|index| {
+            let store = store.clone();
+            std::thread::spawn(move || enqueue(&store, &format!("task-{index}")))
+        })
+        .collect();
+    for thread in threads {
+        thread.join().unwrap();
+    }
+    let queued = store.queued(&scope()).unwrap();
+    assert_eq!(queued.len(), 12);
+    let events = log.recent_since(0, 100).unwrap();
+    let committed: Vec<_> = events
+        .iter()
+        .rev()
+        .map(|event| event.payload["task_id"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        queued
+            .iter()
+            .map(|task| task.id.as_str())
+            .collect::<Vec<_>>(),
+        committed
+    );
+    let attempts: Vec<_> = queued
+        .into_iter()
+        .map(|task| {
+            let store = store.clone();
+            std::thread::spawn(move || {
+                store
+                    .transition(&scope(), &task.id, 0, TaskState::Running)
+                    .is_ok()
+            })
+        })
+        .collect();
+    let successes = attempts
+        .into_iter()
+        .map(|handle| usize::from(handle.join().unwrap()))
+        .sum::<usize>();
+    assert_eq!(successes, 1);
+}

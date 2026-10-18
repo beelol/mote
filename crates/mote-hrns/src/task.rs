@@ -76,6 +76,35 @@ pub enum TaskState {
     Cancelled,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InvalidTransition;
+
+impl std::fmt::Display for InvalidTransition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("stale or invalid state transition")
+    }
+}
+
+impl std::error::Error for InvalidTransition {}
+
+impl TaskState {
+    pub fn permits(self, next: Self) -> bool {
+        use TaskState::*;
+        matches!(
+            (self, next),
+            (Queued, Running | Cancelled)
+                | (
+                    Running,
+                    WaitingForApproval | WaitingForInput | Blocked | Complete | Failed | Cancelled
+                )
+                | (
+                    WaitingForApproval | WaitingForInput | Blocked,
+                    Running | Failed | Cancelled
+                )
+        )
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Task {
@@ -84,6 +113,20 @@ pub struct Task {
     pub outcome: String,
     pub state: TaskState,
     pub harness: HarnessKind,
+}
+
+impl Task {
+    pub fn transition(
+        &mut self,
+        expected: TaskState,
+        next: TaskState,
+    ) -> Result<(), InvalidTransition> {
+        if self.state != expected || !self.state.permits(next) {
+            return Err(InvalidTransition);
+        }
+        self.state = next;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

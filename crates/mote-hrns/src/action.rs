@@ -1,4 +1,4 @@
-use crate::{ActionId, TaskId};
+use crate::{ActionId, InvalidTransition, TaskId};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -15,6 +15,19 @@ pub enum ActionState {
     Cancelled,
 }
 
+impl ActionState {
+    pub fn permits(self, next: Self) -> bool {
+        use ActionState::*;
+        matches!(
+            (self, next),
+            (Proposed, AwaitingApproval | Ready | Cancelled | Failed)
+                | (AwaitingApproval, Ready | Denied | Cancelled | Failed)
+                | (Ready, Running | Cancelled | Failed)
+                | (Running, Committed | Failed)
+        )
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Action {
@@ -23,4 +36,18 @@ pub struct Action {
     pub state: ActionState,
     pub name: String,
     pub arguments: Map<String, Value>,
+}
+
+impl Action {
+    pub fn transition(
+        &mut self,
+        expected: ActionState,
+        next: ActionState,
+    ) -> Result<(), InvalidTransition> {
+        if self.state != expected || !self.state.permits(next) {
+            return Err(InvalidTransition);
+        }
+        self.state = next;
+        Ok(())
+    }
 }

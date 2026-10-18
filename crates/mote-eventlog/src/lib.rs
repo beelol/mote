@@ -53,6 +53,16 @@ fn now_millis() -> i64 {
 }
 
 impl EventLog {
+    pub fn database_path(&self) -> Option<std::path::PathBuf> {
+        self.inner
+            .lock()
+            .unwrap()
+            .conn
+            .path()
+            .filter(|path| !path.is_empty())
+            .map(std::path::PathBuf::from)
+    }
+
     /// Open the log at `path`, creating the table if needed.
     pub fn open(path: &std::path::Path) -> rusqlite::Result<Self> {
         let conn = Connection::open(path)?;
@@ -111,18 +121,32 @@ impl EventLog {
         kind: &str,
         payload: &serde_json::Value,
     ) -> rusqlite::Result<Event> {
+        self.append_with(scope_id, kind, payload, |_| Ok(()))
+            .map(|(_, event)| event)
+    }
+
+    /// The mutation and redacted event commit together before subscribers are notified.
+    /// The callback must not reenter this log or perform external effects.
+    pub fn append_with<T>(
+        &self,
+        scope_id: &str,
+        kind: &str,
+        payload: &serde_json::Value,
+        apply: impl FnOnce(&rusqlite::Transaction<'_>) -> rusqlite::Result<T>,
+    ) -> rusqlite::Result<(T, Event)> {
         let redacted_text = mote_redact::redact(&payload.to_string());
         let mut guard = self.inner.lock().unwrap();
-        let ev = {
+        let (value, ev) = {
             let transaction = guard.conn.transaction()?;
+            let value = apply(&transaction)?;
             let ev = Inner::insert(&transaction, scope_id, kind, &redacted_text)?;
             Inner::project(&transaction, &ev)?;
             Inner::enforce_retention(&transaction, scope_id)?;
             transaction.commit()?;
-            ev
+            (value, ev)
         };
         guard.broadcast(&ev);
-        Ok(ev)
+        Ok((value, ev))
     }
 
     /// Subscribe to a scope from `cursor`. The returned subscription first yields every stored
@@ -220,11 +244,17 @@ impl EventLog {
         if let Some((device, now)) = device {
             let has_approvals: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='approvals')", [], |r| r.get(0))?;
             if has_approvals {
-                let columns: Vec<String> = tx.prepare("PRAGMA table_info(approvals)")?.query_map([], |row| row.get(1))?.collect::<rusqlite::Result<_>>()?;
+                let columns: Vec<String> = tx
+                    .prepare("PRAGMA table_info(approvals)")?
+                    .query_map([], |row| row.get(1))?
+                    .collect::<rusqlite::Result<_>>()?;
                 if !columns.iter().any(|column| column == "host_id") {
                     tx.execute_batch("ALTER TABLE approvals ADD COLUMN host_id TEXT")?;
                 }
-                tx.execute("UPDATE approvals SET host_id=?1 WHERE host_id IS NULL AND kind='file_write'", [host_id.as_str()])?;
+                tx.execute(
+                    "UPDATE approvals SET host_id=?1 WHERE host_id IS NULL AND kind='file_write'",
+                    [host_id.as_str()],
+                )?;
                 let approvals: Vec<(i64, String, String, String, String, i64)> = tx.prepare("SELECT id,thread_id,kind,payload,action_hash,expires_at FROM approvals WHERE host_id=?2 AND status='pending' AND action_hash IS NOT NULL AND expires_at>=?1 ORDER BY id")?.query_map(rusqlite::params![now, host_id.as_str()], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?)))?.collect::<rusqlite::Result<_>>()?;
                 for (id, thread, kind, payload, hash, expires_at) in approvals {
                     let approval = mote_protocol::PendingApproval {
@@ -579,12 +609,26 @@ mod tests {
             for (id, owner) in [(1, host.as_str()), (2, other.as_str())] {
                 guard.conn.execute("INSERT INTO approvals VALUES(?1,?2,'main','browser','{}',?3,'pending',1000)", rusqlite::params![id, owner, "a".repeat(64)]).unwrap();
             }
-            guard.conn.execute("INSERT INTO approvals VALUES(3,NULL,'main','browser','{}',?1,'pending',1000)", ["b".repeat(64)]).unwrap();
+            guard
+                .conn
+                .execute(
+                    "INSERT INTO approvals VALUES(3,NULL,'main','browser','{}',?1,'pending',1000)",
+                    ["b".repeat(64)],
+                )
+                .unwrap();
         }
         let snapshot = log.host_snapshot_for_device(&host, "ipad", 100).unwrap();
         assert_eq!(snapshot.pending_approvals.len(), 1);
         assert_eq!(snapshot.pending_approvals[0].approval_id.as_str(), "1");
-        let grants: i64 = log.inner.lock().unwrap().conn.query_row("SELECT count(*) FROM approval_devices", [], |row| row.get(0)).unwrap();
+        let grants: i64 = log
+            .inner
+            .lock()
+            .unwrap()
+            .conn
+            .query_row("SELECT count(*) FROM approval_devices", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
         assert_eq!(grants, 0);
     }
 
@@ -602,6 +646,88 @@ mod tests {
             .is_err());
         assert_eq!(log.host_snapshot(&host).unwrap(), before);
         assert!(live.recv_timeout(Duration::from_millis(1)).is_none());
+    }
+
+    #[test]
+    fn appended_mutation_and_event_commit_together() {
+        let log = EventLog::open_in_memory().unwrap();
+        let mut live = log.subscribe("main", 0).unwrap();
+        let (value, event) = log.append_with("main", "task.changed",
+            &serde_json::json!({"api_key":"private-value"}), |tx| {
+                tx.execute_batch("CREATE TABLE task_probe(value INTEGER); INSERT INTO task_probe VALUES(42);")?;
+                Ok(42)
+            }).unwrap();
+        assert_eq!(value, 42);
+        assert!(!event.payload.to_string().contains("private-value"));
+        assert_eq!(
+            live.recv_timeout(Duration::from_millis(1)).unwrap().seq,
+            event.seq
+        );
+        let stored: i64 = log
+            .inner
+            .lock()
+            .unwrap()
+            .conn
+            .query_row("SELECT value FROM task_probe", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(stored, value);
+    }
+
+    #[test]
+    fn failed_mutation_rolls_back_and_broadcasts_nothing() {
+        let log = EventLog::open_in_memory().unwrap();
+        let mut live = log.subscribe("main", 0).unwrap();
+        let result = log.append_with("main", "task.changed", &serde_json::json!({}), |tx| {
+            tx.execute_batch(
+                "CREATE TABLE task_probe(value INTEGER); INSERT INTO task_probe VALUES(42);",
+            )?;
+            Err::<(), _>(rusqlite::Error::InvalidQuery)
+        });
+        assert!(result.is_err());
+        assert_eq!(log.max_seq().unwrap(), 0);
+        assert!(live.recv_timeout(Duration::from_millis(1)).is_none());
+        let tables: i64 = log
+            .inner
+            .lock()
+            .unwrap()
+            .conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name='task_probe'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(tables, 0);
+    }
+
+    #[test]
+    fn failed_event_projection_rolls_back_attached_mutation() {
+        let log = EventLog::open_in_memory().unwrap();
+        log.append("main", "turn.user", &serde_json::json!({"text":"prior"}))
+            .unwrap();
+        log.inner.lock().unwrap().conn.execute_batch(
+            "CREATE TABLE task_probe(value INTEGER); INSERT INTO task_probe VALUES(1);
+             CREATE TRIGGER fail_projection BEFORE UPDATE ON client_threads BEGIN SELECT RAISE(FAIL, 'projection failed'); END;"
+        ).unwrap();
+        let mut live = log.subscribe("main", 1).unwrap();
+        assert!(log
+            .append_with(
+                "main",
+                "turn.user",
+                &serde_json::json!({"text":"lost"}),
+                |tx| { tx.execute("UPDATE task_probe SET value=2", []) }
+            )
+            .is_err());
+        assert_eq!(log.max_seq().unwrap(), 1);
+        assert!(live.recv_timeout(Duration::from_millis(1)).is_none());
+        let value: i64 = log
+            .inner
+            .lock()
+            .unwrap()
+            .conn
+            .query_row("SELECT value FROM task_probe", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(value, 1);
     }
 
     #[test]

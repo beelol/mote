@@ -51,8 +51,17 @@ test during ordinary Phase 2 development.
 ## Next action
 
 The owner authorized continuing on 2026-10-18. Execute directly without another planning gate.
-The first `mote-hrns` contract slice defines tasks, scoped identities, actions, checkpoints,
-model replies and the harness interface. Four targeted tests, the complete workspace suite,
-strict clippy and formatting checks passed. Partial evidence is in `docs/verification/P2-02.md`.
-P2-02 stays open until common transition fixtures pass. Next implement transition guards and
-the atomic task store from runtime plan tasks 1 and 2. No daemon behavior has changed yet.
+The first pushed `mote-hrns` slice defines tasks, scoped identities, actions, checkpoints, model
+replies and the harness interface.
+
+The current batch adds guarded task and action transitions, atomic event-log mutations and the
+first durable task store. Scoped reads, FIFO promotion, revision checks and one-active-task
+enforcement survive reopen. Targeted tests pass: 14 event-log tests, 4 contract tests, 5 store
+tests and 4 transition tests. Partial evidence is in `docs/verification/P2-02.md` and
+`docs/verification/P2-03.md`.
+
+The complete workspace test suite and strict clippy passed on this batch. Package formatting and
+`git diff --check` passed. Commit and push these changes next. Then add durable actions and
+checkpoints, followed by the one-step driver and restart recovery fixtures. P2-02 and P2-03 stay
+open until adapter fixtures and the recovery driver prove their full clauses. No daemon behavior
+has changed yet.
