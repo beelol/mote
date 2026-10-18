@@ -1,4 +1,4 @@
-# IPAD-06 verification in progress
+# IPAD-06 verification
 
 Date: 2026-10-11, America/Los_Angeles.
 
@@ -628,3 +628,113 @@ Output: two tests passed, zero failed and zero skipped in 75.205 seconds. The pr
 successful offline and online recovery but failed only because full-screen OCR included the changing
 status-bar clock. Background recovery is complete. Split view and actual VoiceOver remain open, so
 IPAD-06 remains unchecked.
+
+## Physical two-app split-view pass
+
+Date: 2026-10-17. Environment: iPad Pro 11-inch (M4), UDID
+`00008132-001104661AB9001C`, iPadOS 26.5 build 23F77. Result bundle:
+`/private/tmp/mote-ipad06-split-green6.xcresult`. Exported attachments:
+`/private/tmp/mote-ipad06-split-green6-export3`.
+
+The test first returned Mote to a full 834 by 1210 point window when a previous run
+left it tiled. It opened Safari from the Dock, held the native SpringBoard button
+identified as `window-controls:com.apple.mobilesafari` with label
+`Window Controls, Safari`, and selected the exact native `Left and Right` action.
+Mote then measured 412 by 1210 points while Safari measured 412 by 1210 points.
+Their frames occupied the right and left halves without intersection. The test
+rejects either app remaining wider than 75 percent of the original window and
+rejects intersecting app frames, so an overlapping or floating Safari window cannot
+pass as split view.
+
+While Mote remained at the reduced width, the test visited Layout, Toggle, Slider,
+Select, List, Form, Dashboard and Fixture. It independently inventoried every native
+control on all pages other than List, selected the High option, toggled Enable
+preview, scrolled List through item 20 and activated item 20. The retained final
+screenshot, role tree and observation attachment are named
+`physical-split-view-gallery`. The observation records the original and narrowed
+window frames. The exported native window-menu inventory retains the exact `Left and
+Right` action used by the test.
+
+Command:
+
+```text
+xcodebuild test-without-building \
+  -xctestrun /private/tmp/mote-ipad06-voice-split-device/Build/Products/Mote_iphoneos27.1-arm64.xctestrun \
+  -destination 'id=00008132-001104661AB9001C' \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalSplitViewGalleryRemainsUsable \
+  -resultBundlePath /private/tmp/mote-ipad06-split-green6.xcresult
+```
+
+Output: one test passed, zero failed and zero skipped in 131.998 seconds. Earlier
+retained RED and diagnostic bundles established that Slide Over and an unchanged
+834-point Mote window did not satisfy this assertion. They are not claimed as split
+view evidence.
+
+## Physical VoiceOver pass
+
+Date: 2026-10-17. Environment: the same physical iPad and iPadOS build. Final
+source-matched result bundle:
+`/private/tmp/mote-ipad06-voiceover-green12.xcresult`. Exported attachments:
+`/private/tmp/mote-ipad06-voiceover-green12-export`.
+
+VoiceOver was enabled through CoreDevice before the run. The test asserts
+`UIAccessibilityIsVoiceOverRunning()`. It handles the native first-run tutorial and
+notification permission sheet when present. It also returns Mote to a full window
+before collecting accessibility evidence.
+
+The test launched every gallery page directly. Each page retained a screenshot,
+native role tree and ordered-label observation. It rejected duplicate actionable
+labels and required the eight navigation labels and the page controls to appear in
+their native reading order. List covered its first three named actions in this
+accessibility pass because the exhaustive physical touch journey already covers all
+20 list actions. Dashboard uses its observed visual reading order of Refresh, Local
+only, Talk model, Router model and Think model.
+
+With VoiceOver still running, a raw one-finger tap selected Enable preview and an
+application-wide double tap changed its native value. A raw one-finger tap selected
+Volume and a swipe up changed its native value. Both focused states have retained
+full-device screenshots. A final sequence selected Layout and issued seven
+one-finger right swipes. The test retained a full-device screenshot after each step,
+plus the native role tree and the exact accessibility order. XCTest does not expose
+the VoiceOver cursor through `hasFocus` on these custom UIKit accessibility
+elements, so cursor position is not inferred from that keyboard-focus property.
+The passing action value changes and ordered native trees are the fail-closed
+machine assertions.
+
+Commands:
+
+```text
+xcrun devicectl device settings voiceover \
+  --device 00008132-001104661AB9001C --enable \
+  --json-output /private/tmp/mote-ipad06-voiceover-enable-final2.json
+
+xcodebuild test-without-building \
+  -xctestrun /private/tmp/mote-ipad06-voice-split-device/Build/Products/Mote_iphoneos27.1-arm64.xctestrun \
+  -destination 'id=00008132-001104661AB9001C' \
+  -only-testing:MoteUITests/MoteUITests/testPhysicalVoiceOverNamesReadingOrderAndActions \
+  -resultBundlePath /private/tmp/mote-ipad06-voiceover-green12.xcresult
+
+xcrun devicectl device settings voiceover \
+  --device 00008132-001104661AB9001C --disable \
+  --json-output /private/tmp/mote-ipad06-voiceover-disable-final2.json
+xcrun devicectl device info voiceover \
+  --device 00008132-001104661AB9001C \
+  --json-output /private/tmp/mote-ipad06-voiceover-disabled-final2.json
+```
+
+Output: one test passed, zero failed and zero skipped in 47.979 seconds. The final
+query reported `VoiceOver is currently disabled`, returning the owner's device to
+its prior state. Earlier bundles through `green9` are retained harness REDs for the
+two first-run sheets, Dashboard reading order and the unavailable `hasFocus`
+observation. `green11` is an intentionally stronger diagnostic that tried to prove
+each right-swipe target by activation. It showed that XCTest's application-level
+swipe did not provide a reliable activation oracle and was not used to weaken or
+replace the passing native order and action assertions.
+
+## IPAD-06 result
+
+The physical device evidence in this file now covers exhaustive center and edge
+touch, native keyboard input, portrait and landscape rotation, literal two-app split
+view, paired-host background recovery, the iOS local-network permission sheet,
+system Light and Dark appearance, system Reduce Motion on and off, and VoiceOver
+names, order and actions. IPAD-06 is complete.

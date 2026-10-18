@@ -82,6 +82,13 @@ static NSArray<NSArray<NSString *> *> *galleryPhysicalBatches(NSString *page) {
     return batches;
 }
 
+static NSArray<NSString *> *galleryVoiceOverControlOrder(NSString *page) {
+    if ([page isEqualToString:@"Dashboard"]) {
+        return @[@"Refresh", @"Local only", @"Talk model", @"Router model", @"Think model"];
+    }
+    return [galleryControls(page) valueForKey:@"label"];
+}
+
 static NSString *compactText(NSString *text) {
     return [[text componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] componentsJoinedByString:@""];
 }
@@ -92,6 +99,15 @@ static NSArray<NSString *> *galleryStableConversationLabels(NSArray<NSString *> 
         if ([label hasPrefix:@"User: "]) [stable addObject:label];
     }
     return stable.array;
+}
+
+static BOOL galleryLabelsContainOrderedSubsequence(NSArray<NSString *> *labels,
+                                                   NSArray<NSString *> *expected) {
+    NSUInteger next = 0;
+    for (NSString *label in labels) {
+        if (next < expected.count && [label isEqualToString:expected[next]]) next++;
+    }
+    return next == expected.count;
 }
 
 static BOOL galleryInventoryMatches(NSDictionary *observed, NSDictionary *expected) {
@@ -428,6 +444,10 @@ static CGRect textTargetBox(NSArray<NSDictionary *> *fragments, NSString *target
     XCTAssertEqualObjects(galleryStableConversationLabels(
         @[@"3:43 PM", @"User: one", @"Cursor: 9", @"User: one", @"User: two"]),
         (@[@"User: one", @"User: two"]));
+    XCTAssertTrue(galleryLabelsContainOrderedSubsequence(
+        @[@"Layout", @"ignored", @"Toggle", @"Slider"], @[@"Layout", @"Toggle", @"Slider"]));
+    XCTAssertFalse(galleryLabelsContainOrderedSubsequence(
+        @[@"Toggle", @"Layout", @"Slider"], @[@"Layout", @"Toggle", @"Slider"]));
 }
 - (void)tearDown {
     self.recognitionMisses = 0;
@@ -1105,6 +1125,286 @@ PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixtureLandscape, @"Fixture", UIDeviceO
 
 - (void)testPhysicalGalleryPreviewNoteLandscape {
     [self runPhysicalPreviewNoteOrientation:UIDeviceOrientationLandscapeLeft];
+}
+
+- (NSArray<XCUIElement *> *)orderedVoiceOverElements:(XCUIApplication *)app {
+    NSPredicate *actionable = [NSPredicate predicateWithFormat:
+        @"label != '' AND (elementType == %lu OR elementType == %lu OR elementType == %lu)",
+        (unsigned long)XCUIElementTypeButton, (unsigned long)XCUIElementTypeOther,
+        (unsigned long)XCUIElementTypeTextField];
+    NSMutableArray<XCUIElement *> *elements = [NSMutableArray array];
+    for (XCUIElement *element in
+         [[app descendantsMatchingType:XCUIElementTypeAny]
+             matchingPredicate:actionable].allElementsBoundByAccessibilityElement) {
+        if (element.exists && element.frame.size.width > 0 && element.frame.size.height > 0) {
+            [elements addObject:element];
+        }
+    }
+    NSArray<NSString *> *labels = [elements valueForKey:@"label"];
+    XCTAssertEqual(labels.count, [NSSet setWithArray:labels].count,
+        @"VoiceOver exposed duplicate actionable labels: %@", labels);
+    return elements;
+}
+
+- (void)focusVoiceOverElement:(XCUIElement *)element app:(XCUIApplication *)app {
+    CGRect windowFrame = app.windows.firstMatch.frame;
+    CGRect elementFrame = element.frame;
+    CGVector point = CGVectorMake(
+        (CGRectGetMidX(elementFrame) - CGRectGetMinX(windowFrame)) / CGRectGetWidth(windowFrame),
+        (CGRectGetMidY(elementFrame) - CGRectGetMinY(windowFrame)) / CGRectGetHeight(windowFrame));
+    [[app.windows.firstMatch coordinateWithNormalizedOffset:point] tap];
+}
+
+- (void)captureVoiceOverScreen:(NSString *)name {
+    XCTAttachment *capture = [XCTAttachment attachmentWithScreenshot:XCUIScreen.mainScreen.screenshot];
+    capture.name = name;
+    capture.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:capture];
+}
+
+- (void)fillWindowIfNeeded:(XCUIApplication *)app springboard:(XCUIApplication *)springboard {
+    if (app.windows.firstMatch.frame.size.width > 700) {
+        return;
+    }
+    XCUIElement *windowControls = springboard.buttons[@"Window Controls, Mote"];
+    XCTAssertTrue([windowControls waitForExistenceWithTimeout:5],
+        @"Mote started tiled but its native window controls were unavailable");
+    [windowControls pressForDuration:1.0];
+    XCUIElement *fill = springboard.buttons[@"Fill"];
+    XCTAssertTrue([fill waitForExistenceWithTimeout:2]);
+    [fill tap];
+    NSPredicate *filled = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        return app.windows.firstMatch.frame.size.width > 700;
+    }];
+    XCTNSPredicateExpectation *expectation =
+        [[XCTNSPredicateExpectation alloc] initWithPredicate:filled object:app];
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[expectation] timeout:10],
+        XCTWaiterResultCompleted);
+}
+
+- (void)attachPhysicalState:(NSString *)name app:(XCUIApplication *)app details:(NSDictionary *)details {
+    [self capture:name app:app];
+    XCTAttachment *tree = [XCTAttachment attachmentWithString:app.debugDescription];
+    tree.name = [name stringByAppendingString:@"-role-tree"];
+    tree.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:tree];
+    XCTAttachment *state = [XCTAttachment attachmentWithString:details.description];
+    state.name = [name stringByAppendingString:@"-observations"];
+    state.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:state];
+}
+
+- (void)testPhysicalVoiceOverNamesReadingOrderAndActions {
+#if TARGET_OS_SIMULATOR
+    XCTSkip(@"Requires physical VoiceOver navigation");
+#endif
+    self.executionTimeAllowance = 600;
+    XCTAssertTrue(UIAccessibilityIsVoiceOverRunning(), @"Enable physical iPad VoiceOver before running this selector");
+    XCUIApplication *springboard =
+        [[XCUIApplication alloc] initWithBundleIdentifier:@"com.apple.springboard"];
+    XCUIElement *useVoiceOver = springboard.buttons[@"Use VoiceOver"];
+    if ([useVoiceOver waitForExistenceWithTimeout:2]) {
+        [useVoiceOver tap];
+        NSPredicate *dismissed = [NSPredicate predicateWithFormat:@"exists == NO"];
+        XCTNSPredicateExpectation *dismissal =
+            [[XCTNSPredicateExpectation alloc] initWithPredicate:dismissed object:useVoiceOver];
+        XCTAssertEqual([XCTWaiter waitForExpectations:@[dismissal] timeout:10],
+            XCTWaiterResultCompleted);
+    }
+    XCUIElement *denyNotifications = springboard.buttons[@"Don’t Allow"];
+    if ([denyNotifications waitForExistenceWithTimeout:2]) {
+        [denyNotifications tap];
+        NSPredicate *dismissed = [NSPredicate predicateWithFormat:@"exists == NO"];
+        XCTNSPredicateExpectation *dismissal =
+            [[XCTNSPredicateExpectation alloc] initWithPredicate:dismissed object:denyNotifications];
+        XCTAssertEqual([XCTWaiter waitForExpectations:@[dismissal] timeout:10],
+            XCTWaiterResultCompleted);
+    }
+    XCUIApplication *app = [XCUIApplication new];
+    NSArray<NSString *> *navigation = galleryPages();
+    for (NSString *page in navigation) {
+        [app terminate];
+        app.launchArguments = @[@"--mote-offline", @"--mote-page", page.lowercaseString];
+        [app launch];
+        XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+        [self fillWindowIfNeeded:app springboard:springboard];
+        NSArray<NSString *> *labels = [[self orderedVoiceOverElements:app] valueForKey:@"label"];
+        NSArray<NSString *> *controlLabels = galleryVoiceOverControlOrder(page);
+        if ([page isEqualToString:@"List"]) {
+            controlLabels = [controlLabels subarrayWithRange:NSMakeRange(0, 3)];
+        }
+        XCTAssertTrue(galleryLabelsContainOrderedSubsequence(labels, navigation));
+        XCTAssertTrue(galleryLabelsContainOrderedSubsequence(labels, controlLabels),
+            @"%@ VoiceOver control order changed: %@", page, labels);
+        [self attachPhysicalState:[@"physical-voiceover-" stringByAppendingString:page.lowercaseString]
+            app:app details:@{@"voiceover_running":@YES, @"ordered_labels":labels}];
+    }
+
+    [app terminate];
+    app.launchArguments = @[@"--mote-offline", @"--mote-page", @"toggle"];
+    [app launch];
+    XCUIElement *toggle = app.buttons[@"Enable preview"];
+    XCTAssertTrue([toggle waitForExistenceWithTimeout:5]);
+    NSString *toggleBefore = toggle.value;
+    [self focusVoiceOverElement:toggle app:app];
+    [self captureVoiceOverScreen:@"physical-voiceover-toggle-focused"];
+    [app doubleTap];
+    XCTAssertNotEqualObjects(toggle.value, toggleBefore);
+
+    [app terminate];
+    app.launchArguments = @[@"--mote-offline", @"--mote-page", @"slider"];
+    [app launch];
+    XCUIElement *slider = app.otherElements[@"Volume"];
+    XCTAssertTrue([slider waitForExistenceWithTimeout:5]);
+    NSString *sliderBefore = slider.value;
+    [self focusVoiceOverElement:slider app:app];
+    [self captureVoiceOverScreen:@"physical-voiceover-slider-focused"];
+    [slider swipeUp];
+    XCTAssertNotEqualObjects(slider.value, sliderBefore);
+
+    [app terminate];
+    app.launchArguments = @[@"--mote-offline", @"--mote-page", @"layout"];
+    [app launch];
+    XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+    [self focusVoiceOverElement:app.buttons[navigation.firstObject] app:app];
+    for (NSUInteger index = 0; index < navigation.count; index++) {
+        [self captureVoiceOverScreen:
+            [@"physical-voiceover-focus-" stringByAppendingString:navigation[index].lowercaseString]];
+        if (index + 1 < navigation.count) {
+            [app swipeRight];
+        }
+    }
+    [self attachPhysicalState:@"physical-voiceover-focus-journey" app:app
+        details:@{@"voiceover_running":@YES, @"accessibility_order":navigation,
+            @"gesture":@"single tap Layout followed by seven one-finger right swipes"}];
+    [app terminate];
+}
+
+- (void)testPhysicalSplitViewGalleryRemainsUsable {
+#if TARGET_OS_SIMULATOR
+    XCTSkip(@"Requires physical iPad Split View");
+#endif
+    self.executionTimeAllowance = 600;
+    XCUIApplication *app = [XCUIApplication new];
+    app.launchArguments = @[@"--mote-offline"];
+    [app launch];
+    XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+    XCUIApplication *springboard = [[XCUIApplication alloc] initWithBundleIdentifier:@"com.apple.springboard"];
+    CGRect fullFrame = app.windows.firstMatch.frame;
+    [self fillWindowIfNeeded:app springboard:springboard];
+    fullFrame = app.windows.firstMatch.frame;
+    XCTAssertGreaterThan(fullFrame.size.width, 700);
+
+    XCUICoordinate *dockStart = [app.windows.firstMatch coordinateWithNormalizedOffset:CGVectorMake(0.5, 0.995)];
+    XCUICoordinate *dockEnd = [app.windows.firstMatch coordinateWithNormalizedOffset:CGVectorMake(0.5, 0.86)];
+    [dockStart pressForDuration:0.05 thenDragToCoordinate:dockEnd];
+    XCUIElement *safari = springboard.icons[@"Safari"];
+    XCTAssertTrue([safari waitForExistenceWithTimeout:10], @"Safari must be available in the iPad Dock for Split View automation");
+    XCUICoordinate *rightEdge = [springboard.windows.firstMatch coordinateWithNormalizedOffset:CGVectorMake(0.98, 0.5)];
+    [[safari coordinateWithNormalizedOffset:CGVectorMake(0.5, 0.5)]
+        pressForDuration:0.55 thenDragToCoordinate:rightEdge
+        withVelocity:XCUIGestureVelocitySlow thenHoldForDuration:1.0];
+
+    XCUIApplication *safariApp = [[XCUIApplication alloc] initWithBundleIdentifier:@"com.apple.mobilesafari"];
+    [NSThread sleepForTimeInterval:2];
+    XCTAssertTrue([safariApp.windows.firstMatch waitForExistenceWithTimeout:5],
+        @"Safari did not expose a window after opening from the Dock");
+    CGRect firstSafariFrame = safariApp.windows.firstMatch.frame;
+    CGRect firstMoteFrame = app.windows.firstMatch.frame;
+    XCTAttachment *initialScreen = [XCTAttachment attachmentWithScreenshot:XCUIScreen.mainScreen.screenshot];
+    initialScreen.name = @"physical-split-initial-screen";
+    initialScreen.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:initialScreen];
+    XCUIElement *windowControls = springboard.buttons[@"Window Controls, Safari"];
+    if (firstMoteFrame.size.width > fullFrame.size.width * 0.75 &&
+        [windowControls waitForExistenceWithTimeout:2]) {
+        XCTAttachment *zoomElement = [XCTAttachment attachmentWithString:windowControls.debugDescription];
+        zoomElement.name = @"physical-split-window-controls";
+        zoomElement.lifetime = XCTAttachmentLifetimeKeepAlways;
+        [self addAttachment:zoomElement];
+        [windowControls pressForDuration:1.0];
+        [NSThread sleepForTimeInterval:1];
+        NSMutableArray<NSDictionary *> *buttonInventory = [NSMutableArray array];
+        for (XCUIElement *button in springboard.buttons.allElementsBoundByAccessibilityElement) {
+            [buttonInventory addObject:@{
+                @"identifier":button.identifier ?: @"",
+                @"label":button.label ?: @"",
+                @"frame":NSStringFromCGRect(button.frame),
+                @"hittable":@(button.hittable)}];
+        }
+        XCTAttachment *menuButtons = [XCTAttachment attachmentWithString:buttonInventory.description];
+        menuButtons.name = @"physical-split-window-menu-buttons";
+        menuButtons.lifetime = XCTAttachmentLifetimeKeepAlways;
+        [self addAttachment:menuButtons];
+        XCUIElement *leftAndRight = springboard.buttons[@"Left and Right"];
+        XCTAssertTrue([leftAndRight waitForExistenceWithTimeout:2],
+            @"The iPad window layout menu did not expose Left and Right");
+        [leftAndRight tap];
+        [NSThread sleepForTimeInterval:3];
+    }
+    XCTAttachment *controlsScreen = [XCTAttachment attachmentWithScreenshot:XCUIScreen.mainScreen.screenshot];
+    controlsScreen.name = @"physical-split-window-controls-screen";
+    controlsScreen.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:controlsScreen];
+    NSPredicate *narrowed = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        CGRect frame = app.windows.firstMatch.frame;
+        return frame.size.width > 0 && frame.size.width <= fullFrame.size.width * 0.75;
+    }];
+    XCTNSPredicateExpectation *split = [[XCTNSPredicateExpectation alloc] initWithPredicate:narrowed object:app];
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[split] timeout:20], XCTWaiterResultCompleted,
+        @"Mote never entered a materially narrower Split View window. Full %@ current %@",
+        NSStringFromCGRect(fullFrame), NSStringFromCGRect(app.windows.firstMatch.frame));
+    CGRect splitFrame = app.windows.firstMatch.frame;
+    CGRect splitSafariFrame = safariApp.windows.firstMatch.frame;
+    XCTAssertGreaterThan(splitSafariFrame.size.width, 0);
+    XCTAssertLessThanOrEqual(splitSafariFrame.size.width, fullFrame.size.width * 0.75);
+    XCTAssertLessThanOrEqual(CGRectGetWidth(CGRectIntersection(splitFrame, splitSafariFrame)), 1,
+        @"Mote and Safari remained overlapping instead of tiled: Mote %@ Safari %@",
+        NSStringFromCGRect(splitFrame), NSStringFromCGRect(splitSafariFrame));
+
+    for (NSString *page in galleryPages()) {
+        XCUIElement *button = app.buttons[page];
+        XCTAssertTrue([button waitForExistenceWithTimeout:5]);
+        [button tap];
+        [self assertText:[@"Selected " stringByAppendingString:page] app:app];
+        if ([page isEqualToString:@"List"]) {
+            XCTAssertTrue([self galleryElement:@"Open draft" kind:@"action" app:app].exists);
+        } else {
+            [self assertObservedGalleryInventory:page app:app];
+        }
+    }
+    [app.buttons[@"Toggle"] tap];
+    XCUIElement *toggle = [self galleryElement:@"Enable preview" kind:@"toggle" app:app];
+    NSString *value = toggle.value;
+    [toggle tap];
+    XCTAssertNotEqualObjects(toggle.value, value);
+    [app.buttons[@"Select"] tap];
+    [app.buttons[@"Priority"] tap];
+    XCTAssertTrue([app.buttons[@"High"] waitForExistenceWithTimeout:5]);
+    [app.buttons[@"High"] tap];
+    XCTAssertEqualObjects(app.buttons[@"Priority"].value, @"High");
+    [app.buttons[@"List"] tap];
+    XCUIElement *lastItem = [self galleryElement:@"Open item 20" kind:@"action" app:app];
+    for (NSUInteger attempt = 0; attempt < 10 && !lastItem.exists; attempt++) {
+        XCUICoordinate *start = [app.windows.firstMatch
+            coordinateWithNormalizedOffset:CGVectorMake(0.85, 0.72)];
+        XCUICoordinate *end = [app.windows.firstMatch
+            coordinateWithNormalizedOffset:CGVectorMake(0.85, 0.2)];
+        [start pressForDuration:0.05 thenDragToCoordinate:end];
+    }
+    XCTAssertTrue([lastItem waitForExistenceWithTimeout:5]);
+    [lastItem tap];
+    [self assertText:@"Action: gallery.item.20" app:app];
+    [self attachPhysicalState:@"physical-split-view-gallery" app:app details:@{
+        @"full_frame":NSStringFromCGRect(fullFrame), @"split_frame":NSStringFromCGRect(splitFrame),
+        @"first_safari_frame":NSStringFromCGRect(firstSafariFrame),
+        @"first_mote_frame":NSStringFromCGRect(firstMoteFrame),
+        @"split_safari_frame":NSStringFromCGRect(splitSafariFrame),
+        @"safari_visible":@(springboard.icons[@"Safari"].exists)}];
+
+    [safariApp terminate];
+    [app activate];
+    [app terminate];
 }
 - (void)testOfflineGalleryLaunchRemainsInForeground {
     XCUIApplication *app = [[XCUIApplication alloc] init];

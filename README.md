@@ -84,9 +84,9 @@ Copy this goal into a driver. Its current scope is the distinct device build, in
 ```text
 Continue mote from repository state at ~/projects/mote without relying on chat history.
 
-Read AGENTS.md, docs/rfcs/v0.md, docs/superpowers/specs/2026-10-11-ipad-host.md, root README.md -> Ready for Go, and docs/HANDOFF.md if present. Active ACs are IPAD-06 through IPAD-13 under Ready for Go. IPAD-11 is verified. Complete the manual CI release path before physical IPAD-06 and IPAD-08. Verify IPAD-13 on the paired Simulator. HOST-05 under Native iPad Simulator host and V0-53 under v0 build list remain open for a later owner-present session. Do not mark them passed or remove their Verify clauses. IPAD-01 through IPAD-05 are verified; recheck affected behavior after distribution changes. Backlog, external testing, App Review, public release and cloud relay remain out of scope.
+Read AGENTS.md, docs/rfcs/v0.md, docs/superpowers/specs/2026-10-11-ipad-host.md, root README.md -> Ready for Go, and docs/HANDOFF.md if present. IPAD-06, IPAD-11 and IPAD-13 are verified. Active device-delivery ACs are IPAD-08 and IPAD-12. HOST-05 under Native iPad Simulator host and V0-53 under the v0 build list also remain open. Do not mark them passed or remove their Verify clauses without completing their literal checks. Recheck affected physical behavior after distribution changes. Backlog, external testing, App Review, public release and cloud relay remain out of scope.
 
-First deliver a separate Mote build processed and available to internal TestFlight testers. Physical iPad installation and the device journeys follow when hardware is available. The final outcome remains the same Rust immediate-mode Matrix UI, paired host gateway, inferred surfaces and browser approval on that iPad. It must not collide with any existing app. TestFlight does not make the Mac reachable from another city. Do not claim remote use without a separately verified route. Keep models.local_only true, use only the approved Ollama models, ledger every model call and redact stored events.
+Complete the Mote-only manual CI upload path, install the processed build through internal TestFlight and repeat the named IPAD-08 journeys on the connected physical iPad. The final outcome remains the same Rust immediate-mode Matrix UI, paired host gateway, inferred surfaces and browser approval on that iPad. It must not collide with any existing app. TestFlight does not make the Mac reachable from another city. Do not claim remote use without a separately verified route. Keep models.local_only true, use only the approved Ollama models, ledger every model call and redact stored events.
 
 Choose the smallest actionable AC or coherent dependency set. Inspect existing code and Apple account state first. If delegation is available and authorized, send bounded work to the least costly capable subagent with AC IDs, owned files, dependencies and evidence requirements. Inspect every result. Otherwise work directly. Add an AC for any discovered in-scope gap and reopen its parent. Never remove or weaken an unmet requirement.
 
@@ -307,7 +307,7 @@ Execution is split into the [host foundation](docs/superpowers/plans/2026-10-11-
 The separate App Store Connect listing is [Mote Agent](https://appstoreconnect.apple.com/apps/6822101041/distribution/info), Apple ID `6822101041`, bundle ID `com.beelol.mote`, SKU `mote-ipad-001`, on team `FQ6YGD7554`. The native app still displays `Mote`. The owner chose the listing name after Apple rejected `Mote` as already in use.
 
 - [ ] **[Physical iPad and TestFlight](docs/superpowers/specs/2026-10-11-ipad-host.md#distribution)**
-  - [ ] **IPAD-06** A physical iPad passes touch, keyboard, rotation, split view, background recovery,
+  - [x] **IPAD-06** A physical iPad passes touch, keyboard, rotation, split view, background recovery,
     local-network permission, light and dark appearance, reduced motion and VoiceOver checks.
     **Verify:** repeat the named journeys on the device, including center and edge taps for every
     control, and record the device, iPadOS version, role tree, screenshots and observed recovery.
