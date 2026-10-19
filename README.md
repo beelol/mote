@@ -120,8 +120,8 @@ authoritative. Physical iPad voice testing and external Apple work are deferred.
     adapter-specific state. [evidence](docs/verification/P2-02.md)
   - [x] **P2-03** One active task, the FIFO queue and atomic redacted transition events survive
     failure and restart. [evidence](docs/verification/P2-03.md)
-  - [ ] **P2-04** Startup and live harness selection apply only at a safe checkpoint and never
-    fall back silently.
+  - [x] **P2-04** Startup and live harness selection apply only at a safe checkpoint and never
+    fall back silently. [evidence](docs/verification/P2-04.md)
   - [ ] **P2-05** OpenCode runs behind `mote-hrns` with built-in tools disabled and Mote-owned
     continuity.
   - [ ] **P2-06** The native adapter performs ledgered structured steps through approved local

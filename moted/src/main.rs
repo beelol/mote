@@ -1943,13 +1943,15 @@ mod approval_dispatch_tests {
             Arc::new(AllowAll),
         )
         .unwrap();
+        let configured_harness =
+            hrns::configured_harness(config.get_json("agent.harness").as_ref()).unwrap();
         Daemon {
             browser: Mutex::new(None),
             host_id: mote_protocol::HostId::from_public_key(&[7;32]),
             gateway: Mutex::new(None),
             log,
             config: Mutex::new(config),
-            harness: Mutex::new(hrns::daemon_runtime(mote_hrns::HarnessKind::Opencode).unwrap()),
+            harness: Mutex::new(hrns::daemon_runtime(configured_harness).unwrap()),
             native: Mutex::new(test_native_runtime(data_dir)),
             character: Arc::new(Mutex::new(Charter {
                 front: FrontMatter {
@@ -2018,6 +2020,40 @@ mod approval_dispatch_tests {
         assert_eq!(daemon.config.lock().unwrap().get_json("agent.harness"), None);
         assert_eq!(
             daemon.call("status", json!({})).unwrap()["harness"],
+            json!({"configured":"opencode","active":"opencode","pending":null})
+        );
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn selected_harness_survives_daemon_reconstruction_without_fallback() {
+        let (data, _) = dirs("harness-restart");
+        {
+            let daemon = daemon(&data);
+            daemon
+                .call(
+                    "config.set",
+                    json!({"key":"agent.harness","value":"mote"}),
+                )
+                .unwrap();
+        }
+
+        let restarted = daemon(&data);
+        assert_eq!(
+            restarted.call("status", json!({})).unwrap()["harness"],
+            json!({"configured":"mote","active":"mote","pending":null})
+        );
+        restarted
+            .call(
+                "config.set",
+                json!({"key":"agent.harness","value":"opencode"}),
+            )
+            .unwrap();
+        drop(restarted);
+
+        let reverted = daemon(&data);
+        assert_eq!(
+            reverted.call("status", json!({})).unwrap()["harness"],
             json!({"configured":"opencode","active":"opencode","pending":null})
         );
         std::fs::remove_dir_all(data.parent().unwrap()).ok();

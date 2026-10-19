@@ -189,13 +189,13 @@
   means `opencode` without changing `DEFAULT_CONFIG_TOML`.
 - Produces: `HarnessSelection { configured, active, pending }` and `HrnsRuntime::request_harness(HarnessKind) -> Result<SwitchStatus, SwitchError>`.
 
-- [ ] **Step 1:** Add config tests that accept the optional key while proving first-start
+- [x] **Step 1:** Add config tests that accept the optional key while proving first-start
   `DEFAULT_CONFIG_TOML` remains byte-for-byte unchanged and resolves to OpenCode.
-- [ ] **Step 2:** Add switch tests for idle, model step, tool execution and waiting approval, plus unavailable target and revert.
-- [ ] **Step 3:** Run the tests and confirm they fail before schema and runtime support exist.
-- [ ] **Step 4:** Implement pending selection and apply it only when no model, effect, approval commit or store transaction is in flight.
-- [ ] **Step 5:** Expose configured, active and pending values through the existing pipeline snapshot and Matrix binding.
-- [ ] **Step 6:** Run targeted and workspace gates, add P2-04 evidence, commit `feat: switch harnesses at checkpoints` and push.
+- [x] **Step 2:** Add switch tests for idle, model step, tool execution and waiting approval, plus unavailable target and revert.
+- [x] **Step 3:** Run the tests and confirm they fail before schema and runtime support exist.
+- [x] **Step 4:** Implement pending selection and apply it only when no model, effect, approval commit or store transaction is in flight.
+- [x] **Step 5:** Expose configured, active and pending values through the existing pipeline snapshot and Matrix binding.
+- [x] **Step 6:** Run targeted and workspace gates, add P2-04 evidence, commit `feat: switch harnesses at checkpoints` and push.
 
 ### Task 9: Matrix task surfaces
 
