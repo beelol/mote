@@ -35,6 +35,7 @@ sha2.workspace = true
 matrix-lang = { path = "../crates/matrix-lang" }
 serde_json.workspace = true
 serde.workspace = true
+schemars.workspace = true
 toml.workspace = true
 notify.workspace = true
 rusqlite.workspace = true

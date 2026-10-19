@@ -374,12 +374,13 @@ impl ContextStore {
     pub fn record(&self, pack: &Pack, entry: &LedgerEntry) -> rusqlite::Result<(i64, i64)> {
         let now = self.now();
         let parts_json = serde_json::to_string(&pack.parts).unwrap();
-        self.conn.execute(
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
             "INSERT INTO packs(lane, parts, token_estimate, created_at) VALUES(?1, ?2, ?3, ?4)",
             rusqlite::params![pack.lane, parts_json, pack.token_estimate() as i64, now],
         )?;
-        let pack_id = self.conn.last_insert_rowid();
-        self.conn.execute(
+        let pack_id = tx.last_insert_rowid();
+        tx.execute(
             "INSERT INTO ledger(ts, lane, model, pack_id, prompt_tokens, completion_tokens,
                  latency_ms, latency_kind, cost_usd, status)
              VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -396,7 +397,8 @@ impl ContextStore {
                 entry.status
             ],
         )?;
-        let ledger_id = self.conn.last_insert_rowid();
+        let ledger_id = tx.last_insert_rowid();
+        tx.commit()?;
         Ok((pack_id, ledger_id))
     }
 
@@ -539,6 +541,25 @@ mod tests {
         }
         assert_eq!(store.count_packs().unwrap(), 3);
         assert_eq!(store.count_ledger().unwrap(), 3);
+    }
+
+    #[test]
+    fn record_rolls_back_pack_when_ledger_insert_fails() {
+        let store = ContextStore::open_in_memory().unwrap();
+        store
+            .conn()
+            .execute_batch(
+                "CREATE TRIGGER reject_ledger_insert
+                 BEFORE INSERT ON ledger
+                 BEGIN
+                     SELECT RAISE(ABORT, 'injected ledger failure');
+                 END;",
+            )
+            .unwrap();
+
+        assert!(store.record(&sample_pack(), &entry()).is_err());
+        assert_eq!(store.count_packs().unwrap(), 0);
+        assert_eq!(store.count_ledger().unwrap(), 0);
     }
 
     #[test]

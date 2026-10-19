@@ -23,6 +23,8 @@ pub(crate) mod lanes;
 pub(crate) mod matrix;
 mod mcp;
 pub(crate) mod model_call;
+#[allow(dead_code)]
+mod native_step;
 pub(crate) mod pipeline;
 mod service;
 mod shutdown;

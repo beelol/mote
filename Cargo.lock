@@ -2937,6 +2937,7 @@ dependencies = [
  "mote-ui",
  "notify",
  "rusqlite",
+ "schemars",
  "serde",
  "serde_json",
  "sha2",
