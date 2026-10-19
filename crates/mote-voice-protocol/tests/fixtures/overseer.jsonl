@@ -1,0 +1,23 @@
+{"cmd":"speak","line":1,"text":"hello"}
+{"cmd":"restore"}
+{"cmd":"stop","line":1,"at":"phrase"}
+{"cmd":"hint","text":"project words"}
+{"cmd":"suppress","ms":250}
+{"cmd":"feed","pcm":"AA=="}
+{"cmd":"feed_end"}
+{"cmd":"simulate","speech":"hello","voice":null,"speechlike":null,"noise":null,"words":null,"gain":0.5}
+{"cmd":"script","lines":[{"start_ms":0,"end_ms":100,"text":"hello"}]}
+{"cmd":"quit"}
+{"type":"ready","input":"mic","model":"local","t_ms":1}
+{"type":"gate","open":true,"t_ms":2}
+{"type":"level","source":"owner","value":0.5,"t_ms":3}
+{"type":"level","source":"agent","value":0.25,"t_ms":4}
+{"type":"words","id":1,"text":"hello","t_ms":5}
+{"type":"utterance","id":1,"text":"hello","complete":true,"start_ms":1,"end_ms":6,"t_ms":6}
+{"type":"dropped","id":2,"text":"echo","reason":"echo","t_ms":7}
+{"type":"barge","id":3,"text":"stop now","stop_word":true,"t_ms":8}
+{"type":"spoke","line":1,"event":"phrase","phrase":0,"t_ms":9}
+{"type":"error","message":"unavailable","t_ms":10}
+{"type":"paused","apps":["call"],"t_ms":11}
+{"type":"resumed","t_ms":12}
+{"type":"end","t_ms":13,"held_max_ms":30000}

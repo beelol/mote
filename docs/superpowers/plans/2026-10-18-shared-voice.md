@@ -16,7 +16,8 @@
 - Keep `daemon/src/voice` orchestration in Overseer.
 - Emit no raw audio in production events and open no outbound socket.
 - Hold at most 30 seconds of audio and cap one utterance at 90 seconds.
-- Keep voice off by default and typed interaction available after any voice failure.
+- Include the voice surface by default, keep capture stopped until explicit owner action and keep
+  typed interaction available after any voice failure.
 - Keep iPad microphone capture, Pi audio, Moonshine, Pocket TTS and full duplex deferred.
 - Run workspace tests and strict clippy before every commit, add criterion evidence and push.
 
@@ -46,12 +47,12 @@
 - Produces `decode_command(line: &str, mode: InputMode)` where `InputMode::Production` refuses
   `Command::Feed`, `FeedEnd`, `Simulate` and `Script`.
 
-- [ ] **Step 1:** Copy and redact the protocol fixture from the pinned Overseer revision, replacing product source labels with `agent` while preserving all other wire shapes.
-- [ ] **Step 2:** Write golden tests for every command and event, unknown fields, malformed JSON and production refusal of PCM feed commands.
-- [ ] **Step 3:** Run `cargo test -p mote-voice-protocol` and confirm it fails before the crate exists.
-- [ ] **Step 4:** Implement the protocol with strict serde decoding and no product string.
-- [ ] **Step 5:** Run the targeted tests and a source scan for `Overseer`, `Mote` and raw PCM in production event variants.
-- [ ] **Step 6:** Run workspace gates, add P2V-01 evidence, commit `feat: define shared voice protocol` and push.
+- [x] **Step 1:** Copy and redact the protocol fixture from the pinned Overseer revision, replacing product source labels with `agent` while preserving all other wire shapes.
+- [x] **Step 2:** Write golden tests for every command and event, unknown fields, malformed JSON and production refusal of PCM feed commands.
+- [x] **Step 3:** Run `cargo test -p mote-voice-protocol` and confirm it fails before the crate exists.
+- [x] **Step 4:** Implement the protocol with strict serde decoding and no product string.
+- [x] **Step 5:** Run the targeted tests and a source scan for `Overseer`, `Mote` and raw PCM in production event variants.
+- [x] **Step 6:** Run workspace gates, add P2V-01 evidence, commit `feat: define shared voice protocol` and push.
 
 ### Task 2: Portable voice core
 
@@ -132,11 +133,13 @@
 - Modify: `moted/src/pipeline.rs`
 
 **Interfaces:**
-- Accepts optional keys `voice.enabled`, `voice.input` and `voice.model_path`; absence means voice
-  off and leaves `DEFAULT_CONFIG_TOML` unchanged.
+- Voice controls are present in normal builds without a developer configuration key. Capture is
+  stopped until an owner start action and platform permission. Optional `voice.input` and
+  `voice.model_path` overrides remain local-only and leave `DEFAULT_CONFIG_TOML` unchanged.
 - Produces: `VoiceSupervisor::start`, `stop`, `send`, `state` and `VoiceState::{Off, Starting, Listening, Hearing, Thinking, Speaking, Paused, Unavailable, Error}`.
 
-- [ ] **Step 1:** Add config and supervisor tests for default-off, start, clean stop, malformed event, child crash and rapid-failure backoff.
+- [ ] **Step 1:** Add supervisor tests for default availability with no capture, permission denial,
+  start, clean stop, malformed event, child crash and rapid-failure backoff.
 - [ ] **Step 2:** Run the tests and confirm missing config keys and supervisor APIs fail.
 - [ ] **Step 3:** Implement child supervision with bounded restart attempts and redacted state events.
 - [ ] **Step 4:** Prove typed turns continue when voice is unavailable or the child exits.
@@ -175,9 +178,11 @@
 
 **Interfaces:**
 - Consumes: `VoiceState`, partial words, current spoken line and redacted error.
-- Produces: bounded Matrix bindings with no audio bytes or model path.
+- Produces: a default circling-avatar Matrix surface with bounded bindings, an accessible state
+  label, reduced-motion behavior and no audio bytes or model path.
 
-- [ ] **Step 1:** Add deterministic surface snapshots for every voice state and transitions that replace partial words without stale controls.
+- [ ] **Step 1:** Add deterministic surface snapshots for every voice state, active and reduced
+  avatar motion and transitions that replace partial words without stale controls.
 - [ ] **Step 2:** Implement the Matrix surface and run Mac headless and iPad Simulator host-protocol journeys.
 - [ ] **Step 3:** Record source files, pinned revision, license inventory, notices and redaction scans for all shared crates.
 - [ ] **Step 4:** Create a clean Overseer worktree, replace only its listener foundation with pinned Mote Git dependencies and run its voice and daemon boundary tests.

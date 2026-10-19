@@ -6,49 +6,43 @@ Updated 2026-10-18 in America/Los_Angeles. This file is a replacement snapshot.
 
 Deliver the owner-activated Phase 2 runtime, shared voice foundations and replaceable memory
 backends on `main`. OpenCode and SQLite remain the defaults. Local-only model rules remain in
-force. Physical iPad voice checks and external Apple work are deferred until a complete build is
-ready.
+force. Voice controls will be present by default, while capture starts only after owner action and
+platform permission. Physical iPad voice checks and external Apple work remain deferred.
 
-## Completed foundations
+## Current verified batch
 
-The durable driver has common contracts, one active FIFO task, restart recovery, OpenCode and
-native adapters, guarded action receipts, bounded context and restart-safe owner input. Owner
-input resumes exactly once, preserves the adapter checkpoint and is redacted before its atomic
-event and checkpoint write. P2-03 is complete. P2-05, P2-07, P2-08 and P2-09 remain open for their
-production integration and full Verify clauses.
+The native Mote harness is now an opt-in daemon path. Selecting `agent.harness = "mote"` sends an
+owner handoff through the durable driver, approved local structured model boundary and shared
+database. Every tool proposal is held before execution. Direct and Matrix selection tests pass;
+absent configuration still selects OpenCode. P2-06 remains partial until action approval resumes
+the driver and complete daemon failure journeys pass.
 
-The daemon contains a production-shaped native step client. It fixes the approved model and
-context, validates the strict schema, applies the configured gate, redacts before every boundary
-and records one atomic context-pack and ledger pair for every attempt. It is intentionally not
-activated yet, so OpenCode remains the default and P2-06 remains partial.
+The Overseer delegate has a concrete owner-only Unix-socket client matching local Overseer commit
+`a7a5cac0`. It performs the protocol-v1 hello, bounded submission, strict event replay and
+permission replies. P2-11 remains partial until identities and cursors are durable, daemon coding
+routing exists and fixture and opt-in live journeys pass.
 
-The common benchmark now has strict bounded fixtures and report scoring for both harnesses. It
-covers all eight required personal-task journeys and fails on wrong citations, cross-realm memory,
-approval errors, duplicate effects, recovery failures and usage bounds. It does not yet run the
-production harnesses, so P2-10 and P2-12 remain open.
+The personal-task benchmark has a deterministic injected runner, validates the whole ordered suite
+before execution and fails immediately on executor or usage-bound failure. P2-12 remains partial
+until production OpenCode and Mote executors run the same fixtures and publish a comparison.
 
-The Overseer delegate contract bounds submissions, progress, permissions and completion behind a
-transport interface and gives Mote no worktree authority. The local Overseer source was inspected
-at `a7a5cac0`. The real socket client, durable cursor mirroring and live worktree fixture remain,
-so P2-11 is partial.
-
-`mote-memory` defines the backend-neutral scoped contract and `mote-memory-sqlite` implements it.
-SQLite remains the production default. Tencent remains an opt-in comparison candidate and is not
-wired into production.
+P2V-01 is complete. `mote-voice-protocol` is product-neutral, strict and bounded; fixture audio
+commands are unavailable in production mode and events contain no audio. The next voice work is
+the portable deterministic gate, endpoint and word-decision crate, followed by the optional macOS
+runtime and default circling-avatar Matrix surface.
 
 ## Verification state
 
-Focused tests for context atomicity, owner-input resume, native ledgering, benchmark scoring and
-Overseer delegation pass. Focused all-target clippy and `git diff --check` pass. Run the full
-workspace test and clippy gates immediately before every commit. The workspace tests need local
-loopback permission for their scripted servers.
+`cargo test --workspace` passed with explicit live hardware, Simulator, Bonjour and headed-browser
+tests ignored. `cargo clippy --workspace -- -D warnings`, the focused socket, benchmark, native and
+voice suites and `git diff --check` pass. The workspace tests require local loopback permission for
+their scripted servers.
 
 Preserve the owner's untracked `.DS_Store` and `.superpowers/`.
 
 ## Next action
 
-Commit and push the four verified increments separately. Then wire the native step client through
-the daemon's durable driver, add a real Overseer socket transport with atomic cursor mirroring and
-build the benchmark runner against the production OpenCode and Mote harness paths. Keep OpenCode
-and SQLite as defaults until the full comparison passes and the owner separately approves a
-change.
+Commit and push this verified batch in small increments. Then implement `mote-voice-core`, continue
+native action reconciliation and durable Overseer delegation, and add deterministic production
+benchmark executors. After the portable voice logic is stable, add the macOS listener and expose
+voice in the Matrix app with a circling avatar, accessible labels and reduced-motion behavior.

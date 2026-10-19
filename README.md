@@ -141,19 +141,20 @@ authoritative. Physical iPad voice testing and external Apple work are deferred.
     native-default release. This criterion is not active.
 
 - [ ] **[P2 shared voice foundations](docs/superpowers/specs/2026-10-17-shared-voice.md)**
-  - [ ] **P2V-01** The voice protocol is product-neutral and golden-compatible with the pinned
-    Overseer source without carrying production PCM.
+  - [x] **P2V-01** The voice protocol is product-neutral and golden-compatible with the pinned
+    Overseer source without carrying production PCM. [evidence](docs/verification/P2V-01.md)
   - [ ] **P2V-02** PCM, gate, endpoint and word logic run deterministically without OS, model,
     daemon or network dependencies.
   - [ ] **P2V-03** The optional macOS crate provides local capture, call detection, Whisper and
     in-memory speech.
   - [ ] **P2V-04** The listener enforces audio bounds and opens no outbound socket.
-  - [ ] **P2V-05** `moted` supervises voice behind an off-by-default setting without breaking
-    typed interaction.
+  - [ ] **P2V-05** `moted` includes voice in normal app builds, starts capture only after an
+    explicit owner action and permission and never breaks typed interaction.
   - [ ] **P2V-06** Final utterances enter `mote-hrns` once while partial events never invoke a
     harness.
   - [ ] **P2V-07** Speech interruption preserves played context and outstanding approvals.
-  - [ ] **P2V-08** Matrix shows every voice state on Mac and through the iPad host protocol.
+  - [ ] **P2V-08** Matrix shows every voice state through a default circling-avatar surface on
+    Mac and through the iPad host protocol.
   - [ ] **P2V-09** Derived crates record source, revision, licenses and redacted fixtures.
   - [ ] **P2V-10** A clean Overseer worktree consumes the pinned shared crates without boundary
     regressions.

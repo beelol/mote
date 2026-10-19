@@ -1,0 +1,5 @@
+Portions of the wire protocol design were derived from Overseer revision
+2b1a19a9b6e639628367a22e16155af20df4f86a.
+
+Overseer is Copyright 2026 Bilal Saib and is available under the MIT License.
+The derived code in this crate is licensed under MIT OR Apache-2.0 as declared by this workspace.

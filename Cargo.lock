@@ -2918,6 +2918,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mote-voice-protocol"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "moted"
 version = "0.0.0"
 dependencies = [
