@@ -1,5 +1,22 @@
 use mote_hrns::HarnessKind;
 
+pub type DaemonHarnessRuntime = HarnessRuntime<fn(HarnessKind) -> bool>;
+
+pub fn daemon_runtime(configured: HarnessKind) -> Result<DaemonHarnessRuntime, SwitchError> {
+    HarnessRuntime::new(configured, daemon_harness_available)
+}
+
+fn daemon_harness_available(harness: HarnessKind) -> bool {
+    matches!(harness, HarnessKind::Opencode)
+}
+
+pub fn harness_name(harness: HarnessKind) -> &'static str {
+    match harness {
+        HarnessKind::Opencode => "opencode",
+        HarnessKind::Mote => "mote",
+    }
+}
+
 pub fn configured_harness(value: Option<&serde_json::Value>) -> Result<HarnessKind, SwitchError> {
     match value.and_then(serde_json::Value::as_str) {
         None | Some("opencode") => Ok(HarnessKind::Opencode),
@@ -84,14 +101,19 @@ where
         self.selection
     }
 
+    pub fn validate_harness(&self, harness: HarnessKind) -> Result<(), SwitchError> {
+        if !(self.available)(harness) {
+            return Err(SwitchError::Unavailable(harness));
+        }
+        Ok(())
+    }
+
     pub fn enter(&mut self, phase: RuntimePhase) {
         self.selection.phase = phase;
     }
 
     pub fn request_harness(&mut self, harness: HarnessKind) -> Result<SwitchStatus, SwitchError> {
-        if !(self.available)(harness) {
-            return Err(SwitchError::Unavailable(harness));
-        }
+        self.validate_harness(harness)?;
         self.selection.configured = harness;
         if harness == self.selection.active {
             self.selection.pending = None;

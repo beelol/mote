@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 pub const PIPELINE_EVENT_LIMIT: usize = 200;
 pub const PIPELINE_REQUEST_LIMIT: usize = RETENTION_LIMIT as usize;
-pub const CONFIG_KEYS: [&str; 9] = [
+pub const CONFIG_KEYS: [&str; 10] = [
     "models.local_only",
     "models.talk",
     "models.router",
@@ -16,6 +16,7 @@ pub const CONFIG_KEYS: [&str; 9] = [
     "budgets.think_first_token",
     "packs.talk",
     "packs.think",
+    "agent.harness",
 ];
 const HOUR_MS: i64 = 60 * 60 * 1000;
 
@@ -26,9 +27,17 @@ pub struct PipelineSnapshot {
     pub request_limit: usize,
     pub window_ms: i64,
     pub config: BTreeMap<String, Value>,
+    pub harness: HarnessSnapshot,
     pub events: Vec<Event>,
     pub numbers: Vec<StageNumbers>,
     pub requests: Vec<RequestRow>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HarnessSnapshot {
+    pub configured: String,
+    pub active: String,
+    pub pending: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -60,6 +69,7 @@ pub fn build_snapshot(
     log: &EventLog,
     store: &ContextStore,
     config: BTreeMap<String, Value>,
+    harness: HarnessSnapshot,
     now: i64,
 ) -> rusqlite::Result<PipelineSnapshot> {
     let cutoff = now.saturating_sub(HOUR_MS);
@@ -105,6 +115,7 @@ pub fn build_snapshot(
         request_limit: PIPELINE_REQUEST_LIMIT,
         window_ms: HOUR_MS,
         config,
+        harness,
         events,
         numbers,
         requests,
@@ -181,6 +192,14 @@ mod tests {
         .collect()
     }
 
+    fn harness() -> HarnessSnapshot {
+        HarnessSnapshot {
+            configured: "opencode".into(),
+            active: "opencode".into(),
+            pending: None,
+        }
+    }
+
     fn pack(lane: &str) -> mote_context::Pack {
         PackBuilder::new(lane)
             .part(PartKind::Charter, "house.md", "be kind")
@@ -211,7 +230,7 @@ mod tests {
         let log = EventLog::open_in_memory().unwrap();
         let store = ContextStore::open_in_memory().unwrap();
 
-        let snapshot = build_snapshot(&log, &store, config(), 10_000).unwrap();
+        let snapshot = build_snapshot(&log, &store, config(), harness(), 10_000).unwrap();
 
         assert_eq!(snapshot.event_limit, PIPELINE_EVENT_LIMIT);
         assert_eq!(snapshot.request_limit, PIPELINE_REQUEST_LIMIT);
@@ -269,7 +288,7 @@ mod tests {
             record(&store, latency, prompt, completion, cost);
         }
 
-        let snapshot = build_snapshot(&log, &store, config(), request.ts).unwrap();
+        let snapshot = build_snapshot(&log, &store, config(), harness(), request.ts).unwrap();
 
         assert_eq!(snapshot.events.len(), PIPELINE_EVENT_LIMIT);
         assert!(snapshot.events.windows(2).all(|pair| pair[0].seq > pair[1].seq));
@@ -307,7 +326,7 @@ mod tests {
         *clock.lock().unwrap() = now;
         record(&store, 25, 20, 2, 0.2);
 
-        let snapshot = build_snapshot(&log, &store, config(), now).unwrap();
+        let snapshot = build_snapshot(&log, &store, config(), harness(), now).unwrap();
 
         assert_eq!(snapshot.window_ms, HOUR_MS);
         let talk = snapshot.numbers.iter().find(|row| row.stage == "talk").unwrap();
@@ -338,10 +357,10 @@ mod tests {
             )
             .unwrap();
 
-        let snapshot = build_snapshot(&log, &store, config(), i64::MAX / 2).unwrap();
+        let snapshot = build_snapshot(&log, &store, config(), harness(), i64::MAX / 2).unwrap();
 
         assert!(snapshot.numbers.is_empty(), "the synthetic row is outside the hour");
-        let snapshot = build_snapshot(&log, &store, config(),
+        let snapshot = build_snapshot(&log, &store, config(), harness(),
             store.ledger_since(0).unwrap()[0].ts).unwrap();
         let talk = snapshot.numbers.iter().find(|row| row.stage == "talk").unwrap();
         assert_eq!(talk.calls, 1);
@@ -364,7 +383,14 @@ mod tests {
             .unwrap();
         let store = ContextStore::open_in_memory().unwrap();
 
-        let snapshot = build_snapshot(&log, &store, config(), request.ts + HOUR_MS + 1).unwrap();
+        let snapshot = build_snapshot(
+            &log,
+            &store,
+            config(),
+            harness(),
+            request.ts + HOUR_MS + 1,
+        )
+        .unwrap();
 
         assert_eq!(snapshot.requests.len(), 1);
         assert_eq!(snapshot.requests[0].payload["request_id"], "old");

@@ -111,6 +111,11 @@ fn compiler_fixture() -> Result<CompilerFixture, String> {
         request_limit: pipeline::PIPELINE_REQUEST_LIMIT,
         window_ms: 3_600_000,
         config: config.clone(),
+        harness: pipeline::HarnessSnapshot {
+            configured: "opencode".into(),
+            active: "opencode".into(),
+            pending: None,
+        },
         events: Vec::new(),
         numbers,
         requests: Vec::new(),
@@ -706,6 +711,11 @@ fn surface_bindings() -> Result<matrix::HostBindings, String> {
         request_limit: pipeline::PIPELINE_REQUEST_LIMIT,
         window_ms: 3_600_000,
         config: config.clone(),
+        harness: pipeline::HarnessSnapshot {
+            configured: "opencode".into(),
+            active: "opencode".into(),
+            pending: None,
+        },
         events: Vec::new(),
         numbers: Vec::new(),
         requests: Vec::new(),
@@ -1214,7 +1224,7 @@ mod tests {
     fn compiler_benchmark_fixture_is_fixed_and_exercises_v1_bindings() {
         let fixture = compiler_fixture().unwrap();
         assert_eq!(fixture.source_hash, "6b35bde2eb18417d9b147ce0dd01fa27c0da7cd8372491829c321003ddde8293");
-        assert_eq!(fixture.combined_hash, "d4cdd34802ef22315a3b47e516f8d8eb3de8533ea0cbf0da5c471543073df86f");
+        assert_eq!(fixture.combined_hash, "85b49439449619c085a35fbd4bab1a13c3ce659914ee455eac6441b0989fe3c8");
         assert_eq!(fixture.config.len(), 9);
         assert_eq!(fixture.pipeline.numbers.len(), 5);
 

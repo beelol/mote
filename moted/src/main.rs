@@ -187,6 +187,7 @@ pub(crate) struct Daemon {
     gateway: Mutex<Option<std::sync::Weak<mote_gateway::GatewayServer>>>,
     log: EventLog,
     config: Mutex<ConfigStore>,
+    harness: Mutex<hrns::DaemonHarnessRuntime>,
     character: Arc<Mutex<Charter>>,
     store: Mutex<ContextStore>,
     client: Ollama,
@@ -200,6 +201,16 @@ pub(crate) struct Daemon {
     inferred_surface_turns: Mutex<HashMap<String, i64>>,
     data_dir: PathBuf,
     started: std::time::Instant,
+}
+
+struct HarnessPhase<'a> {
+    runtime: &'a Mutex<hrns::DaemonHarnessRuntime>,
+}
+
+impl Drop for HarnessPhase<'_> {
+    fn drop(&mut self) {
+        let _ = self.runtime.lock().unwrap().checkpoint();
+    }
 }
 
 struct MatrixCommit<'a> {
@@ -238,6 +249,76 @@ enum SurfaceInferenceOutcome {
 }
 
 impl Daemon {
+    fn harness_phase(&self, phase: hrns::RuntimePhase) -> HarnessPhase<'_> {
+        self.harness.lock().unwrap().enter(phase);
+        HarnessPhase {
+            runtime: &self.harness,
+        }
+    }
+
+    fn set_config(&self, key: &str, value: &Value) -> Result<i64, RpcError> {
+        let requested = if key == "agent.harness" {
+            let harness = hrns::configured_harness(Some(value))
+                .map_err(|error| RpcError::invalid_params(error.to_string()))?;
+            self.harness
+                .lock()
+                .unwrap()
+                .validate_harness(harness)
+                .map_err(|error| RpcError::invalid_params(error.to_string()))?;
+            Some(harness)
+        } else {
+            None
+        };
+        let seq = self
+            .config
+            .lock()
+            .unwrap()
+            .set_json(key, value)
+            .map_err(|error| RpcError::invalid_params(error.to_string()))?;
+        if let Some(harness) = requested {
+            self.harness
+                .lock()
+                .unwrap()
+                .request_harness(harness)
+                .map_err(|error| RpcError::internal(error.to_string()))?;
+        }
+        Ok(seq)
+    }
+
+    fn revert_config(&self, seq: i64) -> Result<i64, RpcError> {
+        let event = self
+            .log
+            .get(seq)
+            .map_err(|error| RpcError::internal(error.to_string()))?
+            .ok_or_else(|| RpcError::invalid_params(format!("no event at seq {seq}")))?;
+        let requested = (event.kind == "config.changed"
+            && event.payload["key"].as_str() == Some("agent.harness"))
+        .then(|| hrns::configured_harness(Some(&event.payload["old"])))
+        .transpose()
+        .map_err(|error| RpcError::invalid_params(error.to_string()))?;
+        if let Some(harness) = requested {
+            self.harness
+                .lock()
+                .unwrap()
+                .validate_harness(harness)
+                .map_err(|error| RpcError::invalid_params(error.to_string()))?;
+        }
+        let new_seq = self
+            .config
+            .lock()
+            .unwrap()
+            .revert(seq)
+            .map_err(|error| RpcError::invalid_params(error.to_string()))?;
+        if let Some(harness) = requested {
+            self.harness
+                .lock()
+                .unwrap()
+                .request_harness(harness)
+                .map_err(|error| RpcError::internal(error.to_string()))?;
+        }
+        Ok(new_seq)
+    }
+
     fn pipeline_snapshot(&self) -> Result<pipeline::PipelineSnapshot, RpcError> {
         let config = {
             let config = self.config.lock().unwrap();
@@ -248,8 +329,14 @@ impl Daemon {
                 })
                 .collect()
         };
+        let selection = self.harness.lock().unwrap().selection();
+        let harness = pipeline::HarnessSnapshot {
+            configured: hrns::harness_name(selection.configured).into(),
+            active: hrns::harness_name(selection.active).into(),
+            pending: selection.pending.map(hrns::harness_name).map(str::to_string),
+        };
         let store = self.store.lock().unwrap();
-        pipeline::build_snapshot(&self.log, &store, config, now_ms())
+        pipeline::build_snapshot(&self.log, &store, config, harness, now_ms())
             .map_err(|error| RpcError::internal(format!("read pipeline snapshot: {error}")))
     }
 
@@ -681,6 +768,7 @@ impl Daemon {
             .log
             .append(thread_id, "turn.user", &user_payload)
             .map_err(|error| RpcError::internal(format!("record turn: {error}")))?;
+        let _harness_phase = self.harness_phase(hrns::RuntimePhase::ModelStep);
 
         let (talk_model, router_model, think_model, budget, think_budget, charter_prose) = {
             let cfg = self.config.lock().unwrap();
@@ -921,11 +1009,17 @@ impl Dispatch for Daemon {
                 let uptime = self.started.elapsed().as_secs();
                 let last_seq = self.log.max_seq().unwrap_or(0);
                 let loaded = self.client.ps().unwrap_or_default();
+                let selection = self.harness.lock().unwrap().selection();
                 Ok(json!({
                     "socket": mote_paths::socket_path().to_string_lossy(),
                     "uptime_s": uptime,
                     "loaded_models": loaded,
                     "last_seq": last_seq,
+                    "harness": {
+                        "configured": hrns::harness_name(selection.configured),
+                        "active": hrns::harness_name(selection.active),
+                        "pending": selection.pending.map(hrns::harness_name),
+                    },
                 }))
             }
             "config.get" => {
@@ -942,24 +1036,14 @@ impl Dispatch for Daemon {
                 let value = params
                     .get("value")
                     .ok_or_else(|| RpcError::invalid_params("config.set needs a value"))?;
-                let seq = self
-                    .config
-                    .lock()
-                    .unwrap()
-                    .set_json(key, value)
-                    .map_err(|e| RpcError::invalid_params(e.to_string()))?;
+                let seq = self.set_config(key, value)?;
                 Ok(json!({ "seq": seq }))
             }
             "config.revert" => {
                 let seq = params.get("seq").and_then(|s| s.as_i64()).ok_or_else(|| {
                     RpcError::invalid_params("config.revert needs a seq")
                 })?;
-                let new_seq = self
-                    .config
-                    .lock()
-                    .unwrap()
-                    .revert(seq)
-                    .map_err(|e| RpcError::invalid_params(e.to_string()))?;
+                let new_seq = self.revert_config(seq)?;
                 Ok(json!({ "seq": new_seq }))
             }
             "pipeline.snapshot" => {
@@ -1057,12 +1141,7 @@ impl Dispatch for Daemon {
                             "change does not match an exposed field contract",
                         )
                     })?;
-                    let seq = self
-                        .config
-                        .lock()
-                        .unwrap()
-                        .set_json(field, &value)
-                        .map_err(|error| RpcError::invalid_params(error.to_string()))?;
+                    let seq = self.set_config(field, &value)?;
                     self.log
                         .append(thread, "ui.event", &json!({ "event": event, "args": args }))
                         .map_err(|error| RpcError::internal(format!("record UI event: {error}")))?;
@@ -1780,6 +1859,7 @@ mod approval_dispatch_tests {
             gateway: Mutex::new(None),
             log,
             config: Mutex::new(config),
+            harness: Mutex::new(hrns::daemon_runtime(mote_hrns::HarnessKind::Opencode).unwrap()),
             character: Arc::new(Mutex::new(Charter {
                 front: FrontMatter {
                     name: "mote".into(),
@@ -1801,6 +1881,92 @@ mod approval_dispatch_tests {
             data_dir: data_dir.to_path_buf(),
             started: std::time::Instant::now(),
         }
+    }
+
+    #[test]
+    fn daemon_exposes_the_effective_harness_and_rejects_unavailable_selection() {
+        let (data, _) = dirs("harness-selection");
+        let daemon = daemon(&data);
+
+        let status = daemon.call("status", json!({})).unwrap();
+        assert_eq!(
+            status["harness"],
+            json!({"configured":"opencode","active":"opencode","pending":null})
+        );
+        let pipeline = daemon.call("pipeline.snapshot", json!({})).unwrap();
+        assert_eq!(pipeline["harness"], status["harness"]);
+        {
+            let _phase = daemon.harness_phase(hrns::RuntimePhase::ModelStep);
+            assert_eq!(
+                daemon.harness.lock().unwrap().selection().phase,
+                hrns::RuntimePhase::ModelStep
+            );
+        }
+        assert_eq!(
+            daemon.harness.lock().unwrap().selection().phase,
+            hrns::RuntimePhase::Checkpoint
+        );
+
+        let before = daemon.log.max_seq().unwrap();
+        assert_eq!(
+            daemon
+                .call(
+                    "config.set",
+                    json!({"key":"agent.harness","value":"mote"}),
+                )
+                .unwrap_err()
+                .code,
+            "invalid_params"
+        );
+        assert_eq!(daemon.log.max_seq().unwrap(), before);
+        assert_eq!(daemon.config.lock().unwrap().get_json("agent.harness"), None);
+
+        let changed = daemon
+            .call(
+                "config.set",
+                json!({"key":"agent.harness","value":"opencode"}),
+            )
+            .unwrap();
+        assert_eq!(
+            daemon.call("status", json!({})).unwrap()["harness"],
+            json!({"configured":"opencode","active":"opencode","pending":null})
+        );
+        daemon
+            .call("config.revert", json!({"seq":changed["seq"]}))
+            .unwrap();
+        assert_eq!(daemon.config.lock().unwrap().get_json("agent.harness"), None);
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn matrix_can_bind_the_harness_selector_and_runtime_status() {
+        let (data, _) = dirs("harness-matrix");
+        let daemon = daemon(&data);
+        let source = "screen { select \"Harness\" agent.harness options harness_options text harness.active text harness.pending }";
+        let response = daemon.render_matrix("main", source, true).unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        let sequence = daemon.log.max_seq().unwrap();
+        let event = daemon.log.get(sequence).unwrap().unwrap();
+        assert!(event.payload.to_string().contains("opencode"));
+        assert_eq!(
+            daemon
+                .call(
+                    "ui.event",
+                    json!({
+                        "thread":"main",
+                        "surface_contract":1,
+                        "surface_seq":sequence,
+                        "node_path":[0],
+                        "event":"change",
+                        "args":{"field":"agent.harness","value":"mote"},
+                    }),
+                )
+                .unwrap_err()
+                .code,
+            "invalid_params"
+        );
+        assert_eq!(daemon.log.max_seq().unwrap(), sequence);
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
     }
 
     #[test]
@@ -4797,6 +4963,7 @@ mod turn_event_tests {
             gateway: Mutex::new(None),
             log: log.clone(),
             config: Mutex::new(config),
+            harness: Mutex::new(hrns::daemon_runtime(mote_hrns::HarnessKind::Opencode).unwrap()),
             character: Arc::new(Mutex::new(Charter {
                 front: FrontMatter {
                     name: "mote".into(),
@@ -5036,6 +5203,13 @@ fn run_status() -> Result<(), i32> {
                 .map(|a| a.iter().filter_map(|m| m.as_str().map(String::from)).collect())
                 .unwrap_or_default();
             println!("loaded models: {}", if models.is_empty() { "(none)".into() } else { models.join(", ") });
+            let configured = v["harness"]["configured"].as_str().unwrap_or("unknown");
+            let active = v["harness"]["active"].as_str().unwrap_or("unknown");
+            let pending = v["harness"]["pending"].as_str();
+            println!(
+                "harness:       configured {configured}, active {active}{}",
+                pending.map(|value| format!(", pending {value}")).unwrap_or_default()
+            );
             println!("last event:    seq {}", v["last_seq"].as_i64().unwrap_or(0));
             Ok(())
         }
@@ -5254,6 +5428,22 @@ fn run() -> Result<(), i32> {
         1
     })?;
 
+    let configured_harness_value = config.get_json("agent.harness");
+    let configured_harness = hrns::configured_harness(configured_harness_value.as_ref()).map_err(
+        |error| {
+            let reason = error.to_string();
+            let _ = log.append("daemon", "startup.refused", &json!({ "reason": reason }));
+            eprintln!("moted: {error}");
+            1
+        },
+    )?;
+    let harness = hrns::daemon_runtime(configured_harness).map_err(|error| {
+        let reason = error.to_string();
+        let _ = log.append("daemon", "startup.refused", &json!({ "reason": reason }));
+        eprintln!("moted: {error}");
+        1
+    })?;
+
     let socket = mote_paths::socket_path();
     let daemon = Arc::new(Daemon {
         browser: Mutex::new(None),
@@ -5261,6 +5451,7 @@ fn run() -> Result<(), i32> {
         gateway: Mutex::new(None),
         log,
         config: Mutex::new(config),
+        harness: Mutex::new(harness),
         character,
         store: Mutex::new(store),
         client: Ollama::local(),

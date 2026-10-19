@@ -28,6 +28,7 @@ pub(super) fn build(
         gateway: Mutex::new(None),
         log: log.clone(),
         config: Mutex::new(config),
+        harness: Mutex::new(hrns::daemon_runtime(mote_hrns::HarnessKind::Opencode).unwrap()),
         character: Arc::new(Mutex::new(Charter {
             front: charter::FrontMatter {
                 name: "mote".into(),

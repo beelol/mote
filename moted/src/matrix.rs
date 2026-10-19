@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 const MODELS: [&str; 3] = ["qwen3:4b", "qwen3:0.6b", "qwen3-coder:30b-64k"];
+const HARNESSES: [&str; 2] = ["opencode", "mote"];
 const ROUTER_BUDGET_MIN: i64 = 50;
 const ROUTER_BUDGET_MAX: i64 = 1_000;
 const ROUTER_BUDGET_STEP: i64 = 10;
@@ -21,6 +22,10 @@ pub fn canonical_change(field: &str, value: &Value) -> Option<Value> {
                 .filter(|model| MODELS.contains(model))
                 .map(|_| value.clone())
         }
+        "agent.harness" => value
+            .as_str()
+            .filter(|harness| HARNESSES.contains(harness))
+            .map(|_| value.clone()),
         "budgets.router" => {
             let number = value.as_f64()?;
             if !number.is_finite() || number.fract() != 0.0 {
@@ -441,6 +446,9 @@ pub fn host_bindings(
     manifest
         .enums
         .insert("Model".into(), EnumDefinition::new(MODELS));
+    manifest
+        .enums
+        .insert("Harness".into(), EnumDefinition::new(HARNESSES));
     manifest.records.insert(
         "PipelineStage".into(),
         RecordDefinition {
@@ -462,6 +470,10 @@ pub fn host_bindings(
         Type::List(Box::new(Type::Enum("Model".into()))).into(),
     );
     manifest.values.insert(
+        "harness_options".into(),
+        Type::List(Box::new(Type::Enum("Harness".into()))).into(),
+    );
+    manifest.values.insert(
         "pipeline.stages".into(),
         Type::List(Box::new(Type::Record("PipelineStage".into()))).into(),
     );
@@ -472,14 +484,25 @@ pub fn host_bindings(
         "host.items".into(),
         Type::List(Box::new(Type::Record("HostItem".into()))).into(),
     );
+    manifest
+        .values
+        .insert("harness.active".into(), Type::String.into());
+    manifest
+        .values
+        .insert("harness.pending".into(), Type::String.into());
     for (name, ty) in [
         ("models.local_only", Type::Boolean),
         ("models.talk", Type::Enum("Model".into())),
         ("models.router", Type::Enum("Model".into())),
         ("models.think", Type::Enum("Model".into())),
         ("budgets.router", Type::Integer),
+        ("agent.harness", Type::Enum("Harness".into())),
     ] {
-        let initial = config.get(name).cloned().unwrap_or(Value::Null);
+        let initial = if name == "agent.harness" {
+            json!(pipeline.harness.configured)
+        } else {
+            config.get(name).cloned().unwrap_or(Value::Null)
+        };
         manifest.fields.insert(
             name.into(),
             FieldDefinition {
@@ -496,6 +519,9 @@ pub fn host_bindings(
     snapshot
         .values
         .insert("model_options".into(), json!(MODELS));
+    snapshot
+        .values
+        .insert("harness_options".into(), json!(HARNESSES));
     snapshot.values.insert(
         "pipeline.stages".into(),
         Value::Array(
@@ -528,8 +554,20 @@ pub fn host_bindings(
                 .collect(),
         ),
     );
+    snapshot.values.insert(
+        "harness.active".into(),
+        json!(pipeline.harness.active),
+    );
+    snapshot.values.insert(
+        "harness.pending".into(),
+        json!(pipeline.harness.pending.as_deref().unwrap_or("none")),
+    );
     for name in manifest.fields.keys() {
-        if let Some(value) = config.get(name) {
+        if name == "agent.harness" {
+            snapshot
+                .fields
+                .insert(name.clone(), json!(pipeline.harness.configured));
+        } else if let Some(value) = config.get(name) {
             snapshot.fields.insert(name.clone(), value.clone());
         }
     }
@@ -623,6 +661,11 @@ mod contract_tests {
             request_limit: crate::pipeline::PIPELINE_REQUEST_LIMIT,
             window_ms: 3_600_000,
             config: config.clone(),
+            harness: crate::pipeline::HarnessSnapshot {
+                configured: "opencode".into(),
+                active: "opencode".into(),
+                pending: None,
+            },
             events: Vec::new(),
             numbers: Vec::new(),
             requests: Vec::new(),
@@ -674,6 +717,11 @@ mod contract_tests {
             request_limit: crate::pipeline::PIPELINE_REQUEST_LIMIT,
             window_ms: 3_600_000,
             config: config.clone(),
+            harness: crate::pipeline::HarnessSnapshot {
+                configured: "opencode".into(),
+                active: "opencode".into(),
+                pending: None,
+            },
             events: Vec::new(),
             numbers: Vec::new(),
             requests: Vec::new(),
