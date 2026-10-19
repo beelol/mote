@@ -624,3 +624,61 @@ fn input_question_survives_restart_without_another_model_call() {
     ));
     assert_eq!(script.requests.lock().unwrap().len(), 1);
 }
+
+#[test]
+fn owner_input_resumes_once_and_is_redacted_in_the_durable_event() {
+    let fixture = Fixture::new();
+    let script = Script::new([
+        Ok(HarnessReply {
+            step: ModelStep::WaitForInput {
+                question: "Which credential?".into(),
+            },
+            adapter_checkpoint: Some(json!({"session_id":"session-1"})),
+        }),
+        complete("done"),
+    ]);
+    let empty = Script::new([]);
+    let mut driver = make_driver(
+        fixture.open(),
+        script.clone(),
+        empty,
+        ExecutorState::default(),
+    );
+    let id = TaskId::new("input-resume").unwrap();
+    driver
+        .enqueue(task(id.as_str(), HarnessKind::Opencode))
+        .unwrap();
+    assert!(matches!(driver.step().unwrap(), DriverOutcome::Started(_)));
+    assert!(matches!(
+        driver.step().unwrap(),
+        DriverOutcome::WaitingForInput { .. }
+    ));
+
+    assert!(matches!(
+        driver
+            .provide_input(&id, "sk-abcdefghijklmnopqrstuv")
+            .unwrap(),
+        DriverOutcome::Resumed(_)
+    ));
+    assert!(driver.provide_input(&id, "duplicate").is_err());
+    assert!(matches!(
+        driver.step().unwrap(),
+        DriverOutcome::Completed { .. }
+    ));
+    let resumed_request = &script.requests.lock().unwrap()[1];
+    assert_eq!(
+        resumed_request
+            .checkpoint
+            .as_ref()
+            .unwrap()
+            .adapter,
+        Some(json!({"session_id":"session-1"}))
+    );
+
+    let events = EventLog::open(&fixture.path)
+        .unwrap()
+        .recent_kind_since("task.input", 0, 10)
+        .unwrap();
+    assert_eq!(events.len(), 1);
+    assert!(!events[0].payload.to_string().contains("abcdefghijklmnopqrstuv"));
+}

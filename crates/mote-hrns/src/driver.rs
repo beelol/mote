@@ -175,6 +175,43 @@ impl Driver {
         Ok(DriverOutcome::Cancelled(cancelled))
     }
 
+    pub fn provide_input(
+        &self,
+        id: &TaskId,
+        input: impl AsRef<str>,
+    ) -> Result<DriverOutcome, DriverError> {
+        let input = input.as_ref();
+        let (task, revision) = self
+            .store
+            .task_records()?
+            .into_iter()
+            .find(|(task, _)| task.id == *id)
+            .ok_or(DriverError::UnknownTask)?;
+        if task.state != TaskState::WaitingForInput || input.trim().is_empty() {
+            return Err(DriverError::CorruptState);
+        }
+        let current = self
+            .store
+            .checkpoint(&task.scope, &task.id)?
+            .ok_or(DriverError::CorruptState)?;
+        let mut resumed = task;
+        resumed.state = TaskState::Running;
+        let mut checkpoint = self.next_checkpoint(
+            &resumed,
+            current.last_action,
+            current.step,
+        )?;
+        checkpoint.adapter = current.adapter;
+        let (resumed, _) = self.store.record_input(
+            &resumed.scope,
+            &resumed.id,
+            revision,
+            input,
+            checkpoint,
+        )?;
+        Ok(DriverOutcome::Resumed(resumed))
+    }
+
     pub fn recover(&self) -> Result<DriverOutcome, DriverError> {
         let mut checkpoints = 0;
         for (task, _) in self.store.task_records()? {

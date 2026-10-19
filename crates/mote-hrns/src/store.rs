@@ -639,6 +639,46 @@ impl HrnsStore {
             .map(|(value, _)| value)
     }
 
+    pub fn record_input(
+        &self,
+        scope: &Scope,
+        id: &TaskId,
+        task_revision: u64,
+        text: &str,
+        checkpoint: Checkpoint,
+    ) -> rusqlite::Result<(Task, Checkpoint)> {
+        if text.trim().is_empty()
+            || checkpoint.task_id != *id
+            || checkpoint.state != TaskState::Running
+        {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        let event_scope = serde_json::to_string(scope)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let payload = serde_json::json!({"task_id":id,"text":text});
+        self.events
+            .append_with(&event_scope, "task.input", &payload, |tx| {
+                let (task_text, stored_revision): (String, u64) = tx.query_row(
+                    "SELECT task,revision FROM hrns_task WHERE id=?1 AND account=?2 AND realm=?3",
+                    params![id.as_str(), scope.account.as_str(), scope.realm.as_str()],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?;
+                if stored_revision != task_revision {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+                let mut task: Task = decode(task_text)?;
+                task.transition(TaskState::WaitingForInput, TaskState::Running)
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?;
+                tx.execute(
+                    "UPDATE hrns_task SET state='running',task=?1,revision=revision+1 WHERE id=?2",
+                    params![encode(&task)?, id.as_str()],
+                )?;
+                write_checkpoint_tx(tx, &checkpoint, task.state)?;
+                Ok((task, checkpoint))
+            })
+            .map(|(value, _)| value)
+    }
+
     pub fn checkpoint(
         &self,
         scope: &Scope,

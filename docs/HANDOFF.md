@@ -9,53 +9,46 @@ backends on `main`. OpenCode and SQLite remain the defaults. Local-only model ru
 force. Physical iPad voice checks and external Apple work are deferred until a complete build is
 ready.
 
-## Repository state
+## Completed foundations
 
-The checkout is `main` and pushes to `origin`. Preserve the owner's untracked `.DS_Store` and
-`.superpowers/`. Commits `37b00ab` and `765e0f4` added the guarded OpenCode adapter and routed
-completed think turns through it only when `MOTE_HRNS_OPENCODE_COMPAT=1`. P2-05 remains open
-because durable tool continuation is not wired through the daemon.
+The durable driver has common contracts, one active FIFO task, restart recovery, OpenCode and
+native adapters, guarded action receipts, bounded context and restart-safe owner input. Owner
+input resumes exactly once, preserves the adapter checkpoint and is redacted before its atomic
+event and checkpoint write. P2-03 is complete. P2-05, P2-07, P2-08 and P2-09 remain open for their
+production integration and full Verify clauses.
 
-The current action increment adds canonical request hashes, durable commit receipts,
-revision-guarded transitions, no-redispatch recovery, HRNS-bound approvals and daemon reconciliation
-of approved, denied and failed effects. Reconciliation preserves the action's account and realm.
-Evidence is in `docs/verification/P2-07.md`. P2-07 remains open until harness tool proposals create
-these approvals and run through the production executor end to end.
+The daemon contains a production-shaped native step client. It fixes the approved model and
+context, validates the strict schema, applies the configured gate, redacts before every boundary
+and records one atomic context-pack and ledger pair for every attempt. It is intentionally not
+activated yet, so OpenCode remains the default and P2-06 remains partial.
 
-A bounded-context increment preserves charter, pins and the newest owner turn; rejects cross-scope
-memory; loads visible selected skills; and requires ledgered, source-covered structured
-compaction. Its canonical renderer now supplies every ordered section from the same entries used
-for ledger hashes. The durable driver accepts that exact rendered context and fails before calling
-a harness if context construction fails. Evidence is in `docs/verification/P2-08.md`. P2-08
-remains open pending backend-neutral memory retrieval and production daemon integration.
+The common benchmark now has strict bounded fixtures and report scoring for both harnesses. It
+covers all eight required personal-task journeys and fails on wrong citations, cross-realm memory,
+approval errors, duplicate effects, recovery failures and usage bounds. It does not yet run the
+production harnesses, so P2-10 and P2-12 remain open.
 
-`mote-memory` defines the scoped backend-neutral contract. `mote-memory-sqlite` now implements it
-with transactional node, FTS and vector writes, explicit embedding model IDs, legacy hash-vector
-isolation, source attribution, correction and forget. Competing corrections and correction versus
-forget have one version-guarded winner. It is not wired into production yet, so the current SQLite
-path remains unchanged.
+The Overseer delegate contract bounds submissions, progress, permissions and completion behind a
+transport interface and gives Mote no worktree authority. The local Overseer source was inspected
+at `a7a5cac0`. The real socket client, durable cursor mirroring and live worktree fixture remain,
+so P2-11 is partial.
 
-The production daemon now owns harness selection. It preserves the exact v0 config, resolves an
-absent value to OpenCode, validates IPC and Matrix changes before persistence, exposes configured,
-active and pending state in status and pipeline snapshots, and supplies Matrix bindings for a
-selector and live state. Turn handling uses a conservative model-step phase and always returns to
-a checkpoint. The native harness is still unavailable in production, so selecting it fails
-visibly without changing configuration.
+`mote-memory` defines the backend-neutral scoped contract and `mote-memory-sqlite` implements it.
+SQLite remains the production default. Tencent remains an opt-in comparison candidate and is not
+wired into production.
 
-`mote-hrns` now also has the native structured-step adapter foundation. It supplies a strict
-generated `ModelStep` schema, a fixed prompt, an explicit tool allowlist and fail-closed handling
-for malformed output and local client failures. No model call was made. Evidence is in
-`docs/verification/P2-06.md`. P2-06 remains open until the daemon provides a ledgered
-`mote-localmodel` client and production selection path.
+## Verification state
 
-Required verification passed on 2026-10-18. The focused action, driver, store and approval tests
-passed. `cargo test --workspace` passed outside the sandbox because the browser fixture needs a
-loopback listener. `cargo clippy --workspace -- -D warnings` and `git diff --check` passed.
+Focused tests for context atomicity, owner-input resume, native ledgering, benchmark scoring and
+Overseer delegation pass. Focused all-target clippy and `git diff --check` pass. Run the full
+workspace test and clippy gates immediately before every commit. The workspace tests need local
+loopback permission for their scripted servers.
+
+Preserve the owner's untracked `.DS_Store` and `.superpowers/`.
 
 ## Next action
 
-Implement the daemon's ledgered local client for the native adapter and route production harness
-requests through the bounded context builder and durable task driver. Map OpenCode proposals into
-durable actions and bind approvals only after exact tool policy classification. Then wire the new
-SQLite adapter behind absent-value selection without allowing the legacy context path to write
-the migrated schema. Keep OpenCode and SQLite as defaults.
+Commit and push the four verified increments separately. Then wire the native step client through
+the daemon's durable driver, add a real Overseer socket transport with atomic cursor mirroring and
+build the benchmark runner against the production OpenCode and Mote harness paths. Keep OpenCode
+and SQLite as defaults until the full comparison passes and the owner separately approves a
+change.
