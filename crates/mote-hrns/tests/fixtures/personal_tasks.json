@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "fixtures": [
+    {
+      "id": "local-research",
+      "category": "sourced_local_research",
+      "account": "owner",
+      "realm": "personal",
+      "prompt": "Use the supplied local notes to state the launch date and cite the note.",
+      "bounds": { "max_steps": 8, "max_model_calls": 3, "max_prompt_tokens": 4096, "max_completion_tokens": 512 },
+      "expected": { "required_sources": ["local://notes/launch.txt"], "expected_memory_facts": 0, "approval_required": false, "queued_triggers": 0, "restart_required": false, "max_effects": 0 }
+    },
+    {
+      "id": "local-comparison",
+      "category": "comparison",
+      "account": "owner",
+      "realm": "personal",
+      "prompt": "Compare the two supplied local options and cite both source cards.",
+      "bounds": { "max_steps": 10, "max_model_calls": 3, "max_prompt_tokens": 4096, "max_completion_tokens": 768 },
+      "expected": { "required_sources": ["local://options/a.json", "local://options/b.json"], "expected_memory_facts": 0, "approval_required": false, "queued_triggers": 0, "restart_required": false, "max_effects": 0 }
+    },
+    {
+      "id": "plan-revision",
+      "category": "planning_revision",
+      "account": "owner",
+      "realm": "personal",
+      "prompt": "Make a three-step dinner plan under the supplied constraints, then apply the correction.",
+      "bounds": { "max_steps": 10, "max_model_calls": 4, "max_prompt_tokens": 4096, "max_completion_tokens": 768 },
+      "expected": { "required_sources": [], "expected_memory_facts": 0, "approval_required": false, "queued_triggers": 0, "restart_required": false, "max_effects": 0 }
+    },
+    {
+      "id": "scoped-recall",
+      "category": "scoped_recall",
+      "account": "owner",
+      "realm": "personal",
+      "prompt": "Recall the personal delivery preference and ignore the supplied work-realm decoy.",
+      "bounds": { "max_steps": 8, "max_model_calls": 3, "max_prompt_tokens": 4096, "max_completion_tokens": 512 },
+      "expected": { "required_sources": [], "expected_memory_facts": 1, "approval_required": false, "queued_triggers": 0, "restart_required": false, "max_effects": 0 }
+    },
+    {
+      "id": "browser-read-fill",
+      "category": "browser_read_fill",
+      "account": "owner",
+      "realm": "personal",
+      "prompt": "Read the local browser fixture and fill its name field without submitting.",
+      "bounds": { "max_steps": 12, "max_model_calls": 4, "max_prompt_tokens": 4096, "max_completion_tokens": 512 },
+      "expected": { "required_sources": ["browser://fixture/profile"], "expected_memory_facts": 0, "approval_required": false, "queued_triggers": 0, "restart_required": false, "max_effects": 0 }
+    },
+    {
+      "id": "queued-trigger",
+      "category": "queued_trigger",
+      "account": "owner",
+      "realm": "personal",
+      "prompt": "Queue the supplied watched trigger exactly once.",
+      "bounds": { "max_steps": 8, "max_model_calls": 3, "max_prompt_tokens": 3072, "max_completion_tokens": 512 },
+      "expected": { "required_sources": [], "expected_memory_facts": 0, "approval_required": false, "queued_triggers": 1, "restart_required": false, "max_effects": 1 }
+    },
+    {
+      "id": "held-outward-action",
+      "category": "held_outward_action",
+      "account": "owner",
+      "realm": "personal",
+      "prompt": "Prepare the supplied outward action and keep it inert until approval.",
+      "bounds": { "max_steps": 12, "max_model_calls": 4, "max_prompt_tokens": 4096, "max_completion_tokens": 512 },
+      "expected": { "required_sources": [], "expected_memory_facts": 0, "approval_required": true, "queued_triggers": 0, "restart_required": false, "max_effects": 1 }
+    },
+    {
+      "id": "restart-recovery",
+      "category": "restart_recovery",
+      "account": "owner",
+      "realm": "personal",
+      "prompt": "Resume the supplied task after its checkpoint and complete without repeating its effect.",
+      "bounds": { "max_steps": 16, "max_model_calls": 5, "max_prompt_tokens": 4096, "max_completion_tokens": 768 },
+      "expected": { "required_sources": [], "expected_memory_facts": 0, "approval_required": true, "queued_triggers": 0, "restart_required": true, "max_effects": 1 }
+    }
+  ]
+}

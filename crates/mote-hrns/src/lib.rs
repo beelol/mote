@@ -1,7 +1,9 @@
 mod action;
 mod adapter;
 pub mod adapters;
+mod benchmark;
 mod context;
+mod delegates;
 mod driver;
 mod executor;
 mod model;
@@ -10,7 +12,9 @@ mod task;
 
 pub use action::*;
 pub use adapter::*;
+pub use benchmark::*;
 pub use context::*;
+pub use delegates::*;
 pub use driver::*;
 pub use executor::*;
 pub use model::*;
