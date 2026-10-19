@@ -2797,6 +2797,7 @@ dependencies = [
  "mote-eventlog",
  "mote-harness",
  "rusqlite",
+ "schemars",
  "serde",
  "serde_json",
  "sha2",

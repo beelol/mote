@@ -13,3 +13,4 @@ mote-harness.workspace = true
 mote-context.workspace = true
 rusqlite.workspace = true
 sha2.workspace = true
+schemars.workspace = true

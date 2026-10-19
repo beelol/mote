@@ -39,8 +39,14 @@ The production daemon now owns harness selection. It preserves the exact v0 conf
 absent value to OpenCode, validates IPC and Matrix changes before persistence, exposes configured,
 active and pending state in status and pipeline snapshots, and supplies Matrix bindings for a
 selector and live state. Turn handling uses a conservative model-step phase and always returns to
-a checkpoint. The native harness is still unavailable, so selecting it fails visibly without
-changing configuration.
+a checkpoint. The native harness is still unavailable in production, so selecting it fails
+visibly without changing configuration.
+
+`mote-hrns` now also has the native structured-step adapter foundation. It supplies a strict
+generated `ModelStep` schema, a fixed prompt, an explicit tool allowlist and fail-closed handling
+for malformed output and local client failures. No model call was made. Evidence is in
+`docs/verification/P2-06.md`. P2-06 remains open until the daemon provides a ledgered
+`mote-localmodel` client and production selection path.
 
 Required verification passed on 2026-10-18. The focused action, driver, store and approval tests
 passed. `cargo test --workspace` passed outside the sandbox because the browser fixture needs a
@@ -48,8 +54,8 @@ loopback listener. `cargo clippy --workspace -- -D warnings` and `git diff --che
 
 ## Next action
 
-Finish the native structured adapter foundation, then route production harness requests through
-the bounded context builder and durable task driver. Map OpenCode proposals into durable actions
-and bind approvals only after exact tool policy classification. Then wire the new SQLite adapter
-behind absent-value selection without allowing the legacy context path to write the migrated
-schema. Keep OpenCode and SQLite as defaults.
+Implement the daemon's ledgered local client for the native adapter and route production harness
+requests through the bounded context builder and durable task driver. Map OpenCode proposals into
+durable actions and bind approvals only after exact tool policy classification. Then wire the new
+SQLite adapter behind absent-value selection without allowing the legacy context path to write
+the migrated schema. Keep OpenCode and SQLite as defaults.
