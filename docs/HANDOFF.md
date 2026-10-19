@@ -22,10 +22,11 @@ of approved, denied and failed effects. Reconciliation preserves the action's ac
 Evidence is in `docs/verification/P2-07.md`. P2-07 remains open until harness tool proposals create
 these approvals and run through the production executor end to end.
 
-A bounded-context increment is also implemented in the working tree. It preserves charter, pins
-and the newest owner turn; rejects cross-scope memory; loads visible selected skills; and requires
-ledgered, source-covered structured compaction. Evidence is in `docs/verification/P2-08.md`.
-P2-08 remains open pending backend-neutral memory retrieval and production daemon integration.
+A bounded-context increment preserves charter, pins and the newest owner turn; rejects cross-scope
+memory; loads visible selected skills; and requires ledgered, source-covered structured
+compaction. It also produces exact hashed `mote-context` ledger parts. Evidence is in
+`docs/verification/P2-08.md`. P2-08 remains open pending backend-neutral memory retrieval and
+production daemon integration.
 
 Required verification passed on 2026-10-18. The focused action, driver, store and approval tests
 passed. `cargo test --workspace` passed outside the sandbox because the browser fixture needs a
@@ -33,7 +34,6 @@ loopback listener. `cargo clippy --workspace -- -D warnings` and `git diff --che
 
 ## Next action
 
-Commit and push approval reconciliation, then commit and push the bounded-context increment after
-the workspace gates. Next, route production harness requests through the bounded builder and map
-OpenCode tool proposals into durable actions and bound approvals behind the existing compatibility
-flag. Keep the default v0 path unchanged.
+Route production harness requests through the bounded builder and map OpenCode tool proposals into
+durable actions and bound approvals behind the existing compatibility flag. Keep the default v0
+path unchanged. Add backend-neutral memory retrieval before checking P2-08.

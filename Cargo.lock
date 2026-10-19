@@ -2793,6 +2793,7 @@ dependencies = [
 name = "mote-hrns"
 version = "0.0.0"
 dependencies = [
+ "mote-context",
  "mote-eventlog",
  "mote-harness",
  "rusqlite",

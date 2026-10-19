@@ -85,6 +85,22 @@ pub struct Pack {
 }
 
 impl Pack {
+    /// Build a ledger pack from the exact texts sent to a model boundary.
+    pub fn from_texts(lane: impl Into<String>, parts: Vec<(PartKind, String, String)>) -> Self {
+        Self {
+            lane: lane.into(),
+            parts: parts
+                .into_iter()
+                .map(|(kind, source_ref, text)| Part {
+                    kind,
+                    source_ref,
+                    hash: hash_text(&text),
+                    tokens: count_tokens(&text),
+                })
+                .collect(),
+        }
+    }
+
     /// Total token estimate across parts.
     pub fn token_estimate(&self) -> usize {
         self.parts.iter().map(|p| p.tokens).sum()
@@ -190,16 +206,7 @@ impl PackBuilder {
 
         let texts: Vec<(PartKind, String)> =
             ordered.iter().map(|(k, _, t)| (*k, t.clone())).collect();
-        let parts = ordered
-            .into_iter()
-            .map(|(kind, source_ref, text)| Part {
-                kind,
-                source_ref,
-                hash: hash_text(&text),
-                tokens: count_tokens(&text),
-            })
-            .collect();
-        (Pack { lane: self.lane, parts }, texts)
+        (Pack::from_texts(self.lane, ordered), texts)
     }
 }
 
