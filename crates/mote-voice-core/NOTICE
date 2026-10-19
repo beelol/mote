@@ -1,0 +1,8 @@
+This crate contains portable voice-decision algorithms derived from the owner's Overseer source.
+
+Source repository: https://github.com/beelol/overseer
+Source revision: 2b1a19a9b6e639628367a22e16155af20df4f86a
+Source files: voice/src/pcm.rs, voice/src/gate.rs, voice/src/endpoint.rs,
+voice/src/words.rs, voice/src/synth.rs
+
+The derived implementation is distributed under this workspace's MIT OR Apache-2.0 license.

@@ -72,12 +72,12 @@
 - Produces: `PcmFrame`, `SpeechGate`, `Endpoint`, `EndpointDecision`, `WordDecision` and `classify_barge(words: &str, vocabulary: &Vocabulary) -> WordDecision`.
 - Depends only on the Rust standard library and `mote-voice-protocol`.
 
-- [ ] **Step 1:** Port deterministic silence, noise, speechlike, endpoint, timeout and stop-word fixtures from Overseer.
-- [ ] **Step 2:** Add a dependency-boundary test that rejects OS, model, daemon and network crates.
-- [ ] **Step 3:** Run the core tests and confirm they fail before the modules exist.
-- [ ] **Step 4:** Port PCM, gate, endpoint and word algorithms with product vocabulary supplied through `Vocabulary`.
-- [ ] **Step 5:** Run the fixture and dependency tests and compare decisions against the pinned Overseer outputs.
-- [ ] **Step 6:** Run workspace gates, add P2V-02 evidence, commit `feat: extract portable voice decisions` and push.
+- [x] **Step 1:** Port deterministic silence, noise, speechlike, endpoint, timeout and stop-word fixtures from Overseer.
+- [x] **Step 2:** Add a dependency-boundary test that rejects OS, model, daemon and network crates.
+- [x] **Step 3:** Run the core tests and confirm they fail before the modules exist.
+- [x] **Step 4:** Port PCM, gate, endpoint and word algorithms with product vocabulary supplied through `Vocabulary`.
+- [x] **Step 5:** Run the fixture and dependency tests and compare decisions against the pinned Overseer outputs.
+- [x] **Step 6:** Run workspace gates, add P2V-02 evidence, commit `feat: extract portable voice decisions` and push.
 
 ### Task 3: Optional macOS voice runtime
 

@@ -19,6 +19,7 @@ members = [
     "crates/mote-ui",
     "crates/mote-client-core",
     "crates/mote-voice-protocol",
+    "crates/mote-voice-core",
     "crates/mote-testkit",
     "moted",
     "mote-client",
@@ -49,6 +50,7 @@ mote-context = { path = "crates/mote-context" }
 mote-ui = { path = "crates/mote-ui" }
 mote-client-core = { path = "crates/mote-client-core" }
 mote-voice-protocol = { path = "crates/mote-voice-protocol" }
+mote-voice-core = { path = "crates/mote-voice-core" }
 mote-testkit = { path = "crates/mote-testkit" }
 
 serde = { version = "1", features = ["derive"] }

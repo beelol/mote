@@ -2918,6 +2918,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mote-voice-core"
+version = "0.0.0"
+dependencies = [
+ "mote-voice-protocol",
+]
+
+[[package]]
 name = "mote-voice-protocol"
 version = "0.0.0"
 dependencies = [
