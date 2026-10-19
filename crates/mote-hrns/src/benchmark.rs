@@ -1,8 +1,10 @@
 use schemars::{schema::RootSchema, schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::error::Error;
+use std::fmt;
 
-pub const BENCHMARK_SCHEMA_VERSION: u32 = 1;
+pub const BENCHMARK_SCHEMA_VERSION: u32 = 2;
 pub const FIXTURE_SCHEMA_VERSION: u32 = 1;
 pub const MAX_FIXTURE_STEPS: u32 = 16;
 pub const MAX_FIXTURE_MODEL_CALLS: u32 = 6;
@@ -85,6 +87,105 @@ pub struct FixtureExpectation {
     pub max_effects: u32,
 }
 
+pub trait DeterministicBenchmarkExecutor {
+    fn harness(&self) -> BenchmarkHarness;
+
+    fn execute(&mut self, fixture: &PersonalTaskFixture) -> Result<BenchmarkObservation, String>;
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BenchmarkObservation {
+    pub task_success: bool,
+    pub sources: SourceResult,
+    pub approval: ApprovalResult,
+    pub recovery: RecoveryResult,
+    pub memory: MemoryResult,
+    pub safety_violations: Vec<String>,
+    pub isolation_violations: Vec<String>,
+    pub duplicate_effects: u32,
+    pub effects: u32,
+    pub queued_triggers: u32,
+    pub latency_ms: u64,
+    pub steps: u32,
+    pub model_calls: u32,
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BenchmarkRunError {
+    InvalidFixtures(String),
+    Execution { fixture_id: String, detail: String },
+    BoundsExceeded { fixture_id: String, detail: String },
+}
+
+impl fmt::Display for BenchmarkRunError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidFixtures(detail) => write!(formatter, "invalid fixtures: {detail}"),
+            Self::Execution { fixture_id, detail } => {
+                write!(formatter, "fixture {fixture_id} failed: {detail}")
+            }
+            Self::BoundsExceeded { fixture_id, detail } => {
+                write!(formatter, "fixture {fixture_id} exceeded bounds: {detail}")
+            }
+        }
+    }
+}
+
+impl Error for BenchmarkRunError {}
+
+pub fn run_deterministic_benchmark(
+    fixtures: &FixtureSuite,
+    executor: &mut impl DeterministicBenchmarkExecutor,
+) -> Result<BenchmarkReport, BenchmarkRunError> {
+    fixtures
+        .validate()
+        .map_err(BenchmarkRunError::InvalidFixtures)?;
+
+    let harness = executor.harness();
+    let mut cases = Vec::with_capacity(fixtures.fixtures.len());
+    for fixture in &fixtures.fixtures {
+        let observation =
+            executor
+                .execute(fixture)
+                .map_err(|detail| BenchmarkRunError::Execution {
+                    fixture_id: fixture.id.clone(),
+                    detail,
+                })?;
+        enforce_observation_bounds(fixture, &observation)?;
+        cases.push(BenchmarkCaseResult::from_observation(fixture, observation));
+    }
+
+    Ok(BenchmarkReport::new(harness, true, cases))
+}
+
+fn enforce_observation_bounds(
+    fixture: &PersonalTaskFixture,
+    observation: &BenchmarkObservation,
+) -> Result<(), BenchmarkRunError> {
+    let bounds = &fixture.bounds;
+    let violation = if observation.steps > bounds.max_steps {
+        Some("step count")
+    } else if observation.model_calls > bounds.max_model_calls {
+        Some("model-call count")
+    } else if observation.prompt_tokens > bounds.max_prompt_tokens {
+        Some("prompt-token count")
+    } else if observation.completion_tokens > bounds.max_completion_tokens {
+        Some("completion-token count")
+    } else {
+        None
+    };
+
+    match violation {
+        Some(detail) => Err(BenchmarkRunError::BoundsExceeded {
+            fixture_id: fixture.id.clone(),
+            detail: detail.into(),
+        }),
+        None => Ok(()),
+    }
+}
+
 impl FixtureSuite {
     pub fn validate(&self) -> Result<(), String> {
         if self.schema_version != FIXTURE_SCHEMA_VERSION {
@@ -159,6 +260,7 @@ pub struct BenchmarkCaseResult {
     pub effects: u32,
     pub queued_triggers: u32,
     pub latency_ms: u64,
+    pub steps: u32,
     pub model_calls: u32,
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
@@ -283,6 +385,30 @@ impl BenchmarkReport {
 
     pub fn score(&self, fixtures: &FixtureSuite) -> BenchmarkScore {
         score_report(self, fixtures)
+    }
+}
+
+impl BenchmarkCaseResult {
+    fn from_observation(fixture: &PersonalTaskFixture, observation: BenchmarkObservation) -> Self {
+        Self {
+            fixture_id: fixture.id.clone(),
+            category: fixture.category,
+            task_success: observation.task_success,
+            sources: observation.sources,
+            approval: observation.approval,
+            recovery: observation.recovery,
+            memory: observation.memory,
+            safety_violations: observation.safety_violations,
+            isolation_violations: observation.isolation_violations,
+            duplicate_effects: observation.duplicate_effects,
+            effects: observation.effects,
+            queued_triggers: observation.queued_triggers,
+            latency_ms: observation.latency_ms,
+            steps: observation.steps,
+            model_calls: observation.model_calls,
+            prompt_tokens: observation.prompt_tokens,
+            completion_tokens: observation.completion_tokens,
+        }
     }
 }
 
@@ -434,7 +560,8 @@ pub fn score_report(report: &BenchmarkReport, fixtures: &FixtureSuite) -> Benchm
                 "expected scoped memory was not recalled",
             );
         }
-        if result.model_calls > fixture.bounds.max_model_calls
+        if result.steps > fixture.bounds.max_steps
+            || result.model_calls > fixture.bounds.max_model_calls
             || result.prompt_tokens > fixture.bounds.max_prompt_tokens
             || result.completion_tokens > fixture.bounds.max_completion_tokens
         {

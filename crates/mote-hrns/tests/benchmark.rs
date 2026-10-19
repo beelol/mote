@@ -1,7 +1,8 @@
 use mote_hrns::{
-    score_comparison, ApprovalResult, BenchmarkCaseResult, BenchmarkHarness, BenchmarkReport,
-    FixtureSuite, JourneyCategory, MemoryResult, RecoveryResult, SourceResult, ViolationKind,
-    BENCHMARK_SCHEMA_VERSION, FIXTURE_SCHEMA_VERSION,
+    run_deterministic_benchmark, score_comparison, ApprovalResult, BenchmarkCaseResult,
+    BenchmarkHarness, BenchmarkObservation, BenchmarkReport, BenchmarkRunError,
+    DeterministicBenchmarkExecutor, FixtureSuite, JourneyCategory, MemoryResult, RecoveryResult,
+    SourceResult, ViolationKind, BENCHMARK_SCHEMA_VERSION, FIXTURE_SCHEMA_VERSION,
 };
 
 fn fixtures() -> FixtureSuite {
@@ -44,11 +45,100 @@ fn passing_cases(fixtures: &FixtureSuite) -> Vec<BenchmarkCaseResult> {
             effects: fixture.expected.max_effects,
             queued_triggers: fixture.expected.queued_triggers,
             latency_ms: (index as u64 + 1) * 10,
+            steps: fixture.bounds.max_steps.min(4),
             model_calls: fixture.bounds.max_model_calls.min(2),
             prompt_tokens: 512,
             completion_tokens: 128,
         })
         .collect()
+}
+
+struct FixtureExecutor {
+    harness: BenchmarkHarness,
+    fixture_ids: Vec<String>,
+    fail_on: Option<String>,
+    exceed: Option<(String, ExceededBound)>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ExceededBound {
+    Steps,
+    ModelCalls,
+    PromptTokens,
+    CompletionTokens,
+}
+
+impl FixtureExecutor {
+    fn new(harness: BenchmarkHarness) -> Self {
+        Self {
+            harness,
+            fixture_ids: Vec::new(),
+            fail_on: None,
+            exceed: None,
+        }
+    }
+}
+
+impl DeterministicBenchmarkExecutor for FixtureExecutor {
+    fn harness(&self) -> BenchmarkHarness {
+        self.harness
+    }
+
+    fn execute(
+        &mut self,
+        fixture: &mote_hrns::PersonalTaskFixture,
+    ) -> Result<BenchmarkObservation, String> {
+        self.fixture_ids.push(fixture.id.clone());
+        if self.fail_on.as_deref() == Some(fixture.id.as_str()) {
+            return Err("injected executor failure".into());
+        }
+        let exceeds = |bound| {
+            self.exceed
+                .as_ref()
+                .is_some_and(|(id, selected)| id == &fixture.id && *selected == bound)
+        };
+        Ok(BenchmarkObservation {
+            task_success: true,
+            sources: SourceResult {
+                required: fixture.expected.required_sources.len() as u32,
+                correct: fixture.expected.required_sources.len() as u32,
+                cited: fixture.expected.required_sources.clone(),
+                missing: Vec::new(),
+            },
+            approval: ApprovalResult {
+                required: fixture.expected.approval_required,
+                requested: fixture.expected.approval_required,
+                effects_before_approval: 0,
+                effects_after_denial: 0,
+            },
+            recovery: RecoveryResult {
+                required: fixture.expected.restart_required,
+                succeeded: fixture.expected.restart_required,
+            },
+            memory: MemoryResult {
+                expected: fixture.expected.expected_memory_facts,
+                recalled: fixture.expected.expected_memory_facts,
+                cross_realm_hits: 0,
+            },
+            safety_violations: Vec::new(),
+            isolation_violations: Vec::new(),
+            duplicate_effects: 0,
+            effects: fixture.expected.max_effects,
+            queued_triggers: fixture.expected.queued_triggers,
+            latency_ms: u64::from(fixture.bounds.max_steps),
+            steps: if exceeds(ExceededBound::Steps) {
+                fixture.bounds.max_steps + 1
+            } else {
+                fixture.bounds.max_steps
+            },
+            model_calls: fixture.bounds.max_model_calls
+                + u32::from(exceeds(ExceededBound::ModelCalls)),
+            prompt_tokens: fixture.bounds.max_prompt_tokens
+                + u64::from(exceeds(ExceededBound::PromptTokens)),
+            completion_tokens: fixture.bounds.max_completion_tokens
+                + u64::from(exceeds(ExceededBound::CompletionTokens)),
+        })
+    }
 }
 
 fn passing_report(harness: BenchmarkHarness) -> BenchmarkReport {
@@ -220,4 +310,78 @@ fn comparison_requires_one_report_from_each_harness() {
     let report = passing_report(BenchmarkHarness::Opencode);
     assert!(!score_comparison(std::slice::from_ref(&report), &suite).passed);
     assert!(!score_comparison(&[report.clone(), report], &suite).passed);
+}
+
+#[test]
+fn runner_executes_the_same_ordered_suite_for_each_harness() {
+    let suite = fixtures();
+    let expected_ids = suite
+        .fixtures
+        .iter()
+        .map(|fixture| fixture.id.clone())
+        .collect::<Vec<_>>();
+    let mut opencode = FixtureExecutor::new(BenchmarkHarness::Opencode);
+    let mut mote = FixtureExecutor::new(BenchmarkHarness::Mote);
+
+    let opencode_report = run_deterministic_benchmark(&suite, &mut opencode).unwrap();
+    let mote_report = run_deterministic_benchmark(&suite, &mut mote).unwrap();
+
+    assert_eq!(opencode.fixture_ids, expected_ids);
+    assert_eq!(mote.fixture_ids, expected_ids);
+    assert_eq!(opencode_report.harness, BenchmarkHarness::Opencode);
+    assert_eq!(mote_report.harness, BenchmarkHarness::Mote);
+    assert!(opencode_report.score(&suite).passed);
+    assert!(mote_report.score(&suite).passed);
+    assert!(score_comparison(&[opencode_report, mote_report], &suite).passed);
+}
+
+#[test]
+fn runner_validates_the_whole_suite_before_execution() {
+    let mut suite = fixtures();
+    suite.fixtures[0].bounds.max_steps = 0;
+    let mut executor = FixtureExecutor::new(BenchmarkHarness::Mote);
+
+    let error = run_deterministic_benchmark(&suite, &mut executor).unwrap_err();
+
+    assert!(matches!(error, BenchmarkRunError::InvalidFixtures(_)));
+    assert!(executor.fixture_ids.is_empty());
+}
+
+#[test]
+fn runner_fails_closed_on_executor_error_and_stops_the_suite() {
+    let suite = fixtures();
+    let mut executor = FixtureExecutor::new(BenchmarkHarness::Mote);
+    executor.fail_on = Some(suite.fixtures[2].id.clone());
+
+    let error = run_deterministic_benchmark(&suite, &mut executor).unwrap_err();
+
+    assert!(matches!(
+        error,
+        BenchmarkRunError::Execution { ref fixture_id, .. }
+            if fixture_id == &suite.fixtures[2].id
+    ));
+    assert_eq!(executor.fixture_ids.len(), 3);
+}
+
+#[test]
+fn runner_rejects_resource_use_past_fixture_bounds() {
+    let suite = fixtures();
+    for bound in [
+        ExceededBound::Steps,
+        ExceededBound::ModelCalls,
+        ExceededBound::PromptTokens,
+        ExceededBound::CompletionTokens,
+    ] {
+        let mut executor = FixtureExecutor::new(BenchmarkHarness::Mote);
+        executor.exceed = Some((suite.fixtures[1].id.clone(), bound));
+
+        let error = run_deterministic_benchmark(&suite, &mut executor).unwrap_err();
+
+        assert!(matches!(
+            error,
+            BenchmarkRunError::BoundsExceeded { ref fixture_id, .. }
+                if fixture_id == &suite.fixtures[1].id
+        ));
+        assert_eq!(executor.fixture_ids.len(), 2);
+    }
 }
