@@ -22,14 +22,16 @@ struct ScriptedSession {
     state: Arc<ScriptedState>,
 }
 
+type ScriptedTurn = Result<(Vec<ThinkEvent>, Duration), String>;
+
 struct ScriptedState {
     create_calls: Mutex<usize>,
-    turns: Mutex<VecDeque<Result<(Vec<ThinkEvent>, Duration), String>>>,
+    turns: Mutex<VecDeque<ScriptedTurn>>,
     calls: Mutex<Vec<TurnCall>>,
 }
 
 impl ScriptedState {
-    fn new(turns: Vec<Result<(Vec<ThinkEvent>, Duration), String>>) -> Self {
+    fn new(turns: Vec<ScriptedTurn>) -> Self {
         Self {
             create_calls: Mutex::new(0),
             turns: Mutex::new(turns.into()),

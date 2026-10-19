@@ -1,7 +1,7 @@
 use crate::{
     action_request_hash, Action, ActionError, ActionExecutor, ActionId, ActionReceipt, ActionState,
-    Checkpoint, Harness, HarnessError, HarnessKind, HarnessRequest, HrnsStore, ModelStep,
-    ReceiptStatus, Scope, Task, TaskId, TaskState,
+    Checkpoint, ContextError, Harness, HarnessError, HarnessKind, HarnessRequest, HrnsStore,
+    ModelStep, ReceiptStatus, Scope, Task, TaskId, TaskState,
 };
 use serde_json::{Map, Value};
 use std::collections::HashSet;
@@ -9,6 +9,14 @@ use std::collections::HashSet;
 pub struct HarnessAdapters {
     pub opencode: Box<dyn Harness>,
     pub mote: Box<dyn Harness>,
+}
+
+pub trait TaskContextProvider: Send {
+    fn build(
+        &mut self,
+        task: &Task,
+        checkpoint: Option<&Checkpoint>,
+    ) -> Result<String, ContextError>;
 }
 
 impl HarnessAdapters {
@@ -67,6 +75,7 @@ pub enum DriverOutcome {
 pub enum DriverError {
     Store(rusqlite::Error),
     Harness(HarnessError),
+    Context(ContextError),
     Action(ActionError),
     InvalidReceipt,
     ActionInFlight,
@@ -79,6 +88,7 @@ impl std::fmt::Display for DriverError {
         match self {
             Self::Store(error) => write!(formatter, "task store: {error}"),
             Self::Harness(error) => write!(formatter, "harness: {error}"),
+            Self::Context(error) => write!(formatter, "task context: {error}"),
             Self::Action(error) => write!(formatter, "action: {error}"),
             Self::InvalidReceipt => formatter.write_str("executor returned an invalid receipt"),
             Self::ActionInFlight => formatter.write_str("cannot cancel an executing action"),
@@ -100,6 +110,7 @@ pub struct Driver {
     store: HrnsStore,
     adapters: HarnessAdapters,
     executor: Box<dyn ActionExecutor>,
+    context: Option<Box<dyn TaskContextProvider>>,
     claimed: HashSet<ActionId>,
 }
 
@@ -113,8 +124,14 @@ impl Driver {
             store,
             adapters,
             executor,
+            context: None,
             claimed: HashSet::new(),
         }
+    }
+
+    pub fn with_context_provider(mut self, context: impl TaskContextProvider + 'static) -> Self {
+        self.context = Some(Box::new(context));
+        self
     }
 
     pub fn store(&self) -> &HrnsStore {
@@ -217,9 +234,22 @@ impl Driver {
         }
 
         let checkpoint = self.store.checkpoint(&task.scope, &task.id)?;
+        let context = match self.context.as_mut() {
+            Some(provider) => match provider.build(&task, checkpoint.as_ref()) {
+                Ok(context) => context,
+                Err(error) => {
+                    let failed =
+                        self.store
+                            .transition(&task.scope, &task.id, revision, TaskState::Failed)?;
+                    self.checkpoint(&failed, self.latest_action_id(&failed)?, None)?;
+                    return Err(DriverError::Context(error));
+                }
+            },
+            None => task.outcome.clone(),
+        };
         let request = HarnessRequest {
             task: task.clone(),
-            context: task.outcome.clone(),
+            context,
             checkpoint,
         };
         let reply = match self.adapters.selected(task.harness).step(request) {

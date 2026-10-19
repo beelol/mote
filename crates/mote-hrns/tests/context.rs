@@ -1,7 +1,8 @@
 use mote_hrns::{
     Compaction, CompactionEngine, CompactionError, CompactionRequest, Compactor, ContextEntry,
-    ContextError, ContextRequest, ContextSectionKind, ContextTurn, LedgeredCompaction,
-    LocalCompactionClient, Scope, ScopedMemory, SkillContext, TaskContextBuilder, TurnRole,
+    ContextError, ContextRenderError, ContextRequest, ContextSectionKind, ContextTurn,
+    LedgeredCompaction, LocalCompactionClient, Scope, ScopedMemory, SkillContext,
+    TaskContextBuilder, TurnRole,
 };
 
 fn entry(source: &str, text: &str) -> ContextEntry {
@@ -111,6 +112,88 @@ fn deterministic_pack_preserves_order_protected_content_and_visible_skills() {
     assert_eq!(ledger.parts.len(), 5);
     assert_eq!(ledger.token_estimate(), first.token_estimate);
     assert!(ledger.parts.iter().all(|part| part.hash.len() == 64));
+}
+
+#[test]
+fn harness_context_and_ledger_share_the_same_ordered_entries() {
+    let pack = TaskContextBuilder::new().build(request()).unwrap();
+    let rendered = pack.render_harness_context().unwrap();
+    assert_eq!(rendered, pack.render_harness_context().unwrap());
+
+    let value: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+    assert_eq!(value["version"], 1);
+    let rendered_sections = value["sections"].as_array().unwrap();
+    assert_eq!(rendered_sections.len(), ContextSectionKind::ORDER.len());
+    for (rendered_section, source_section) in rendered_sections.iter().zip(&pack.sections) {
+        assert_eq!(
+            rendered_section,
+            &serde_json::to_value(source_section).unwrap()
+        );
+    }
+    assert_eq!(
+        rendered_sections[7]["kind"],
+        serde_json::Value::String("covered_compaction".into())
+    );
+    assert_eq!(rendered_sections[7]["entries"].as_array().unwrap().len(), 0);
+
+    let ledger = pack.ledger_pack("think");
+    let ledger_groups = [
+        &[ContextSectionKind::Charter][..],
+        &[
+            ContextSectionKind::PinnedInstructions,
+            ContextSectionKind::TaskState,
+        ],
+        &[ContextSectionKind::ScopedMemories],
+        &[
+            ContextSectionKind::CommittedActions,
+            ContextSectionKind::Approvals,
+            ContextSectionKind::CoveredCompaction,
+            ContextSectionKind::SelectedSkills,
+        ],
+        &[ContextSectionKind::NewestTurns],
+    ];
+    for (part, kinds) in ledger.parts.iter().zip(ledger_groups) {
+        let entries = kinds
+            .iter()
+            .flat_map(|kind| pack.entries(*kind))
+            .collect::<Vec<_>>();
+        let expected_sources = entries
+            .iter()
+            .map(|entry| entry.source_ref.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
+        let expected_text = entries
+            .iter()
+            .map(|entry| entry.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(part.source_ref, expected_sources);
+        assert_eq!(part.hash, mote_context::hash_text(&expected_text));
+        assert_eq!(part.tokens, mote_context::count_tokens(&expected_text));
+    }
+}
+
+#[test]
+fn harness_context_rejects_missing_or_reordered_sections() {
+    let pack = TaskContextBuilder::new().build(request()).unwrap();
+
+    let mut missing = pack.clone();
+    missing.sections.remove(7);
+    assert_eq!(
+        missing.render_harness_context(),
+        Err(ContextRenderError::InvalidSectionOrder)
+    );
+    assert_eq!(
+        ContextError::from(missing.render_harness_context().unwrap_err()),
+        ContextError::InvalidPack
+    );
+
+    let mut reordered = pack;
+    reordered.sections.swap(0, 1);
+    assert_eq!(
+        reordered.render_harness_context(),
+        Err(ContextRenderError::InvalidSectionOrder)
+    );
 }
 
 #[test]

@@ -65,6 +65,39 @@ impl Harness for FakeHarness {
     }
 }
 
+type ContextCalls = Arc<Mutex<Vec<(TaskId, Option<u64>)>>>;
+
+struct ExactContext {
+    value: String,
+    calls: ContextCalls,
+}
+
+impl TaskContextProvider for ExactContext {
+    fn build(
+        &mut self,
+        task: &Task,
+        checkpoint: Option<&Checkpoint>,
+    ) -> Result<String, ContextError> {
+        self.calls.lock().unwrap().push((
+            task.id.clone(),
+            checkpoint.map(|checkpoint| checkpoint.revision),
+        ));
+        Ok(self.value.clone())
+    }
+}
+
+struct FailingContext;
+
+impl TaskContextProvider for FailingContext {
+    fn build(
+        &mut self,
+        _task: &Task,
+        _checkpoint: Option<&Checkpoint>,
+    ) -> Result<String, ContextError> {
+        Err(ContextError::UncoveredHistory)
+    }
+}
+
 #[derive(Clone, Default)]
 struct ExecutorState {
     receipts: Arc<Mutex<HashMap<ActionId, ActionReceipt>>>,
@@ -142,6 +175,68 @@ fn task(name: &str, harness: HarnessKind) -> NewTask {
         outcome: format!("finish {name}"),
         harness,
     }
+}
+
+#[test]
+fn context_provider_supplies_the_exact_harness_context() {
+    let fixture = Fixture::new();
+    let opencode = Script::new([complete("done")]);
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut driver = make_driver(
+        fixture.open(),
+        opencode.clone(),
+        Script::new([]),
+        ExecutorState::default(),
+    )
+    .with_context_provider(ExactContext {
+        value: "bounded rendered context".into(),
+        calls: calls.clone(),
+    });
+    driver
+        .enqueue(task("context", HarnessKind::Opencode))
+        .unwrap();
+
+    assert!(matches!(driver.step().unwrap(), DriverOutcome::Started(_)));
+    assert!(matches!(
+        driver.step().unwrap(),
+        DriverOutcome::Completed { .. }
+    ));
+    assert_eq!(
+        calls.lock().unwrap().as_slice(),
+        &[(TaskId::new("context").unwrap(), Some(0))]
+    );
+    assert_eq!(
+        opencode.requests.lock().unwrap()[0].context,
+        "bounded rendered context"
+    );
+}
+
+#[test]
+fn context_failure_is_durable_and_never_calls_the_harness() {
+    let fixture = Fixture::new();
+    let opencode = Script::new([complete("must not run")]);
+    let mut driver = make_driver(
+        fixture.open(),
+        opencode.clone(),
+        Script::new([]),
+        ExecutorState::default(),
+    )
+    .with_context_provider(FailingContext);
+    let id = TaskId::new("context-failure").unwrap();
+    driver
+        .enqueue(task(id.as_str(), HarnessKind::Opencode))
+        .unwrap();
+
+    assert!(matches!(driver.step().unwrap(), DriverOutcome::Started(_)));
+    assert!(matches!(
+        driver.step(),
+        Err(DriverError::Context(ContextError::UncoveredHistory))
+    ));
+    assert!(opencode.requests.lock().unwrap().is_empty());
+    assert_eq!(
+        driver.store().get(&scope(), &id).unwrap().unwrap().0.state,
+        TaskState::Failed
+    );
 }
 
 #[test]

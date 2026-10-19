@@ -157,6 +157,7 @@ pub enum ContextError {
     ScopeMismatch,
     ProtectedContentExceedsBudget,
     InvalidCompaction,
+    InvalidPack,
     UncoveredHistory,
 }
 
@@ -168,6 +169,7 @@ impl std::fmt::Display for ContextError {
             Self::ScopeMismatch => "memory scope does not match the task scope",
             Self::ProtectedContentExceedsBudget => "protected context exceeds the token budget",
             Self::InvalidCompaction => "the retained compaction is invalid",
+            Self::InvalidPack => "the context pack is invalid",
             Self::UncoveredHistory => "older history cannot be omitted without source coverage",
         };
         formatter.write_str(message)
@@ -206,6 +208,20 @@ pub enum ContextSectionKind {
     SelectedSkills,
 }
 
+impl ContextSectionKind {
+    pub const ORDER: [Self; 9] = [
+        Self::Charter,
+        Self::PinnedInstructions,
+        Self::TaskState,
+        Self::ScopedMemories,
+        Self::CommittedActions,
+        Self::Approvals,
+        Self::NewestTurns,
+        Self::CoveredCompaction,
+        Self::SelectedSkills,
+    ];
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContextSection {
@@ -222,6 +238,36 @@ pub struct ContextPack {
     pub retained_previous_compaction: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ContextRenderError {
+    InvalidSectionOrder,
+    Serialization,
+}
+
+impl std::fmt::Display for ContextRenderError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let message = match self {
+            Self::InvalidSectionOrder => "context sections are incomplete or out of order",
+            Self::Serialization => "context serialization failed",
+        };
+        formatter.write_str(message)
+    }
+}
+
+impl std::error::Error for ContextRenderError {}
+
+impl From<ContextRenderError> for ContextError {
+    fn from(_: ContextRenderError) -> Self {
+        Self::InvalidPack
+    }
+}
+
+#[derive(Serialize)]
+struct HarnessContext<'a> {
+    version: u32,
+    sections: &'a [ContextSection],
+}
+
 impl ContextPack {
     pub fn entries(&self, kind: ContextSectionKind) -> &[ContextEntry] {
         self.sections
@@ -229,6 +275,21 @@ impl ContextPack {
             .find(|section| section.kind == kind)
             .map(|section| section.entries.as_slice())
             .unwrap_or(&[])
+    }
+
+    pub fn render_harness_context(&self) -> Result<String, ContextRenderError> {
+        let kinds = self.sections.iter().map(|section| section.kind);
+        if self.sections.len() != ContextSectionKind::ORDER.len()
+            || !kinds.eq(ContextSectionKind::ORDER)
+        {
+            return Err(ContextRenderError::InvalidSectionOrder);
+        }
+
+        serde_json::to_string(&HarnessContext {
+            version: 1,
+            sections: &self.sections,
+        })
+        .map_err(|_| ContextRenderError::Serialization)
     }
 
     pub fn ledger_pack(&self, lane: impl Into<String>) -> Pack {

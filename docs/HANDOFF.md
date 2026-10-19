@@ -24,9 +24,10 @@ these approvals and run through the production executor end to end.
 
 A bounded-context increment preserves charter, pins and the newest owner turn; rejects cross-scope
 memory; loads visible selected skills; and requires ledgered, source-covered structured
-compaction. It also produces exact hashed `mote-context` ledger parts. Evidence is in
-`docs/verification/P2-08.md`. P2-08 remains open pending backend-neutral memory retrieval and
-production daemon integration.
+compaction. Its canonical renderer now supplies every ordered section from the same entries used
+for ledger hashes. The durable driver accepts that exact rendered context and fails before calling
+a harness if context construction fails. Evidence is in `docs/verification/P2-08.md`. P2-08
+remains open pending backend-neutral memory retrieval and production daemon integration.
 
 `mote-memory` defines the scoped backend-neutral contract. `mote-memory-sqlite` now implements it
 with transactional node, FTS and vector writes, explicit embedding model IDs, legacy hash-vector
@@ -47,7 +48,8 @@ loopback listener. `cargo clippy --workspace -- -D warnings` and `git diff --che
 
 ## Next action
 
-Route production harness requests through the bounded context builder and durable task driver.
-Map OpenCode proposals into durable actions and bind approvals only after exact tool policy
-classification. Then wire the new SQLite adapter behind absent-value selection without allowing
-the legacy context path to write the migrated schema. Keep OpenCode and SQLite as defaults.
+Finish the native structured adapter foundation, then route production harness requests through
+the bounded context builder and durable task driver. Map OpenCode proposals into durable actions
+and bind approvals only after exact tool policy classification. Then wire the new SQLite adapter
+behind absent-value selection without allowing the legacy context path to write the migrated
+schema. Keep OpenCode and SQLite as defaults.
