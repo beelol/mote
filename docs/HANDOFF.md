@@ -28,11 +28,18 @@ compaction. It also produces exact hashed `mote-context` ledger parts. Evidence 
 `docs/verification/P2-08.md`. P2-08 remains open pending backend-neutral memory retrieval and
 production daemon integration.
 
-`mote-memory` now defines the scoped backend-neutral contract and reusable adapter suite without
-altering the SQLite default. The harness-selection foundation preserves the exact v0 config,
-resolves an absent value to OpenCode, defers live changes through every unsafe phase and fails
-visibly without fallback when a target is unavailable. Evidence is partial in
-`docs/verification/MBE-06.md` and `docs/verification/P2-04.md`; neither criterion is ready to check.
+`mote-memory` defines the scoped backend-neutral contract. `mote-memory-sqlite` now implements it
+with transactional node, FTS and vector writes, explicit embedding model IDs, legacy hash-vector
+isolation, source attribution, correction and forget. Competing corrections and correction versus
+forget have one version-guarded winner. It is not wired into production yet, so the current SQLite
+path remains unchanged.
+
+The production daemon now owns harness selection. It preserves the exact v0 config, resolves an
+absent value to OpenCode, validates IPC and Matrix changes before persistence, exposes configured,
+active and pending state in status and pipeline snapshots, and supplies Matrix bindings for a
+selector and live state. Turn handling uses a conservative model-step phase and always returns to
+a checkpoint. The native harness is still unavailable, so selecting it fails visibly without
+changing configuration.
 
 Required verification passed on 2026-10-18. The focused action, driver, store and approval tests
 passed. `cargo test --workspace` passed outside the sandbox because the browser fixture needs a
@@ -40,8 +47,7 @@ loopback listener. `cargo clippy --workspace -- -D warnings` and `git diff --che
 
 ## Next action
 
-Implement the transactional SQLite adapter against the common contract while routing production
-harness requests through the bounded builder. Connect configuration changes to the selection
-state and expose configured, active and pending harness values through Matrix. Map OpenCode
-proposals into durable actions and bound approvals only after exact tool policy classification.
-Keep the default v0 path unchanged.
+Route production harness requests through the bounded context builder and durable task driver.
+Map OpenCode proposals into durable actions and bind approvals only after exact tool policy
+classification. Then wire the new SQLite adapter behind absent-value selection without allowing
+the legacy context path to write the migrated schema. Keep OpenCode and SQLite as defaults.

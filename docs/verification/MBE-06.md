@@ -15,6 +15,13 @@ The reusable contract suite exercises normal writes and retrieval, account and r
 source lookup, correction, forget, malformed inputs and explicit unavailable and partial states.
 Its in-memory implementation is test-only and does not change Mote's production SQLite default.
 
+The `mote-memory-sqlite` adapter now implements the contract with atomic node, FTS and vector
+writes. Stored vectors carry explicit embedding model IDs. Legacy unlabeled vectors are migrated
+as `hash-v1` and excluded when the active model differs. Correction and forget use immediate,
+scope-bound, version-guarded transactions, including competing-connection tests with exactly one
+winner. Forgotten records retain only a scoped tombstone and mutation pointer, not searchable text
+or embeddings.
+
 Focused verification:
 
 ```text
@@ -24,9 +31,15 @@ cargo test -p mote-memory
 cargo clippy -p mote-memory --all-targets -- -D warnings
 passed
 
+cargo test -p mote-memory-sqlite
+11 passed; 0 failed
+
+cargo clippy -p mote-memory-sqlite --all-targets -- -D warnings
+passed
+
 git diff --check
 passed
 ```
 
-MBE-06 remains open until the SQLite adapter implements and passes this contract, production
-selection keeps SQLite as the absent-value default and affected v0 memory evidence is rechecked.
+MBE-06 remains open until production selection routes SQLite through this adapter while preserving
+the absent-value default and affected v0 memory evidence is rechecked.

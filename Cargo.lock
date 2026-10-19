@@ -2858,6 +2858,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mote-memory-sqlite"
+version = "0.0.0"
+dependencies = [
+ "mote-memory",
+ "rusqlite",
+ "sqlite-vec",
+]
+
+[[package]]
 name = "mote-paths"
 version = "0.0.0"
 

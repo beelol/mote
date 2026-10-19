@@ -14,6 +14,7 @@ members = [
     "crates/mote-harness",
     "crates/mote-hrns",
     "crates/mote-memory",
+    "crates/mote-memory-sqlite",
     "crates/mote-context",
     "crates/mote-ui",
     "crates/mote-client-core",
@@ -42,6 +43,7 @@ mote-localmodel = { path = "crates/mote-localmodel" }
 mote-harness = { path = "crates/mote-harness" }
 mote-hrns = { path = "crates/mote-hrns" }
 mote-memory = { path = "crates/mote-memory" }
+mote-memory-sqlite = { path = "crates/mote-memory-sqlite" }
 mote-context = { path = "crates/mote-context" }
 mote-ui = { path = "crates/mote-ui" }
 mote-client-core = { path = "crates/mote-client-core" }
