@@ -2796,6 +2796,8 @@ dependencies = [
  "mote-context",
  "mote-eventlog",
  "mote-harness",
+ "mote-ipc",
+ "mote-paths",
  "rusqlite",
  "schemars",
  "serde",
@@ -2870,6 +2872,10 @@ dependencies = [
 [[package]]
 name = "mote-paths"
 version = "0.0.0"
+dependencies = [
+ "libc",
+ "sha2",
+]
 
 [[package]]
 name = "mote-protocol"

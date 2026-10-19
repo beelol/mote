@@ -19,6 +19,8 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+pub mod overseer;
+
 /// Maximum request frame size.
 pub const MAX_REQUEST: usize = 1024 * 1024;
 

@@ -6,8 +6,12 @@
 
 use std::path::{Path, PathBuf};
 
+const MAX_UNIX_SOCKET_PATH_BYTES: usize = 100;
+
 fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"))
 }
 
 /// Root for durable state. `MOTE_HOME` overrides the platform default.
@@ -28,6 +32,51 @@ pub fn data_dir() -> PathBuf {
 /// The Unix socket path inside the data directory.
 pub fn socket_path() -> PathBuf {
     data_dir().join("moted.sock")
+}
+
+/// The socket exposed by the owner's local Overseer daemon.
+pub fn overseer_socket_path() -> PathBuf {
+    if let Some(path) = std::env::var_os("OVERSEER_SOCKET") {
+        return PathBuf::from(path);
+    }
+    let configured_home = std::env::var_os("OVERSEER_HOME").map(PathBuf::from);
+    let data = configured_home.clone().unwrap_or_else(|| {
+        if cfg!(target_os = "macos") {
+            home().join("Library/Application Support/Overseer")
+        } else {
+            std::env::var_os("XDG_DATA_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home().join(".local/share"))
+                .join("overseer")
+        }
+    });
+    let runtime = if configured_home.is_some() {
+        data.join("run")
+    } else if cfg!(target_os = "linux") {
+        std::env::var_os("XDG_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .map(|path| path.join("overseer"))
+            .unwrap_or_else(|| data.join("run"))
+    } else {
+        data.join("run")
+    };
+    overseer_socket_path_for(&data, &runtime, unsafe { libc::getuid() as u32 })
+}
+
+fn overseer_socket_path_for(data_dir: &Path, runtime_dir: &Path, uid: u32) -> PathBuf {
+    let preferred = runtime_dir.join("overseerd.sock");
+    if preferred.as_os_str().len() < MAX_UNIX_SOCKET_PATH_BYTES {
+        return preferred;
+    }
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(data_dir.display().to_string().as_bytes());
+    let fingerprint = digest
+        .iter()
+        .take(8)
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let key = &fingerprint[..8];
+    PathBuf::from(format!("/tmp/overseer-{uid}/{key}-overseerd.sock"))
 }
 
 /// The single SQLite database file.
@@ -77,5 +126,25 @@ mod tests {
 
         std::env::remove_var("MOTE_HOME");
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn overseer_socket_matches_short_and_fallback_layouts() {
+        assert_eq!(
+            overseer_socket_path_for(
+                Path::new("/tmp/overseer-home"),
+                Path::new("/tmp/overseer-home/run"),
+                501
+            ),
+            PathBuf::from("/tmp/overseer-home/run/overseerd.sock")
+        );
+        let long = PathBuf::from(format!("/tmp/{}", "a".repeat(110)));
+        let socket = overseer_socket_path_for(&long, &long.join("run"), 501);
+        assert_eq!(socket.parent(), Some(Path::new("/tmp/overseer-501")));
+        assert!(socket
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .ends_with("-overseerd.sock"));
     }
 }
