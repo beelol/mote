@@ -16,11 +16,16 @@ The checkout is `main` and pushes to `origin`. Preserve the owner's untracked `.
 completed think turns through it only when `MOTE_HRNS_OPENCODE_COMPAT=1`. P2-05 remains open
 because durable tool continuation is not wired through the daemon.
 
-The current verified increment adds canonical action request hashes, durable commit receipts,
-revision-guarded claim, commit, deny and fail operations, no-redispatch recovery after an
-interrupted claim, HRNS-bound browser approval records and idempotent HRNS-bound file-write
-approval creation. Evidence is in `docs/verification/P2-07.md`. P2-07 remains open until the daemon
-uses this path end to end.
+The current action increment adds canonical request hashes, durable commit receipts,
+revision-guarded transitions, no-redispatch recovery, HRNS-bound approvals and daemon reconciliation
+of approved, denied and failed effects. Reconciliation preserves the action's account and realm.
+Evidence is in `docs/verification/P2-07.md`. P2-07 remains open until harness tool proposals create
+these approvals and run through the production executor end to end.
+
+A bounded-context increment is also implemented in the working tree. It preserves charter, pins
+and the newest owner turn; rejects cross-scope memory; loads visible selected skills; and requires
+ledgered, source-covered structured compaction. Evidence is in `docs/verification/P2-08.md`.
+P2-08 remains open pending backend-neutral memory retrieval and production daemon integration.
 
 Required verification passed on 2026-10-18. The focused action, driver, store and approval tests
 passed. `cargo test --workspace` passed outside the sandbox because the browser fixture needs a
@@ -28,7 +33,7 @@ loopback listener. `cargo clippy --workspace -- -D warnings` and `git diff --che
 
 ## Next action
 
-Commit and push the guarded receipt increment. Then wire the durable driver and bound approval
-reconciliation into the daemon behind the existing compatibility flag so a held OpenCode tool
-survives restart without duplicate dispatch. Keep the default v0 path unchanged. Once P2-07 and
-P2-05 close together, continue with Task 6, bounded task context.
+Commit and push approval reconciliation, then commit and push the bounded-context increment after
+the workspace gates. Next, route production harness requests through the bounded builder and map
+OpenCode tool proposals into durable actions and bound approvals behind the existing compatibility
+flag. Keep the default v0 path unchanged.

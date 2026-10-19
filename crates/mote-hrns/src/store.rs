@@ -356,6 +356,31 @@ impl HrnsStore {
         ).optional()?.map(|(action,revision)| Ok((decode(action)?,revision))).transpose()
     }
 
+    pub fn scoped_action(&self, id: &ActionId) -> rusqlite::Result<Option<(Scope, Action, u64)>> {
+        let conn = self.reader.lock().unwrap();
+        conn.query_row(
+            "SELECT t.account,t.realm,a.action,a.revision FROM hrns_action a JOIN hrns_task t ON t.id=a.task_id WHERE a.id=?1",
+            [id.as_str()],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, u64>(3)?,
+                ))
+            },
+        )
+        .optional()?
+        .map(|(account, realm, action, revision)| {
+            Ok((
+                Scope::new(account, realm).map_err(|_| rusqlite::Error::InvalidQuery)?,
+                decode(action)?,
+                revision,
+            ))
+        })
+        .transpose()
+    }
+
     pub fn actions(&self, scope: &Scope, task_id: &TaskId) -> rusqlite::Result<Vec<Action>> {
         let conn = self.reader.lock().unwrap();
         let mut statement = conn.prepare(

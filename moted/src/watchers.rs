@@ -370,6 +370,19 @@ impl Watchers {
         self.conn.query_row("SELECT status FROM approvals WHERE id=?1", [id], |r| r.get(0))
     }
 
+    pub fn hrns_action(&self, id: i64) -> rusqlite::Result<Option<ActionId>> {
+        self.conn
+            .query_row(
+                "SELECT hrns_action_id FROM approvals WHERE id=?1",
+                [id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten()
+            .map(|value| ActionId::new(value).map_err(|_| rusqlite::Error::InvalidQuery))
+            .transpose()
+    }
+
     /// Approve an approval, executing its action. Returns whether it executed.
     pub fn approve(&self, id: i64, now: i64) -> Result<bool, ApprovalError> {
         let Some(thread_id) = self.approval_thread(id)? else {

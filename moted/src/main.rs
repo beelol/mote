@@ -12,6 +12,8 @@ pub(crate) mod config;
 mod embed;
 mod gate;
 mod gateway;
+#[allow(dead_code)]
+mod hrns_actions;
 mod hrns_compat;
 pub(crate) mod host_snapshot;
 pub(crate) mod inferred_ui;
@@ -1160,24 +1162,50 @@ impl Dispatch for Daemon {
                 let id = params.get("id").and_then(|i| i.as_i64()).ok_or_else(|| {
                     RpcError::invalid_params("approve needs an id")
                 })?;
-                let executed = self
-                    .watchers
-                    .lock()
-                    .unwrap()
-                    .approve(id, now_ms())
-                    .map_err(|e| RpcError::internal(e.to_string()))?;
+                let (executed, action_id) = {
+                    let watchers = self.watchers.lock().unwrap();
+                    let executed = watchers
+                        .approve(id, now_ms())
+                        .map_err(|e| RpcError::internal(e.to_string()))?;
+                    let action_id = watchers
+                        .hrns_action(id)
+                        .map_err(|e| RpcError::internal(e.to_string()))?;
+                    (executed, action_id)
+                };
+                if let Some(action_id) = action_id {
+                    hrns_actions::reconcile_approval(
+                        &self.data_dir.join("mote.db"),
+                        self.log.clone(),
+                        &self.host_id,
+                        &action_id,
+                    )
+                    .map_err(|error| RpcError::internal(error.to_string()))?;
+                }
                 Ok(json!({ "executed": executed }))
             }
             "deny" => {
                 let id = params.get("id").and_then(|i| i.as_i64()).ok_or_else(|| {
                     RpcError::invalid_params("deny needs an id")
                 })?;
-                let denied = self
-                    .watchers
-                    .lock()
-                    .unwrap()
-                    .deny(id, now_ms())
-                    .map_err(|e| RpcError::internal(e.to_string()))?;
+                let (denied, action_id) = {
+                    let watchers = self.watchers.lock().unwrap();
+                    let denied = watchers
+                        .deny(id, now_ms())
+                        .map_err(|e| RpcError::internal(e.to_string()))?;
+                    let action_id = watchers
+                        .hrns_action(id)
+                        .map_err(|e| RpcError::internal(e.to_string()))?;
+                    (denied, action_id)
+                };
+                if let Some(action_id) = action_id {
+                    hrns_actions::reconcile_approval(
+                        &self.data_dir.join("mote.db"),
+                        self.log.clone(),
+                        &self.host_id,
+                        &action_id,
+                    )
+                    .map_err(|error| RpcError::internal(error.to_string()))?;
+                }
                 Ok(json!({ "ok": true, "denied": denied }))
             }
             "approval.card" => {
