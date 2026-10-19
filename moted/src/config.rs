@@ -38,7 +38,7 @@ enum Ty {
 fn schema(key: &str) -> Option<Ty> {
     match key {
         "models.local_only" => Some(Ty::Bool),
-        "models.talk" | "models.router" | "models.think" => Some(Ty::Str),
+        "models.talk" | "models.router" | "models.think" | "agent.harness" => Some(Ty::Str),
         "budgets.talk_first_token" | "budgets.router" | "budgets.think_first_token" => {
             Some(Ty::Int)
         }
@@ -127,6 +127,20 @@ impl ConfigStore {
         }
     }
 
+    fn remove_dotted(&mut self, key: &str) {
+        let parts: Vec<&str> = key.split('.').collect();
+        let mut cur = &mut self.value;
+        for part in &parts[..parts.len() - 1] {
+            let Some(next) = cur.get_mut(part) else {
+                return;
+            };
+            cur = next;
+        }
+        if let Some(table) = cur.as_table_mut() {
+            table.remove(parts[parts.len() - 1]);
+        }
+    }
+
     fn persist(&self) -> Result<(), SetError> {
         let text = toml::to_string(&self.value).map_err(|e| SetError::Io(e.to_string()))?;
         std::fs::write(&self.path, text).map_err(|e| SetError::Io(e.to_string()))
@@ -156,12 +170,17 @@ impl ConfigStore {
             let model = new.as_str().unwrap();
             self.gate.check(model).map_err(SetError::Rejected)?;
         }
-        let old = self.get(key).unwrap_or(toml::Value::Boolean(false));
+        if key == "agent.harness" && !matches!(new.as_str(), Some("opencode" | "mote")) {
+            return Err(SetError::Rejected(
+                "agent.harness must be opencode or mote".into(),
+            ));
+        }
+        let old = self.get(key);
         self.set_dotted(key, new.clone());
         self.persist()?;
         let payload = json!({
             "key": key,
-            "old": toml_to_json(&old),
+            "old": old.as_ref().map(toml_to_json).unwrap_or(serde_json::Value::Null),
             "new": toml_to_json(&new),
         });
         let ev = self
@@ -192,6 +211,21 @@ impl ConfigStore {
             return Err(SetError::Rejected(format!("seq {seq} is not a config.changed event")));
         }
         let key = ev.payload["key"].as_str().unwrap_or("").to_string();
+        if ev.payload["old"].is_null() {
+            schema(&key).ok_or_else(|| SetError::UnknownKey(key.clone()))?;
+            let current = self.get_json(&key).unwrap_or(serde_json::Value::Null);
+            self.remove_dotted(&key);
+            self.persist()?;
+            return self
+                .log
+                .append(
+                    CONFIG_SCOPE,
+                    "config.changed",
+                    &json!({"key":key,"old":current,"new":serde_json::Value::Null}),
+                )
+                .map(|event| event.seq)
+                .map_err(|error| SetError::Io(error.to_string()));
+        }
         let old = json_to_toml(&ev.payload["old"]);
         self.set(&key, old)
     }
@@ -292,6 +326,35 @@ mod tests {
             cs.set("budgets.router", toml::Value::String("x".into())),
             Err(SetError::WrongType { .. })
         ));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn optional_harness_defaults_to_opencode_and_validates_explicit_values() {
+        let dir = std::env::temp_dir().join(format!("mote-cfg-harness-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut cs = store(&dir);
+
+        assert_eq!(cs.get_json("agent.harness"), None);
+        assert_eq!(std::fs::read_to_string(dir.join("config.toml")).unwrap(), DEFAULT_CONFIG_TOML);
+        cs.set("agent.harness", toml::Value::String("mote".into())).unwrap();
+        assert_eq!(cs.get_json("agent.harness").unwrap(), "mote");
+        assert!(matches!(
+            cs.set("agent.harness", toml::Value::String("other".into())),
+            Err(SetError::Rejected(_))
+        ));
+        assert_eq!(cs.get_json("agent.harness").unwrap(), "mote");
+
+        let changed = cs
+            .log
+            .recent_kind_since("config.changed", i64::MIN, 1)
+            .unwrap()
+            .pop()
+            .unwrap();
+        cs.revert(changed.seq).unwrap();
+        assert_eq!(cs.get_json("agent.harness"), None);
+
         std::fs::remove_dir_all(&dir).ok();
     }
 }

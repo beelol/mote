@@ -13,6 +13,8 @@ mod embed;
 mod gate;
 mod gateway;
 #[allow(dead_code)]
+mod hrns;
+#[allow(dead_code)]
 mod hrns_actions;
 mod hrns_compat;
 pub(crate) mod host_snapshot;
