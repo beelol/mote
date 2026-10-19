@@ -2851,6 +2851,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mote-memory"
+version = "0.0.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "mote-paths"
 version = "0.0.0"
 

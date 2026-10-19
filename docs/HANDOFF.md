@@ -28,12 +28,20 @@ compaction. It also produces exact hashed `mote-context` ledger parts. Evidence 
 `docs/verification/P2-08.md`. P2-08 remains open pending backend-neutral memory retrieval and
 production daemon integration.
 
+The next verified slices are in the working tree. `mote-memory` defines the scoped backend-neutral
+contract and reusable adapter suite; it does not alter the SQLite default. The harness-selection
+state preserves the exact v0 config, resolves an absent value to OpenCode, defers live changes
+through every unsafe phase and fails visibly without fallback when a target is unavailable.
+Evidence is partial in `docs/verification/MBE-06.md` and `docs/verification/P2-04.md`; neither
+criterion is ready to check.
+
 Required verification passed on 2026-10-18. The focused action, driver, store and approval tests
 passed. `cargo test --workspace` passed outside the sandbox because the browser fixture needs a
 loopback listener. `cargo clippy --workspace -- -D warnings` and `git diff --check` passed.
 
 ## Next action
 
-Route production harness requests through the bounded builder and map OpenCode tool proposals into
-durable actions and bound approvals behind the existing compatibility flag. Keep the default v0
-path unchanged. Add backend-neutral memory retrieval before checking P2-08.
+Commit and push the memory contract and harness-selection foundation after workspace gates. Then
+implement the transactional SQLite adapter against the common contract while routing production
+harness requests through the bounded builder. Map OpenCode proposals into durable actions and
+bound approvals only after exact tool policy classification. Keep the default v0 path unchanged.
