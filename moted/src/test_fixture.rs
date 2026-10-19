@@ -16,12 +16,22 @@ pub(super) fn build(
     let identity = gateway::prepare_identity(data).map_err(std::io::Error::other)?;
     let db = data.join("mote.db");
     let log = EventLog::open(&db)?;
+    let model_client = Ollama::new(models.base_url());
+    let gate: Arc<dyn config::ModelGate> =
+        Arc::new(OllamaGate::new(model_client.clone()));
     let config = ConfigStore::load(
         &data.join("config.toml"),
         log.clone(),
-        Arc::new(OllamaGate::new(Ollama::new(models.base_url()))),
+        gate.clone(),
     )
     .map_err(|error| std::io::Error::other(error.to_string()))?;
+    let native = hrns_native::NativeTaskRuntime::production(
+        &db,
+        log.clone(),
+        model_client.clone(),
+        gate,
+    )
+    .map_err(std::io::Error::other)?;
     let daemon = Daemon {
         browser: Mutex::new(None),
         host_id: identity.host_id().clone(),
@@ -29,6 +39,7 @@ pub(super) fn build(
         log: log.clone(),
         config: Mutex::new(config),
         harness: Mutex::new(hrns::daemon_runtime(mote_hrns::HarnessKind::Opencode).unwrap()),
+        native: Mutex::new(native),
         character: Arc::new(Mutex::new(Charter {
             front: charter::FrontMatter {
                 name: "mote".into(),
@@ -38,7 +49,7 @@ pub(super) fn build(
             prose: String::new(),
         })),
         store: Mutex::new(ContextStore::open(&db)?),
-        client: Ollama::new(models.base_url()),
+        client: model_client,
         watchers: Mutex::new(Watchers::open(rusqlite::Connection::open(&db)?)?),
         think: Mutex::new(ThinkServers::new(data.to_path_buf())),
         matrix_sources: Mutex::new(HashMap::new()),

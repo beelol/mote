@@ -17,6 +17,7 @@ mod hrns;
 #[allow(dead_code)]
 mod hrns_actions;
 mod hrns_compat;
+mod hrns_native;
 pub(crate) mod host_snapshot;
 pub(crate) mod inferred_ui;
 pub(crate) mod lanes;
@@ -183,6 +184,19 @@ pub(crate) fn now_ms() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
+#[cfg(test)]
+fn test_native_runtime(data_dir: &Path) -> hrns_native::NativeTaskRuntime {
+    let database = data_dir.join("native-runtime.db");
+    let log = EventLog::open(&database).unwrap();
+    hrns_native::NativeTaskRuntime::production(
+        &database,
+        log,
+        Ollama::new("http://127.0.0.1:9"),
+        Arc::new(config::AllowAll),
+    )
+    .unwrap()
+}
+
 pub(crate) struct Daemon {
     browser: Mutex<Option<Arc<Mutex<browser::BrowserTask>>>>,
     host_id: mote_protocol::HostId,
@@ -190,6 +204,7 @@ pub(crate) struct Daemon {
     log: EventLog,
     config: Mutex<ConfigStore>,
     harness: Mutex<hrns::DaemonHarnessRuntime>,
+    native: Mutex<hrns_native::NativeTaskRuntime>,
     character: Arc<Mutex<Charter>>,
     store: Mutex<ContextStore>,
     client: Ollama,
@@ -862,6 +877,78 @@ impl Daemon {
                     turn: message,
                 };
                 let (pack, system, turn) = build_think_pack(&think_inputs, think_budget);
+                let active_harness = self.harness.lock().unwrap().selection().active;
+                if active_harness == mote_hrns::HarnessKind::Mote {
+                    let task_id = mote_hrns::TaskId::new(format!("turn-{}", user_event.seq))
+                        .map_err(RpcError::internal)?;
+                    let expected_task = task_id.clone();
+                    let scope = mote_hrns::Scope::new("owner", "personal")
+                        .map_err(RpcError::internal)?;
+                    match self.native.lock().unwrap().submit(
+                        task_id,
+                        scope,
+                        turn,
+                        system,
+                    ) {
+                        Ok(hrns_native::NativeTurnOutcome::Complete {
+                            task_id,
+                            text,
+                            sources,
+                        }) if task_id == expected_task => {
+                            lanes::record_turn(&store, thread_id, turn_ts, message, &text);
+                            (
+                                json!({
+                                    "status":"task_done",
+                                    "task_id":task_id,
+                                    "sources":sources,
+                                }),
+                                Some((true, text)),
+                            )
+                        }
+                        Ok(hrns_native::NativeTurnOutcome::WaitingForApproval {
+                            task_id,
+                            action_id,
+                        }) => (
+                            json!({
+                                "status":"task_waiting_approval",
+                                "task_id":task_id,
+                                "action_id":action_id,
+                            }),
+                            None,
+                        ),
+                        Ok(hrns_native::NativeTurnOutcome::WaitingForInput {
+                            task_id,
+                            question,
+                        }) => (
+                            json!({
+                                "status":"task_waiting_input",
+                                "task_id":task_id,
+                                "question":question,
+                            }),
+                            None,
+                        ),
+                        Ok(hrns_native::NativeTurnOutcome::Blocked { task_id }) => (
+                            json!({"status":"task_blocked","task_id":task_id}),
+                            None,
+                        ),
+                        Ok(hrns_native::NativeTurnOutcome::Complete { task_id, .. }) => (
+                            json!({
+                                "status":"task_queued",
+                                "task_id":expected_task,
+                                "active_task_id":task_id,
+                            }),
+                            None,
+                        ),
+                        Err(error) => (
+                            json!({
+                                "status":"task_failed",
+                                "task_id":expected_task,
+                                "reason":error.to_string(),
+                            }),
+                            None,
+                        ),
+                    }
+                } else {
                 let full_model = format!("ollama/{think_model}");
                 let think_outcome = if hrns_compat::enabled() {
                     match self
@@ -950,6 +1037,7 @@ impl Daemon {
                     ThinkOutcome::Failed(reason) => {
                         (json!({ "status": "think_failed", "reason": reason }), None)
                     }
+                }
                 }
             }
         };
@@ -1862,6 +1950,7 @@ mod approval_dispatch_tests {
             log,
             config: Mutex::new(config),
             harness: Mutex::new(hrns::daemon_runtime(mote_hrns::HarnessKind::Opencode).unwrap()),
+            native: Mutex::new(test_native_runtime(data_dir)),
             character: Arc::new(Mutex::new(Charter {
                 front: FrontMatter {
                     name: "mote".into(),
@@ -1886,7 +1975,7 @@ mod approval_dispatch_tests {
     }
 
     #[test]
-    fn daemon_exposes_the_effective_harness_and_rejects_unavailable_selection() {
+    fn daemon_exposes_and_switches_between_available_harnesses() {
         let (data, _) = dirs("harness-selection");
         let daemon = daemon(&data);
 
@@ -1909,34 +1998,28 @@ mod approval_dispatch_tests {
             hrns::RuntimePhase::Checkpoint
         );
 
-        let before = daemon.log.max_seq().unwrap();
-        assert_eq!(
-            daemon
-                .call(
-                    "config.set",
-                    json!({"key":"agent.harness","value":"mote"}),
-                )
-                .unwrap_err()
-                .code,
-            "invalid_params"
-        );
-        assert_eq!(daemon.log.max_seq().unwrap(), before);
-        assert_eq!(daemon.config.lock().unwrap().get_json("agent.harness"), None);
-
         let changed = daemon
             .call(
                 "config.set",
-                json!({"key":"agent.harness","value":"opencode"}),
+                json!({"key":"agent.harness","value":"mote"}),
             )
             .unwrap();
         assert_eq!(
             daemon.call("status", json!({})).unwrap()["harness"],
-            json!({"configured":"opencode","active":"opencode","pending":null})
+            json!({"configured":"mote","active":"mote","pending":null})
+        );
+        assert_eq!(
+            daemon.config.lock().unwrap().get_json("agent.harness"),
+            Some(json!("mote"))
         );
         daemon
             .call("config.revert", json!({"seq":changed["seq"]}))
             .unwrap();
         assert_eq!(daemon.config.lock().unwrap().get_json("agent.harness"), None);
+        assert_eq!(
+            daemon.call("status", json!({})).unwrap()["harness"],
+            json!({"configured":"opencode","active":"opencode","pending":null})
+        );
         std::fs::remove_dir_all(data.parent().unwrap()).ok();
     }
 
@@ -1950,24 +2033,28 @@ mod approval_dispatch_tests {
         let sequence = daemon.log.max_seq().unwrap();
         let event = daemon.log.get(sequence).unwrap().unwrap();
         assert!(event.payload.to_string().contains("opencode"));
+        daemon
+            .call(
+                "ui.event",
+                json!({
+                    "thread":"main",
+                    "surface_contract":1,
+                    "surface_seq":sequence,
+                    "node_path":[0],
+                    "event":"change",
+                    "args":{"field":"agent.harness","value":"mote"},
+                }),
+            )
+            .unwrap();
+        assert!(daemon.log.max_seq().unwrap() > sequence);
         assert_eq!(
-            daemon
-                .call(
-                    "ui.event",
-                    json!({
-                        "thread":"main",
-                        "surface_contract":1,
-                        "surface_seq":sequence,
-                        "node_path":[0],
-                        "event":"change",
-                        "args":{"field":"agent.harness","value":"mote"},
-                    }),
-                )
-                .unwrap_err()
-                .code,
-            "invalid_params"
+            daemon.config.lock().unwrap().get_json("agent.harness"),
+            Some(json!("mote"))
         );
-        assert_eq!(daemon.log.max_seq().unwrap(), sequence);
+        assert_eq!(
+            daemon.call("status", json!({})).unwrap()["harness"],
+            json!({"configured":"mote","active":"mote","pending":null})
+        );
         std::fs::remove_dir_all(data.parent().unwrap()).ok();
     }
 
@@ -4966,6 +5053,7 @@ mod turn_event_tests {
             log: log.clone(),
             config: Mutex::new(config),
             harness: Mutex::new(hrns::daemon_runtime(mote_hrns::HarnessKind::Opencode).unwrap()),
+            native: Mutex::new(test_native_runtime(&data_dir)),
             character: Arc::new(Mutex::new(Charter {
                 front: FrontMatter {
                     name: "mote".into(),
@@ -5377,8 +5465,9 @@ fn run() -> Result<(), i32> {
         1
     })?;
 
-    let gate = Arc::new(OllamaGate::new(Ollama::local()));
-    let config = ConfigStore::load(&mote_paths::config_path(), log.clone(), gate).map_err(|e| {
+    let model_client = Ollama::local();
+    let gate: Arc<dyn config::ModelGate> = Arc::new(OllamaGate::new(model_client.clone()));
+    let config = ConfigStore::load(&mote_paths::config_path(), log.clone(), gate.clone()).map_err(|e| {
         eprintln!("moted: cannot load config: {e}");
         1
     })?;
@@ -5445,6 +5534,18 @@ fn run() -> Result<(), i32> {
         eprintln!("moted: {error}");
         1
     })?;
+    let native = hrns_native::NativeTaskRuntime::production(
+        &mote_paths::db_path(),
+        log.clone(),
+        model_client.clone(),
+        gate,
+    )
+    .map_err(|error| {
+        let reason = format!("cannot initialize native harness: {error}");
+        let _ = log.append("daemon", "startup.refused", &json!({ "reason": reason }));
+        eprintln!("moted: {reason}");
+        1
+    })?;
 
     let socket = mote_paths::socket_path();
     let daemon = Arc::new(Daemon {
@@ -5454,9 +5555,10 @@ fn run() -> Result<(), i32> {
         log,
         config: Mutex::new(config),
         harness: Mutex::new(harness),
+        native: Mutex::new(native),
         character,
         store: Mutex::new(store),
-        client: Ollama::local(),
+        client: model_client,
         watchers: Mutex::new(watchers),
         think: Mutex::new(ThinkServers::new(data.clone())),
         matrix_sources: Mutex::new(HashMap::new()),

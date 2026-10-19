@@ -7,7 +7,7 @@ pub fn daemon_runtime(configured: HarnessKind) -> Result<DaemonHarnessRuntime, S
 }
 
 fn daemon_harness_available(harness: HarnessKind) -> bool {
-    matches!(harness, HarnessKind::Opencode)
+    matches!(harness, HarnessKind::Opencode | HarnessKind::Mote)
 }
 
 pub fn harness_name(harness: HarnessKind) -> &'static str {
@@ -165,6 +165,13 @@ mod tests {
             configured_harness(Some(&serde_json::json!("other"))),
             Err(SwitchError::InvalidConfiguration)
         );
+    }
+
+    #[test]
+    fn daemon_exposes_both_built_in_harnesses_without_changing_the_default() {
+        let runtime = daemon_runtime(HarnessKind::Opencode).unwrap();
+        assert_eq!(runtime.selection().active, HarnessKind::Opencode);
+        assert!(runtime.validate_harness(HarnessKind::Mote).is_ok());
     }
 
     #[test]
