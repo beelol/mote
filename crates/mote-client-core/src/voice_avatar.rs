@@ -91,6 +91,27 @@ impl VoiceAvatar {
         self.draw_with_size(ui, COMPACT_AVATAR_SIZE, Vec2::new(128.0, 48.0), true)
     }
 
+    pub fn draw_status(self, ui: &mut egui::Ui) {
+        self.draw_status_with_size(ui, AVATAR_SIZE);
+    }
+
+    fn draw_status_with_size(self, ui: &mut egui::Ui, avatar_size: f32) {
+        let visual = Visual::new(self.state, self.elapsed_seconds, self.reduced_motion);
+        let (rect, response) = ui.allocate_exact_size(Vec2::splat(avatar_size), Sense::hover());
+        paint_avatar(ui, rect.center(), visual, avatar_size / AVATAR_SIZE);
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Label, true, self.state.label())
+        });
+        crate::accessibility::leaf(
+            ui,
+            response.id,
+            Role::Label,
+            Some("Voice status"),
+            crate::accessibility::Value::Text(self.state.label()),
+            Some(&response),
+        );
+    }
+
     fn draw_with_size(
         self,
         ui: &mut egui::Ui,
@@ -98,23 +119,9 @@ impl VoiceAvatar {
         control_size: Vec2,
         horizontal: bool,
     ) -> Option<VoiceAction> {
-        let visual = Visual::new(self.state, self.elapsed_seconds, self.reduced_motion);
         let mut action = None;
         let draw = |ui: &mut egui::Ui, action: &mut Option<VoiceAction>| {
-            let (rect, avatar_response) =
-                ui.allocate_exact_size(Vec2::splat(avatar_size), Sense::hover());
-            paint_avatar(ui, rect.center(), visual, avatar_size / AVATAR_SIZE);
-            avatar_response.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::WidgetType::Label, true, self.state.label())
-            });
-            crate::accessibility::leaf(
-                ui,
-                avatar_response.id,
-                Role::Label,
-                Some("Voice status"),
-                crate::accessibility::Value::Text(self.state.label()),
-                Some(&avatar_response),
-            );
+            self.draw_status_with_size(ui, avatar_size);
 
             if !horizontal {
                 ui.add_space(8.0);

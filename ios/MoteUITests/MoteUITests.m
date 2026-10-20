@@ -64,6 +64,8 @@ static NSArray<NSDictionary *> *galleryControls(NSString *page) {
             @{@"kind":@"select",@"label":@"Router model",@"options":models},
             @{@"kind":@"select",@"label":@"Think model",@"options":models},
             @{@"kind":@"action",@"label":@"Refresh",@"event":@"refresh"}],
+        @"Voice":@[
+            @{@"kind":@"action",@"label":@"Start or stop voice",@"event":@"voice_toggle"}],
         @"Fixture":@[
             @{@"kind":@"toggle",@"label":@"Local only"},
             @{@"kind":@"slider",@"label":@"Volume",@"values":@[@50,@0,@100,@50,@50],@"max":@100},
@@ -1441,6 +1443,25 @@ PHYSICAL_GALLERY_CASE(testPhysicalGalleryFixtureLandscape, @"Fixture", UIDeviceO
         [survival fulfill];
     });
     [self waitForExpectations:@[survival] timeout:10];
+}
+
+- (void)testVoiceMatrixSurfaceAndStateTransition {
+    for (NSNumber *reduced in @[@NO, @YES]) {
+        XCUIApplication *app = [[XCUIApplication alloc] init];
+        app.launchArguments = reduced.boolValue
+            ? @[@"--mote-offline", @"--mote-page", @"voice", @"--mote-reduced-motion"]
+            : @[@"--mote-offline", @"--mote-page", @"voice"];
+        [app launch];
+        XCTAssertTrue([app waitForState:XCUIApplicationStateRunningForeground timeout:15]);
+        [self assertText:@"Voice off" app:app];
+        [self assertText:@"Start or stop voice" app:app];
+        [self capture:reduced.boolValue ? @"voice-reduced-off" : @"voice-active-off" app:app];
+        [self tapText:@"Start or stop voice" app:app];
+        [self assertText:@"Voice preview: Voice starting" app:app];
+        [self assertText:@"Voice starting" app:app];
+        [self capture:reduced.boolValue ? @"voice-reduced-starting" : @"voice-active-starting" app:app];
+        [app terminate];
+    }
 }
 
 - (void)testDeterministicFixtureAndReducedMotionLaunch {

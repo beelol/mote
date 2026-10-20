@@ -1280,6 +1280,26 @@ impl Dispatch for Daemon {
                     )?;
                     return Ok(json!({"ok": true, "rendered": rendered}));
                 }
+                if event == "voice_toggle" {
+                    let state = self.voice.state().state;
+                    let status = if matches!(
+                        state,
+                        voice::VoiceState::Off
+                            | voice::VoiceState::Unavailable
+                            | voice::VoiceState::Error
+                    ) {
+                        self.voice.start().map_err(RpcError::invalid_params)?
+                    } else {
+                        self.voice.stop().map_err(RpcError::internal)?
+                    };
+                    self.log
+                        .append(thread, "ui.event", &json!({ "event": event, "args": args }))
+                        .map_err(|error| RpcError::internal(format!("record UI event: {error}")))?;
+                    let mut snapshots = self.matrix_snapshots.lock().unwrap();
+                    let rendered =
+                        self.refresh_matrix_with_sources(&mut sources, &mut snapshots, thread)?;
+                    return Ok(json!({"ok":true,"voice":status,"rendered":rendered}));
+                }
                 Err(RpcError::invalid_params("unsupported Matrix action"))
             }
             // Validate a surface tree fail-closed and commit it as a `ui.surface` event on the

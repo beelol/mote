@@ -15,6 +15,7 @@ const RAPID_FAILURE_WINDOW: Duration = Duration::from_secs(10);
 const STOP_TIMEOUT: Duration = Duration::from_millis(500);
 const OWNER_TURN_CAPACITY: usize = 32;
 const ACCOUNTING_CAPACITY: usize = 64;
+const VISIBLE_STATUS_TEXT_LIMIT: usize = 512;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VoiceOwnerTurn {
@@ -84,6 +85,10 @@ pub struct VoiceStatus {
     pub state: VoiceState,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partial_words: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speaking_line: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -323,6 +328,8 @@ impl VoiceSupervisor {
             inner.session_id = Some(session_id);
             inner.accepted_utterances.clear();
             inner.active_utterance = None;
+            inner.status.partial_words = None;
+            inner.status.speaking_line = None;
         }
         transition_generation(&self.shared, generation, VoiceState::Starting, None);
         if let Err(reason) = launch(&self.shared, generation) {
@@ -354,6 +361,8 @@ impl VoiceSupervisor {
             inner.generation = inner.generation.wrapping_add(1);
             inner.session_id = None;
             inner.active_utterance = None;
+            inner.status.partial_words = None;
+            inner.status.speaking_line = None;
             let spoken = inner.spoken.take();
             (inner.input.take(), inner.process.take(), spoken)
         };
@@ -424,6 +433,8 @@ impl VoiceSupervisor {
             let line_id = inner.next_line_id;
             inner.next_line_id = inner.next_line_id.saturating_add(1);
             let line = SpokenLine::new(line_id, task_id, text.clone());
+            inner.status.speaking_line = Some(visible_status_text(&text));
+            inner.status.partial_words = None;
             inner.spoken = Some(SpokenTracker {
                 line: line.clone(),
                 phrase_word_ends,
@@ -441,6 +452,7 @@ impl VoiceSupervisor {
             .is_err()
         {
             self.shared.inner.lock().unwrap().spoken = None;
+            self.shared.inner.lock().unwrap().status.speaking_line = None;
             return Err("voice accounting ingress unavailable".into());
         }
         if let Err(error) = self.send(&Command::Speak {
@@ -451,6 +463,7 @@ impl VoiceSupervisor {
             if let Some(spoken) = spoken.filter(|spoken| spoken.line.line_id == line_id) {
                 record_speech_completion(&self.shared, &spoken, VoiceOperationStatus::Failed);
             }
+            self.shared.inner.lock().unwrap().status.speaking_line = None;
             return Err(error);
         }
         record_spoken_line(&self.shared, &line, "queued");
@@ -559,10 +572,15 @@ fn apply_event(shared: &Arc<Shared>, generation: u64, event: Event) {
         Event::Ready { .. } | Event::Resumed { .. } => {
             transition_generation(shared, generation, VoiceState::Listening, None)
         }
-        Event::Gate { open: true, .. } | Event::Words { .. } => {
+        Event::Gate { open: true, .. } => {
+            transition_generation(shared, generation, VoiceState::Hearing, None)
+        }
+        Event::Words { text, .. } => {
+            set_partial_words(shared, generation, Some(text));
             transition_generation(shared, generation, VoiceState::Hearing, None)
         }
         Event::Gate { open: false, .. } | Event::Dropped { .. } => {
+            set_partial_words(shared, generation, None);
             transition_generation(shared, generation, VoiceState::Listening, None)
         }
         Event::Utterance {
@@ -573,6 +591,7 @@ fn apply_event(shared: &Arc<Shared>, generation: u64, event: Event) {
             end_ms,
             ..
         } if complete => {
+            set_partial_words(shared, generation, None);
             let turn = {
                 let mut inner = shared.inner.lock().unwrap();
                 if inner.generation != generation || !inner.desired {
@@ -643,6 +662,7 @@ fn apply_event(shared: &Arc<Shared>, generation: u64, event: Event) {
         Event::Paused { .. } => transition_generation(shared, generation, VoiceState::Paused, None),
         Event::Error { message, .. } => {
             finish_active_speech(shared, VoiceOperationStatus::Failed);
+            set_partial_words(shared, generation, None);
             transition_generation(shared, generation, VoiceState::Error, Some(message))
         }
         Event::End { .. } | Event::Level { .. } => {}
@@ -668,6 +688,7 @@ fn apply_spoke(shared: &Arc<Shared>, generation: u64, line_id: u64, event: &str,
         let line = spoken.line.clone();
         let completed = if terminal {
             inner.last_spoken = Some(line.clone());
+            inner.status.speaking_line = None;
             inner.spoken.take()
         } else {
             None
@@ -738,9 +759,20 @@ fn record_speech_completion(shared: &Shared, spoken: &SpokenTracker, status: Voi
 }
 
 fn finish_active_speech(shared: &Shared, status: VoiceOperationStatus) {
-    let spoken = shared.inner.lock().unwrap().spoken.take();
+    let spoken = {
+        let mut inner = shared.inner.lock().unwrap();
+        inner.status.speaking_line = None;
+        inner.spoken.take()
+    };
     if let Some(spoken) = spoken {
         record_speech_completion(shared, &spoken, status);
+    }
+}
+
+fn set_partial_words(shared: &Shared, generation: u64, text: Option<String>) {
+    let mut inner = shared.inner.lock().unwrap();
+    if inner.generation == generation && inner.desired {
+        inner.status.partial_words = text.map(|value| visible_status_text(&value));
     }
 }
 
@@ -798,18 +830,17 @@ fn fail(shared: &Arc<Shared>, generation: u64, reason: &str) {
 }
 
 fn transition(shared: &Shared, state: VoiceState, reason: Option<String>) {
-    let reason = reason.map(|value| mote_redact::redact(&value));
-    {
+    let reason = reason.map(|value| visible_status_text(&value));
+    let status = {
         let mut inner = shared.inner.lock().unwrap();
-        inner.status = VoiceStatus {
-            state,
-            reason: reason.clone(),
-        };
-    }
+        inner.status.state = state;
+        inner.status.reason = reason.clone();
+        inner.status.clone()
+    };
     let _ = shared.log.append(
         "voice",
         "voice.state",
-        &json!({"state":state,"reason":reason}),
+        &serde_json::to_value(status).unwrap_or_default(),
     );
 }
 
@@ -819,22 +850,28 @@ fn transition_generation(
     state: VoiceState,
     reason: Option<String>,
 ) {
-    let reason = reason.map(|value| mote_redact::redact(&value));
-    {
+    let reason = reason.map(|value| visible_status_text(&value));
+    let status = {
         let mut inner = shared.inner.lock().unwrap();
         if !inner.desired || inner.generation != generation {
             return;
         }
-        inner.status = VoiceStatus {
-            state,
-            reason: reason.clone(),
-        };
-    }
+        inner.status.state = state;
+        inner.status.reason = reason.clone();
+        inner.status.clone()
+    };
     let _ = shared.log.append(
         "voice",
         "voice.state",
-        &json!({"state":state,"reason":reason}),
+        &serde_json::to_value(status).unwrap_or_default(),
     );
+}
+
+fn visible_status_text(value: &str) -> String {
+    mote_redact::redact(value)
+        .chars()
+        .take(VISIBLE_STATUS_TEXT_LIMIT)
+        .collect()
 }
 
 pub fn default_listener_path() -> PathBuf {

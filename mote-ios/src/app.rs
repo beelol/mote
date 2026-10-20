@@ -1,8 +1,10 @@
 use mote_client_core::{
     gallery::{Gallery, GalleryPage},
     surface_v1,
-    voice_avatar::{VoiceAction, VoiceAvatar, VoiceState},
+    voice_avatar::{VoiceAvatar, VoiceState},
 };
+#[cfg(test)]
+use mote_client_core::voice_avatar::VoiceAction;
 
 pub struct MoteApp {
     gallery: Gallery,
@@ -293,27 +295,44 @@ impl MoteApp {
     }
 
     fn draw_voice_gallery(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, system_reduced: bool) {
-        ui.heading("Voice");
-        ui.label("Immediate UI preview. Audio capture is not connected in the gallery.");
+        let mut events = Vec::new();
+        surface_v1::draw(
+            ui,
+            self.gallery
+                .surface()
+                .matrix_v1()
+                .expect("validated voice gallery"),
+            &mut events,
+        );
+        for event in events {
+            if matches!(
+                event,
+                surface_v1::Event::Action { ref event, .. } if event == "voice_toggle"
+            ) {
+                self.voice_preview_state = if matches!(
+                    self.voice_preview_state,
+                    VoiceState::Off | VoiceState::Unavailable | VoiceState::Error
+                ) {
+                    VoiceState::Starting
+                } else {
+                    VoiceState::Off
+                };
+                self.gallery.set_voice_preview(
+                    self.voice_preview_state.label(),
+                    "Immediate UI preview. Audio capture is not connected in the gallery.",
+                );
+                self.last_event = format!("Voice preview: {}", self.voice_preview_state.label());
+            }
+        }
         ui.add_space(12.0);
         ui.vertical_centered(|ui| {
             let elapsed_seconds = ctx.input(|input| input.time);
-            let action = VoiceAvatar {
+            VoiceAvatar {
                 state: self.voice_preview_state,
                 elapsed_seconds,
                 reduced_motion: self.reduced_motion || system_reduced,
             }
-            .draw(ui);
-            if let Some(action) = action {
-                self.voice_preview_state = match action {
-                    VoiceAction::Start => VoiceState::Starting,
-                    VoiceAction::Stop => VoiceState::Off,
-                };
-                self.last_event = match action {
-                    VoiceAction::Start => "Voice preview started".into(),
-                    VoiceAction::Stop => "Voice preview stopped".into(),
-                };
-            }
+            .draw_status(ui);
         });
         ui.add_space(16.0);
         ui.label("Preview state");
@@ -336,6 +355,10 @@ impl MoteApp {
                 );
                 if response.clicked() {
                     self.voice_preview_state = state;
+                    self.gallery.set_voice_preview(
+                        state.label(),
+                        "Immediate UI preview. Audio capture is not connected in the gallery.",
+                    );
                     self.last_event = format!("Voice preview: {}", state.label());
                 }
             }

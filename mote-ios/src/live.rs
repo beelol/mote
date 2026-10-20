@@ -433,23 +433,40 @@ struct WireVoiceStatus {
     state: VoiceState,
     #[serde(default)]
     reason: Option<String>,
+    #[serde(default)]
+    partial_words: Option<String>,
+    #[serde(default)]
+    speaking_line: Option<String>,
 }
 
 impl From<WireVoiceStatus> for VoicePresentation {
     fn from(status: WireVoiceStatus) -> Self {
-        let notice = status.reason.unwrap_or_else(|| match status.state {
-            VoiceState::Off => "Voice is off. Typed chat remains available.".into(),
-            VoiceState::Starting => "Starting voice on the selected host.".into(),
-            VoiceState::Listening => "Listening on the selected host.".into(),
-            VoiceState::Hearing => "The selected host is hearing you.".into(),
-            VoiceState::Thinking => "The selected host is processing your request.".into(),
-            VoiceState::Speaking => "The selected host is speaking.".into(),
-            VoiceState::Paused => "Voice is paused on the selected host.".into(),
-            VoiceState::Unavailable => {
-                "Voice is unavailable. Typed chat remains available.".into()
-            }
-            VoiceState::Error => "Voice failed. Typed chat remains available.".into(),
-        });
+        let notice = status
+            .reason
+            .or_else(|| match status.state {
+                VoiceState::Hearing => status
+                    .partial_words
+                    .filter(|text| !text.is_empty())
+                    .map(|text| format!("Hearing: {text}")),
+                VoiceState::Speaking => status
+                    .speaking_line
+                    .filter(|text| !text.is_empty())
+                    .map(|text| format!("Speaking: {text}")),
+                _ => None,
+            })
+            .unwrap_or_else(|| match status.state {
+                VoiceState::Off => "Voice is off. Typed chat remains available.".into(),
+                VoiceState::Starting => "Starting voice on the selected host.".into(),
+                VoiceState::Listening => "Listening on the selected host.".into(),
+                VoiceState::Hearing => "The selected host is hearing you.".into(),
+                VoiceState::Thinking => "The selected host is processing your request.".into(),
+                VoiceState::Speaking => "The selected host is speaking.".into(),
+                VoiceState::Paused => "Voice is paused on the selected host.".into(),
+                VoiceState::Unavailable => {
+                    "Voice is unavailable. Typed chat remains available.".into()
+                }
+                VoiceState::Error => "Voice failed. Typed chat remains available.".into(),
+            });
         Self {
             state: status.state,
             notice,
@@ -1582,6 +1599,14 @@ mod recovery_tests {
     }
 
     fn voice_event(host: &HostId, seq: i64, state: &str) -> HostUpdate {
+        voice_event_with_payload(host, seq, serde_json::json!({"state":state}))
+    }
+
+    fn voice_event_with_payload(
+        host: &HostId,
+        seq: i64,
+        payload: serde_json::Value,
+    ) -> HostUpdate {
         HostUpdate::Frame {
             host_id: host.clone(),
             frame: HostFrame::Event {
@@ -1591,10 +1616,40 @@ mod recovery_tests {
                     ts: 0,
                     scope_id: "voice".into(),
                     kind: "voice.state".into(),
-                    payload: serde_json::json!({"state":state}),
+                    payload,
                 },
             },
         }
+    }
+
+    #[test]
+    fn partial_and_speaking_text_follow_the_selected_host_protocol() {
+        let (mut runtime, updates, _) = voice_runtime(&[(43, "Home")]);
+        let host = HostId::from_public_key(&[43; 32]);
+        updates
+            .send(voice_event_with_payload(
+                &host,
+                1,
+                serde_json::json!({"state":"hearing","partial_words":"book the flight"}),
+            ))
+            .unwrap();
+        runtime.drain();
+        assert_eq!(runtime.selected_voice().state, VoiceState::Hearing);
+        assert_eq!(runtime.selected_voice().notice, "Hearing: book the flight");
+
+        updates
+            .send(voice_event_with_payload(
+                &host,
+                2,
+                serde_json::json!({"state":"speaking","speaking_line":"I found two options."}),
+            ))
+            .unwrap();
+        runtime.drain();
+        assert_eq!(runtime.selected_voice().state, VoiceState::Speaking);
+        assert_eq!(
+            runtime.selected_voice().notice,
+            "Speaking: I found two options."
+        );
     }
 
     #[test]

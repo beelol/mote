@@ -49,9 +49,7 @@ impl GalleryPage {
             Self::Fixture => mote_ui::v1::validate(include_bytes!(
                 "../../mote-ui/fixtures-v1/01_slider_layout.json"
             )),
-            Self::Voice => mote_ui::v1::validate(
-                br#"{"version":1,"root":{"type":"screen","title":"Voice","children":[{"type":"text","value":"Interactive voice preview"}]}}"#,
-            ),
+            Self::Voice => voice_surface("Voice off", "Voice is off.", "", ""),
             _ => {
                 let children = match self {
                     Self::Layout => json!([
@@ -142,6 +140,47 @@ impl Gallery {
     pub fn surface(&self) -> &crate::contract::Surface {
         &self.surface
     }
+
+    pub fn set_voice_preview(&mut self, label: &str, detail: &str) {
+        if self.selected == GalleryPage::Voice {
+            self.surface = crate::contract::Surface::V1 {
+                surface: voice_surface(label, detail, "", "")
+                    .expect("local voice preview must validate"),
+                fallback: text("This Matrix surface requires a newer Mote client."),
+            };
+        }
+    }
+}
+
+fn voice_surface(
+    label: &str,
+    detail: &str,
+    partial: &str,
+    speaking: &str,
+) -> Result<mote_ui::v1::Surface, mote_ui::v1::Diagnostic> {
+    let encoded = serde_json::to_vec(&json!({
+        "version":1,
+        "root":{
+            "type":"screen",
+            "title":"Voice",
+            "children":[
+                {"type":"header","children":[{"type":"row","children":[
+                    {"type":"text","value":label,"fill":true},
+                    {"type":"button","label":"Start or stop voice","event":"voice_toggle"}
+                ]}]},
+                {"type":"col","children":[
+                    {"type":"text","value":detail},
+                    {"type":"text","value":partial},
+                    {"type":"text","value":speaking}
+                ]},
+                {"type":"footer","children":[
+                    {"type":"text","value":"Voice runs on the selected Mac host. Typed chat remains available."}
+                ]}
+            ]
+        }
+    }))
+    .expect("local voice preview must serialize");
+    mote_ui::v1::validate(&encoded)
 }
 
 fn text(value: &str) -> Node {
@@ -318,7 +357,12 @@ mod tests {
             (
                 GalleryPage::Voice,
                 "Voice",
-                vec![json!({"type":"text", "value":"Interactive voice preview"})],
+                vec![
+                    json!({"type":"header"}),
+                    json!({"type":"text", "value":"Voice off", "fill":true}),
+                    json!({"type":"button", "event":"voice_toggle"}),
+                    json!({"type":"footer"}),
+                ],
             ),
             (
                 GalleryPage::Fixture,

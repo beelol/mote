@@ -347,6 +347,67 @@ fn final_utterance_routes_once_across_listener_reconnect_and_partials_do_not_rou
 }
 
 #[test]
+fn partial_words_are_redacted_and_exposed_without_becoming_owner_turns() {
+    let launcher = Arc::new(FakeLauncher::new([events(
+        &[
+            r#"{"type":"ready","input":"mic","model":"local.bin","t_ms":0}"#,
+            r#"{"type":"words","id":4,"text":"use ghp_0123456789abcdefghijklmnopqrstuvwx","t_ms":20}"#,
+        ],
+        true,
+    )]));
+    let supervisor = VoiceSupervisor::with_components(
+        config(),
+        EventLog::open_in_memory().unwrap(),
+        launcher,
+        Arc::new(Permission(Ok(()))),
+    );
+    let turns = supervisor.take_owner_turns().unwrap();
+
+    supervisor.start().unwrap();
+    wait_for(&supervisor, VoiceState::Hearing);
+    assert_eq!(
+        supervisor.state().partial_words.as_deref(),
+        Some("use [redacted]")
+    );
+    assert!(turns.recv_timeout(Duration::from_millis(50)).is_err());
+    supervisor.stop().unwrap();
+}
+
+#[test]
+fn visible_voice_status_text_is_bounded() {
+    let long_partial = "voice ".repeat(200);
+    let words = serde_json::json!({
+        "type":"words",
+        "id":5,
+        "text":long_partial,
+        "t_ms":20
+    })
+    .to_string();
+    let launcher = Arc::new(FakeLauncher::new([events(
+        &[
+            r#"{"type":"ready","input":"mic","model":"local.bin","t_ms":0}"#,
+            &words,
+        ],
+        true,
+    )]));
+    let supervisor = VoiceSupervisor::with_components(
+        config(),
+        EventLog::open_in_memory().unwrap(),
+        launcher,
+        Arc::new(Permission(Ok(()))),
+    );
+
+    supervisor.start().unwrap();
+    wait_for(&supervisor, VoiceState::Hearing);
+    assert!(supervisor
+        .state()
+        .partial_words
+        .as_deref()
+        .is_some_and(|text| text.chars().count() <= 512));
+    supervisor.stop().unwrap();
+}
+
+#[test]
 fn concurrent_start_calls_spawn_only_one_listener() {
     let launcher = Arc::new(FakeLauncher::new([ready(true)]));
     let supervisor = Arc::new(VoiceSupervisor::with_components(

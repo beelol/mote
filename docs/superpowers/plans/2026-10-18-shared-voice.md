@@ -181,9 +181,9 @@
 - Produces: a default circling-avatar Matrix surface with bounded bindings, an accessible state
   label, reduced-motion behavior and no audio bytes or model path.
 
-- [ ] **Step 1:** Add deterministic surface snapshots for every voice state, active and reduced
+- [x] **Step 1:** Add deterministic surface snapshots for every voice state, active and reduced
   avatar motion and transitions that replace partial words without stale controls.
-- [ ] **Step 2:** Implement the Matrix surface and run Mac headless and iPad Simulator host-protocol journeys.
+- [x] **Step 2:** Implement the Matrix surface and run Mac headless and iPad Simulator host-protocol journeys.
 - [ ] **Step 3:** Record source files, pinned revision, license inventory, notices and redaction scans for all shared crates.
 - [ ] **Step 4:** Create a clean Overseer worktree, replace only its listener foundation with pinned Mote Git dependencies and run its voice and daemon boundary tests.
 - [ ] **Step 5:** Confirm the owner's dirty Overseer checkout is unchanged and record the clean worktree revision and comparison output.

@@ -490,6 +490,14 @@ pub fn host_bindings(
     manifest
         .values
         .insert("harness.pending".into(), Type::String.into());
+    for name in [
+        "voice.label",
+        "voice.detail",
+        "voice.partial",
+        "voice.speaking",
+    ] {
+        manifest.values.insert(name.into(), Type::String.into());
+    }
     for (name, ty) in [
         ("models.local_only", Type::Boolean),
         ("models.talk", Type::Enum("Model".into())),
@@ -562,6 +570,13 @@ pub fn host_bindings(
         "harness.pending".into(),
         json!(pipeline.harness.pending.as_deref().unwrap_or("none")),
     );
+    let voice = voice_values(&pipeline.voice);
+    for (name, value) in voice {
+        snapshot.values.insert(name.into(), json!(value));
+    }
+    manifest
+        .actions
+        .insert("voice_toggle".into(), ActionContract::default());
     for name in manifest.fields.keys() {
         if name == "agent.harness" {
             snapshot
@@ -572,6 +587,43 @@ pub fn host_bindings(
         }
     }
     Ok(HostBindings { manifest, snapshot })
+}
+
+fn voice_values(status: &super::voice::VoiceStatus) -> [(&'static str, String); 4] {
+    let label = match status.state {
+        super::voice::VoiceState::Off => "Voice off",
+        super::voice::VoiceState::Starting => "Voice starting",
+        super::voice::VoiceState::Listening => "Listening",
+        super::voice::VoiceState::Hearing => "Hearing you",
+        super::voice::VoiceState::Thinking => "Thinking",
+        super::voice::VoiceState::Speaking => "Speaking",
+        super::voice::VoiceState::Paused => "Voice paused",
+        super::voice::VoiceState::Unavailable => "Voice unavailable",
+        super::voice::VoiceState::Error => "Voice error",
+    };
+    let detail = status.reason.clone().unwrap_or_else(|| match status.state {
+        super::voice::VoiceState::Off => "Voice is off.".into(),
+        super::voice::VoiceState::Starting => "Starting local voice.".into(),
+        super::voice::VoiceState::Listening => "Listening on this Mac.".into(),
+        super::voice::VoiceState::Hearing => "Transcribing locally.".into(),
+        super::voice::VoiceState::Thinking => "Working on the owner request.".into(),
+        super::voice::VoiceState::Speaking => "Speaking through this Mac.".into(),
+        super::voice::VoiceState::Paused => "Voice is paused.".into(),
+        super::voice::VoiceState::Unavailable => "Voice is unavailable; typed chat still works.".into(),
+        super::voice::VoiceState::Error => "Voice failed; typed chat still works.".into(),
+    });
+    [
+        ("voice.label", label.into()),
+        ("voice.detail", detail),
+        (
+            "voice.partial",
+            status.partial_words.clone().unwrap_or_default(),
+        ),
+        (
+            "voice.speaking",
+            status.speaking_line.clone().unwrap_or_default(),
+        ),
+    ]
 }
 
 #[allow(dead_code)]
@@ -644,6 +696,66 @@ mod contract_tests {
         let (payload, mut committed) = compiled.prepare(&bindings.manifest).unwrap();
         committed.seq = 37;
         (payload, committed)
+    }
+
+    #[test]
+    fn voice_surface_compiles_every_state_with_bounded_redacted_bindings() {
+        let source = include_str!("../../matrix/examples/voice-status.matrix");
+        let config = BTreeMap::from([
+            ("models.local_only".to_string(), json!(true)),
+            ("models.talk".to_string(), json!("qwen3:4b")),
+            ("models.router".to_string(), json!("qwen3:0.6b")),
+            ("models.think".to_string(), json!("qwen3-coder:30b-64k")),
+            ("budgets.router".to_string(), json!(150)),
+        ]);
+        for state in [
+            super::super::voice::VoiceState::Off,
+            super::super::voice::VoiceState::Starting,
+            super::super::voice::VoiceState::Listening,
+            super::super::voice::VoiceState::Hearing,
+            super::super::voice::VoiceState::Thinking,
+            super::super::voice::VoiceState::Speaking,
+            super::super::voice::VoiceState::Paused,
+            super::super::voice::VoiceState::Unavailable,
+            super::super::voice::VoiceState::Error,
+        ] {
+            let pipeline = PipelineSnapshot {
+                generated_at: 0,
+                event_limit: crate::pipeline::PIPELINE_EVENT_LIMIT,
+                request_limit: crate::pipeline::PIPELINE_REQUEST_LIMIT,
+                window_ms: 3_600_000,
+                config: config.clone(),
+                harness: crate::pipeline::HarnessSnapshot {
+                    configured: "mote".into(),
+                    active: "mote".into(),
+                    pending: None,
+                },
+                voice: super::super::voice::VoiceStatus {
+                    state,
+                    reason: None,
+                    partial_words: (state == super::super::voice::VoiceState::Hearing)
+                        .then(|| "partial request".into()),
+                    speaking_line: (state == super::super::voice::VoiceState::Speaking)
+                        .then(|| "current reply".into()),
+                },
+                events: Vec::new(),
+                numbers: Vec::new(),
+                requests: Vec::new(),
+            };
+            let bindings = host_bindings(&config, &pipeline, &HostSnapshot::default()).unwrap();
+            let compiled = compile_contract(source, &bindings).unwrap();
+            let (payload, _) = compiled.prepare(&bindings.manifest).unwrap();
+            let encoded = payload.to_string();
+            assert!(encoded.contains("voice_toggle"));
+            assert!(!encoded.contains("model_path"));
+            assert!(!encoded.contains("pcm"));
+            if state == super::super::voice::VoiceState::Hearing {
+                assert!(encoded.contains("partial request"));
+            }
+            if state == super::super::voice::VoiceState::Speaking {
+                assert!(encoded.contains("current reply"));
+            }
+        }
     }
 
     #[test]

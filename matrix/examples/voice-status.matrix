@@ -1,0 +1,16 @@
+screen "Voice" {
+  header {
+    row {
+      text voice.label fill
+      button "Start or stop voice" -> voice_toggle
+    }
+  }
+  col {
+    text voice.detail
+    text voice.partial
+    text voice.speaking
+  }
+  footer {
+    text "Voice runs on the selected Mac host. Typed chat remains available."
+  }
+}

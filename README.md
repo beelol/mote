@@ -156,8 +156,8 @@ authoritative. Physical iPad voice testing and external Apple work are deferred.
     harness. [evidence](docs/verification/P2V-06.md)
   - [x] **P2V-07** Speech interruption preserves played context and outstanding approvals.
     [evidence](docs/verification/P2V-07.md)
-  - [ ] **P2V-08** Matrix shows every voice state through a default circling-avatar surface on
-    Mac and through the iPad host protocol.
+  - [x] **P2V-08** Matrix shows every voice state through a default circling-avatar surface on
+    Mac and through the iPad host protocol. [evidence](docs/verification/P2V-08.md)
   - [ ] **P2V-09** Derived crates record source, revision, licenses and redacted fixtures.
   - [ ] **P2V-10** A clean Overseer worktree consumes the pinned shared crates without boundary
     regressions.
