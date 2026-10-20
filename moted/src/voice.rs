@@ -14,6 +14,7 @@ const MAX_RAPID_FAILURES: usize = 3;
 const RAPID_FAILURE_WINDOW: Duration = Duration::from_secs(10);
 const STOP_TIMEOUT: Duration = Duration::from_millis(500);
 const OWNER_TURN_CAPACITY: usize = 32;
+const ACCOUNTING_CAPACITY: usize = 64;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VoiceOwnerTurn {
@@ -23,6 +24,44 @@ pub struct VoiceOwnerTurn {
     pub start_ms: u64,
     pub end_ms: u64,
     pub played_context: Option<SpokenLine>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum VoiceAccountingEvent {
+    Recognized {
+        session_id: i64,
+        utterance_id: u64,
+        output_tokens: i64,
+        audio_ms: i64,
+    },
+    SpeechStarted {
+        line_id: u64,
+        input_tokens: i64,
+    },
+    SpeechFinished {
+        line_id: u64,
+        latency_ms: i64,
+        status: VoiceOperationStatus,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VoiceOperationStatus {
+    Ok,
+    Stopped,
+    Failed,
+    Cancelled,
+}
+
+impl VoiceOperationStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Stopped => "stopped",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
@@ -158,6 +197,7 @@ struct Inner {
 struct SpokenTracker {
     line: SpokenLine,
     phrase_word_ends: Vec<usize>,
+    started_at: Instant,
 }
 
 struct Shared {
@@ -166,12 +206,14 @@ struct Shared {
     launcher: Arc<dyn ListenerLauncher>,
     permission: Arc<dyn VoicePermission>,
     owner_turns: mpsc::SyncSender<VoiceOwnerTurn>,
+    accounting: mpsc::SyncSender<VoiceAccountingEvent>,
     inner: Mutex<Inner>,
 }
 
 pub struct VoiceSupervisor {
     shared: Arc<Shared>,
     owner_turns: Mutex<Option<mpsc::Receiver<VoiceOwnerTurn>>>,
+    accounting: Mutex<Option<mpsc::Receiver<VoiceAccountingEvent>>>,
 }
 
 impl VoiceSupervisor {
@@ -191,6 +233,7 @@ impl VoiceSupervisor {
         permission: Arc<dyn VoicePermission>,
     ) -> Self {
         let (owner_turns, owner_turn_receiver) = mpsc::sync_channel(OWNER_TURN_CAPACITY);
+        let (accounting, accounting_receiver) = mpsc::sync_channel(ACCOUNTING_CAPACITY);
         Self {
             shared: Arc::new(Shared {
                 config,
@@ -198,6 +241,7 @@ impl VoiceSupervisor {
                 launcher,
                 permission,
                 owner_turns,
+                accounting,
                 inner: Mutex::new(Inner {
                     status: VoiceStatus::default(),
                     desired: false,
@@ -214,11 +258,16 @@ impl VoiceSupervisor {
                 }),
             }),
             owner_turns: Mutex::new(Some(owner_turn_receiver)),
+            accounting: Mutex::new(Some(accounting_receiver)),
         }
     }
 
     pub fn take_owner_turns(&self) -> Option<mpsc::Receiver<VoiceOwnerTurn>> {
         self.owner_turns.lock().unwrap().take()
+    }
+
+    pub fn take_accounting(&self) -> Option<mpsc::Receiver<VoiceAccountingEvent>> {
+        self.accounting.lock().unwrap().take()
     }
 
     pub fn start(&self) -> Result<VoiceStatus, String> {
@@ -275,12 +324,7 @@ impl VoiceSupervisor {
             inner.accepted_utterances.clear();
             inner.active_utterance = None;
         }
-        transition_generation(
-            &self.shared,
-            generation,
-            VoiceState::Starting,
-            None,
-        );
+        transition_generation(&self.shared, generation, VoiceState::Starting, None);
         if let Err(reason) = launch(&self.shared, generation) {
             {
                 let inner = self.shared.inner.lock().unwrap();
@@ -304,15 +348,18 @@ impl VoiceSupervisor {
     }
 
     pub fn stop(&self) -> Result<VoiceStatus, String> {
-        let (mut input, process) = {
+        let (mut input, process, spoken) = {
             let mut inner = self.shared.inner.lock().unwrap();
             inner.desired = false;
             inner.generation = inner.generation.wrapping_add(1);
             inner.session_id = None;
             inner.active_utterance = None;
-            inner.spoken = None;
-            (inner.input.take(), inner.process.take())
+            let spoken = inner.spoken.take();
+            (inner.input.take(), inner.process.take(), spoken)
         };
+        if let Some(spoken) = spoken {
+            record_speech_completion(&self.shared, &spoken, VoiceOperationStatus::Cancelled);
+        }
         if let Some(writer) = input.as_mut() {
             if let Ok(line) = encode_line(&Command::Quit) {
                 let _ = writer.write_all(line.as_bytes());
@@ -380,20 +427,29 @@ impl VoiceSupervisor {
             inner.spoken = Some(SpokenTracker {
                 line: line.clone(),
                 phrase_word_ends,
+                started_at: Instant::now(),
             });
             (line_id, line)
         };
+        if self
+            .shared
+            .accounting
+            .try_send(VoiceAccountingEvent::SpeechStarted {
+                line_id,
+                input_tokens: mote_context::count_tokens(&text) as i64,
+            })
+            .is_err()
+        {
+            self.shared.inner.lock().unwrap().spoken = None;
+            return Err("voice accounting ingress unavailable".into());
+        }
         if let Err(error) = self.send(&Command::Speak {
             line: line_id,
             text,
         }) {
-            let mut inner = self.shared.inner.lock().unwrap();
-            if inner
-                .spoken
-                .as_ref()
-                .is_some_and(|spoken| spoken.line.line_id == line_id)
-            {
-                inner.spoken = None;
+            let spoken = self.shared.inner.lock().unwrap().spoken.take();
+            if let Some(spoken) = spoken.filter(|spoken| spoken.line.line_id == line_id) {
+                record_speech_completion(&self.shared, &spoken, VoiceOperationStatus::Failed);
             }
             return Err(error);
         }
@@ -401,16 +457,10 @@ impl VoiceSupervisor {
         Ok(line)
     }
 
-    pub fn owner_turn_finished(
-        &self,
-        session_id: i64,
-        utterance_id: u64,
-        waiting: bool,
-    ) {
+    pub fn owner_turn_finished(&self, session_id: i64, utterance_id: u64, waiting: bool) {
         let generation = {
             let mut inner = self.shared.inner.lock().unwrap();
-            if inner.session_id != Some(session_id)
-                || inner.active_utterance != Some(utterance_id)
+            if inner.session_id != Some(session_id) || inner.active_utterance != Some(utterance_id)
             {
                 return;
             }
@@ -432,8 +482,7 @@ impl VoiceSupervisor {
     pub fn owner_turn_failed(&self, session_id: i64, utterance_id: u64) {
         let generation = {
             let mut inner = self.shared.inner.lock().unwrap();
-            if inner.session_id != Some(session_id)
-                || inner.active_utterance != Some(utterance_id)
+            if inner.session_id != Some(session_id) || inner.active_utterance != Some(utterance_id)
             {
                 return;
             }
@@ -490,7 +539,11 @@ fn monitor(shared: Arc<Shared>, generation: u64, output: Box<dyn Read + Send>) {
         match decode_line(&line) {
             Ok(Frame::Event(event)) => apply_event(&shared, generation, event),
             _ => {
-                fail(&shared, generation, "voice listener emitted a malformed event");
+                fail(
+                    &shared,
+                    generation,
+                    "voice listener emitted a malformed event",
+                );
                 return;
             }
         }
@@ -541,6 +594,27 @@ fn apply_event(shared: &Arc<Shared>, generation: u64, event: Event) {
                     played_context: inner.last_spoken.clone(),
                 }
             };
+            let accounting = VoiceAccountingEvent::Recognized {
+                session_id: turn.session_id,
+                utterance_id: turn.utterance_id,
+                output_tokens: mote_context::count_tokens(&turn.text) as i64,
+                audio_ms: turn.end_ms.saturating_sub(turn.start_ms) as i64,
+            };
+            if shared.accounting.try_send(accounting).is_err() {
+                let mut inner = shared.inner.lock().unwrap();
+                inner.accepted_utterances.remove(&id);
+                if inner.active_utterance == Some(id) {
+                    inner.active_utterance = None;
+                }
+                drop(inner);
+                transition_generation(
+                    shared,
+                    generation,
+                    VoiceState::Error,
+                    Some("voice accounting ingress unavailable".into()),
+                );
+                return;
+            }
             if shared.owner_turns.try_send(turn).is_err() {
                 let mut inner = shared.inner.lock().unwrap();
                 inner.accepted_utterances.remove(&id);
@@ -559,19 +633,16 @@ fn apply_event(shared: &Arc<Shared>, generation: u64, event: Event) {
             transition_generation(shared, generation, VoiceState::Thinking, None)
         }
         Event::Utterance { .. } => {}
-        Event::Barge { .. } => {
-            transition_generation(shared, generation, VoiceState::Hearing, None)
-        }
+        Event::Barge { .. } => transition_generation(shared, generation, VoiceState::Hearing, None),
         Event::Spoke {
             line,
             event,
             phrase,
             ..
         } => apply_spoke(shared, generation, line, &event, phrase),
-        Event::Paused { .. } => {
-            transition_generation(shared, generation, VoiceState::Paused, None)
-        }
+        Event::Paused { .. } => transition_generation(shared, generation, VoiceState::Paused, None),
         Event::Error { message, .. } => {
+            finish_active_speech(shared, VoiceOperationStatus::Failed);
             transition_generation(shared, generation, VoiceState::Error, Some(message))
         }
         Event::End { .. } | Event::Level { .. } => {}
@@ -579,7 +650,7 @@ fn apply_event(shared: &Arc<Shared>, generation: u64, event: Event) {
 }
 
 fn apply_spoke(shared: &Arc<Shared>, generation: u64, line_id: u64, event: &str, phrase: usize) {
-    let (line, terminal) = {
+    let (line, terminal, completed) = {
         let mut inner = shared.inner.lock().unwrap();
         if inner.generation != generation || !inner.desired {
             return;
@@ -595,12 +666,22 @@ fn apply_spoke(shared: &Arc<Shared>, generation: u64, line_id: u64, event: &str,
             return;
         };
         let line = spoken.line.clone();
-        if terminal {
+        let completed = if terminal {
             inner.last_spoken = Some(line.clone());
-            inner.spoken = None;
-        }
-        (line, terminal)
+            inner.spoken.take()
+        } else {
+            None
+        };
+        (line, terminal, completed)
     };
+    if let Some(spoken) = completed {
+        let status = if event == "finished" {
+            VoiceOperationStatus::Ok
+        } else {
+            VoiceOperationStatus::Stopped
+        };
+        record_speech_completion(shared, &spoken, status);
+    }
     record_spoken_line(shared, &line, event);
     let state = match event {
         "stopped" => VoiceState::Hearing,
@@ -641,7 +722,30 @@ fn record_spoken_line(shared: &Shared, line: &SpokenLine, event: &str) {
     );
 }
 
+fn record_speech_completion(shared: &Shared, spoken: &SpokenTracker, status: VoiceOperationStatus) {
+    let latency_ms = spoken
+        .started_at
+        .elapsed()
+        .as_millis()
+        .min(i64::MAX as u128) as i64;
+    let _ = shared
+        .accounting
+        .try_send(VoiceAccountingEvent::SpeechFinished {
+            line_id: spoken.line.line_id,
+            latency_ms,
+            status,
+        });
+}
+
+fn finish_active_speech(shared: &Shared, status: VoiceOperationStatus) {
+    let spoken = shared.inner.lock().unwrap().spoken.take();
+    if let Some(spoken) = spoken {
+        record_speech_completion(shared, &spoken, status);
+    }
+}
+
 fn fail(shared: &Arc<Shared>, generation: u64, reason: &str) {
+    finish_active_speech(shared, VoiceOperationStatus::Failed);
     let (restart, process, delay) = {
         let mut inner = shared.inner.lock().unwrap();
         if !inner.desired || inner.generation != generation {
@@ -736,7 +840,10 @@ fn transition_generation(
 pub fn default_listener_path() -> PathBuf {
     std::env::current_exe()
         .ok()
-        .and_then(|path| path.parent().map(|parent| parent.join("mote-voice-listener")))
+        .and_then(|path| {
+            path.parent()
+                .map(|parent| parent.join("mote-voice-listener"))
+        })
         .unwrap_or_else(|| PathBuf::from("mote-voice-listener"))
 }
 
@@ -756,6 +863,7 @@ mod spoken_line_tests {
                 "First phrase, second phrase here.".into(),
             ),
             phrase_word_ends: vec![2, 5],
+            started_at: Instant::now(),
         }
     }
 
@@ -763,7 +871,10 @@ mod spoken_line_tests {
     fn interruption_keeps_only_completed_phrases() {
         let mut spoken = tracker();
         assert_eq!(update_spoken(&mut spoken, "started", 0), Some(false));
-        assert_eq!(update_spoken(&mut spoken, "phrase_finished", 0), Some(false));
+        assert_eq!(
+            update_spoken(&mut spoken, "phrase_finished", 0),
+            Some(false)
+        );
         assert_eq!(update_spoken(&mut spoken, "stopped", 1), Some(true));
         assert_eq!(spoken.line.played_through_word, 2);
         assert_eq!(spoken.line.played_text(), "First phrase,");

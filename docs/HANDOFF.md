@@ -48,6 +48,7 @@ P2V-07 is implemented in the current batch. Completed task replies use the share
 speech engine and report phrase progress. Lower, restore, immediate stop, phrase stop and spoken
 stop words are deterministic. Only fully completed words survive interruption into the next task
 context. A pending approval keeps the new voice task queued and no voice control can decide it.
+STT and TTS produce redacted tool-ledger rows without creating model-call rows or packs.
 
 ## Verification state
 
@@ -59,6 +60,5 @@ Preserve the owner's untracked `.DS_Store` and `.superpowers/`.
 
 ## Next action
 
-Add explicit STT and TTS operation accounting, then make the avatar a first-class Matrix surface,
-finish Simulator journeys and provision the local Whisper model before claiming live in-app voice
-or completing P2V-08.
+Make the avatar a first-class Matrix surface, finish Simulator journeys and provision the local
+Whisper model before claiming live in-app voice or completing P2V-08.

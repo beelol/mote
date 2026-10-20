@@ -10,8 +10,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use voice::{
-    ListenerLauncher, ListenerProcess, ProcessListenerLauncher, RunningListener, VoiceConfig,
-    VoicePermission, VoiceState, VoiceSupervisor,
+    ListenerLauncher, ListenerProcess, ProcessListenerLauncher, RunningListener,
+    VoiceAccountingEvent, VoiceConfig, VoicePermission, VoiceState, VoiceSupervisor,
 };
 
 struct Permission(Result<(), String>);
@@ -45,15 +45,10 @@ impl FakeLauncher {
 impl ListenerLauncher for FakeLauncher {
     fn spawn(&self, _config: &VoiceConfig) -> Result<RunningListener, String> {
         self.spawns.fetch_add(1, Ordering::SeqCst);
-        let script = self
-            .scripts
-            .lock()
-            .unwrap()
-            .pop_front()
-            .unwrap_or(Script {
-                output: Vec::new(),
-                hold: false,
-            });
+        let script = self.scripts.lock().unwrap().pop_front().unwrap_or(Script {
+            output: Vec::new(),
+            hold: false,
+        });
         let killed = Arc::new(AtomicBool::new(false));
         Ok(RunningListener {
             input: Box::new(Sink),
@@ -242,11 +237,18 @@ fn permission_denial_never_starts_capture_and_keeps_typed_events_healthy() {
 
     assert!(supervisor.start().is_err());
     assert_eq!(supervisor.state().state, VoiceState::Unavailable);
-    assert_eq!(supervisor.state().reason.as_deref(), Some("permission denied for [redacted]"));
+    assert_eq!(
+        supervisor.state().reason.as_deref(),
+        Some("permission denied for [redacted]")
+    );
     assert_eq!(launcher.spawns.load(Ordering::SeqCst), 0);
 
-    log.append("main", "turn.user", &serde_json::json!({"text":"typed still works"}))
-        .unwrap();
+    log.append(
+        "main",
+        "turn.user",
+        &serde_json::json!({"text":"typed still works"}),
+    )
+    .unwrap();
     assert_eq!(
         log.recent_kind_since("turn.user", i64::MIN, 1).unwrap()[0].payload["text"],
         "typed still works"
@@ -283,6 +285,7 @@ fn completed_task_reply_queues_a_numbered_listener_speech_command() {
     );
     supervisor.start().unwrap();
     wait_for(&supervisor, VoiceState::Listening);
+    let accounting = supervisor.take_accounting().unwrap();
     let spoken = supervisor
         .speak(
             mote_hrns::TaskId::new("voice-task").unwrap(),
@@ -291,8 +294,13 @@ fn completed_task_reply_queues_a_numbered_listener_speech_command() {
         .unwrap();
     assert_eq!(spoken.line_id, 1);
     let commands = String::from_utf8(input.lock().unwrap().clone()).unwrap();
-    assert!(commands.contains(
-        r#"{"cmd":"speak","line":1,"text":"Speak this locally."}"#
+    assert!(commands.contains(r#"{"cmd":"speak","line":1,"text":"Speak this locally."}"#));
+    assert!(matches!(
+        accounting.recv_timeout(Duration::from_secs(1)).unwrap(),
+        VoiceAccountingEvent::SpeechStarted {
+            line_id: 1,
+            input_tokens
+        } if input_tokens == mote_context::count_tokens("Speak this locally.") as i64
     ));
     supervisor.stop().unwrap();
 }
@@ -317,6 +325,7 @@ fn final_utterance_routes_once_across_listener_reconnect_and_partials_do_not_rou
         Arc::new(Permission(Ok(()))),
     );
     let turns = supervisor.take_owner_turns().unwrap();
+    let accounting = supervisor.take_accounting().unwrap();
 
     supervisor.start().unwrap();
     let turn = turns.recv_timeout(Duration::from_secs(2)).unwrap();
@@ -324,6 +333,15 @@ fn final_utterance_routes_once_across_listener_reconnect_and_partials_do_not_rou
     assert_eq!(turn.text, "hello mote");
     assert_eq!(turn.start_ms, 10);
     assert_eq!(turn.end_ms, 30);
+    assert_eq!(
+        accounting.recv_timeout(Duration::from_secs(1)).unwrap(),
+        VoiceAccountingEvent::Recognized {
+            session_id: turn.session_id,
+            utterance_id: 9,
+            output_tokens: mote_context::count_tokens("hello mote") as i64,
+            audio_ms: 20,
+        }
+    );
     assert!(turns.recv_timeout(Duration::from_millis(900)).is_err());
     supervisor.stop().unwrap();
 }
@@ -437,11 +455,7 @@ fn rapid_child_crashes_stop_after_the_bounded_restart_budget() {
         output: Vec::new(),
         hold: false,
     };
-    let launcher = Arc::new(FakeLauncher::new([
-        crash.clone(),
-        crash.clone(),
-        crash,
-    ]));
+    let launcher = Arc::new(FakeLauncher::new([crash.clone(), crash.clone(), crash]));
     let supervisor = VoiceSupervisor::with_components(
         config(),
         EventLog::open_in_memory().unwrap(),
@@ -452,5 +466,8 @@ fn rapid_child_crashes_stop_after_the_bounded_restart_budget() {
     supervisor.start().unwrap();
     wait_for(&supervisor, VoiceState::Unavailable);
     assert_eq!(launcher.spawns.load(Ordering::SeqCst), 3);
-    assert_eq!(supervisor.state().reason.as_deref(), Some("voice listener exited"));
+    assert_eq!(
+        supervisor.state().reason.as_deref(),
+        Some("voice listener exited")
+    );
 }

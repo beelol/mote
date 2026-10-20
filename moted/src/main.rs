@@ -5706,7 +5706,15 @@ fn run() -> Result<(), i32> {
             eprintln!("moted: voice task ingress already attached");
             1
         })?;
+    let voice_accounting = daemon
+        .voice
+        .take_accounting()
+        .ok_or_else(|| {
+            eprintln!("moted: voice accounting ingress already attached");
+            1
+        })?;
     voice_task::spawn(Arc::downgrade(&daemon), voice_turns);
+    voice_task::spawn_accounting(Arc::downgrade(&daemon), voice_accounting);
 
     // Schedule tick loop.
     {
