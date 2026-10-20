@@ -39,6 +39,11 @@ events and reconnect refresh. State and pending requests are isolated per host, 
 clears optimistic state, and `voice.send` remains local-only. P2V-08 stays open because the avatar
 is not yet a Matrix language node and Simulator journeys are not complete.
 
+P2V-06 is implemented in the current batch. Explicit voice starts record durable session IDs,
+automatic listener restarts retain them, and complete utterances cross a bounded worker into the
+scoped durable Mote HRNS driver. Partial speech never enters the worker. Session and utterance IDs
+form deterministic task identities, so duplicate finals do not produce a second model step.
+
 ## Verification state
 
 `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` passed on 2026-10-20 with
@@ -49,6 +54,7 @@ Preserve the owner's untracked `.DS_Store` and `.superpowers/`.
 
 ## Next action
 
-Route final utterances through durable tasks and speech accounting for P2V-06 and P2V-07. Then
-make the avatar a first-class Matrix surface, finish Simulator journeys and provision the local
-Whisper model before claiming live in-app voice or completing P2V-08.
+Connect the existing in-memory macOS speech engine to the listener, persist played-word boundaries
+and prove approval-safe barge-in for P2V-07. Then make the avatar a first-class Matrix surface,
+finish Simulator journeys and provision the local Whisper model before claiming live in-app voice
+or completing P2V-08.

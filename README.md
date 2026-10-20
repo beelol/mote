@@ -152,8 +152,8 @@ authoritative. Physical iPad voice testing and external Apple work are deferred.
   - [x] **P2V-05** `moted` includes voice in normal app builds, starts capture only after an
     explicit owner action and permission and never breaks typed interaction.
     [evidence](docs/verification/P2V-05.md)
-  - [ ] **P2V-06** Final utterances enter `mote-hrns` once while partial events never invoke a
-    harness.
+  - [x] **P2V-06** Final utterances enter `mote-hrns` once while partial events never invoke a
+    harness. [evidence](docs/verification/P2V-06.md)
   - [ ] **P2V-07** Speech interruption preserves played context and outstanding approvals.
   - [ ] **P2V-08** Matrix shows every voice state through a default circling-avatar surface on
     Mac and through the iPad host protocol.

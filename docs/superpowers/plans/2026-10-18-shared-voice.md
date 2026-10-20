@@ -157,7 +157,7 @@
 - Final `Event::Utterance` calls `HrnsRuntime::enqueue_owner_turn(scope, text, VoiceSource)` once.
 - Produces: `SpokenLine { line_id, task_id, text, played_through_word }` and records STT and TTS rows through existing ledger structures.
 
-- [ ] **Step 1:** Write tests that duplicate final utterances, interleave partial words and reconnect the listener while asserting one task turn and no partial-triggered model call.
+- [x] **Step 1:** Write tests that duplicate final utterances, interleave partial words and reconnect the listener while asserting one task turn and no partial-triggered model call.
 - [ ] **Step 2:** Write scripted speech tests for lower, restore, stop word and phrase stop while an approval remains pending.
 - [ ] **Step 3:** Run the tests and confirm the routing and played-word APIs are missing.
 - [ ] **Step 4:** Implement utterance deduplication, ledger entries, speech commands and context trimming at the played-word boundary.

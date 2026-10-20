@@ -159,6 +159,13 @@ fn ready(hold: bool) -> Script {
     }
 }
 
+fn events(lines: &[&str], hold: bool) -> Script {
+    Script {
+        output: format!("{}\n", lines.join("\n")).into_bytes(),
+        hold,
+    }
+}
+
 fn wait_for(supervisor: &VoiceSupervisor, expected: VoiceState) {
     let deadline = Instant::now() + Duration::from_secs(2);
     while Instant::now() < deadline {
@@ -228,6 +235,37 @@ fn explicit_start_reaches_listening_and_clean_stop_returns_off() {
     supervisor.stop().unwrap();
     assert_eq!(supervisor.state().state, VoiceState::Off);
     assert_eq!(launcher.spawns.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn final_utterance_routes_once_across_listener_reconnect_and_partials_do_not_route() {
+    let fixture = [
+        r#"{"type":"ready","input":"mic","model":"local.bin","t_ms":0}"#,
+        r#"{"type":"level","source":"owner","value":0.5,"t_ms":10}"#,
+        r#"{"type":"words","id":9,"text":"hel","t_ms":20}"#,
+        r#"{"type":"utterance","id":9,"text":"ignored partial","complete":false,"start_ms":10,"end_ms":20,"t_ms":20}"#,
+        r#"{"type":"utterance","id":9,"text":"hello mote","complete":true,"start_ms":10,"end_ms":30,"t_ms":30}"#,
+    ];
+    let launcher = Arc::new(FakeLauncher::new([
+        events(&fixture, false),
+        events(&fixture, true),
+    ]));
+    let supervisor = VoiceSupervisor::with_components(
+        config(),
+        EventLog::open_in_memory().unwrap(),
+        launcher,
+        Arc::new(Permission(Ok(()))),
+    );
+    let turns = supervisor.take_owner_turns().unwrap();
+
+    supervisor.start().unwrap();
+    let turn = turns.recv_timeout(Duration::from_secs(2)).unwrap();
+    assert_eq!(turn.utterance_id, 9);
+    assert_eq!(turn.text, "hello mote");
+    assert_eq!(turn.start_ms, 10);
+    assert_eq!(turn.end_ms, 30);
+    assert!(turns.recv_timeout(Duration::from_millis(900)).is_err());
+    supervisor.stop().unwrap();
 }
 
 #[test]

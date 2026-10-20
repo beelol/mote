@@ -31,6 +31,7 @@ mod service;
 mod shutdown;
 mod surface_activation;
 pub(crate) mod voice;
+mod voice_task;
 mod watchers;
 
 #[cfg(any(test, feature = "test-fixture"))]
@@ -5698,6 +5699,14 @@ fn run() -> Result<(), i32> {
         data_dir: data.clone(),
         started: std::time::Instant::now(),
     });
+    let voice_turns = daemon
+        .voice
+        .take_owner_turns()
+        .ok_or_else(|| {
+            eprintln!("moted: voice task ingress already attached");
+            1
+        })?;
+    voice_task::spawn(Arc::downgrade(&daemon), voice_turns);
 
     // Schedule tick loop.
     {

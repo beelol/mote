@@ -2,16 +2,26 @@ use mote_eventlog::EventLog;
 use mote_voice_protocol::{decode_line, encode_line, Command, Event, Frame};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command as ProcessCommand, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const MAX_RAPID_FAILURES: usize = 3;
 const RAPID_FAILURE_WINDOW: Duration = Duration::from_secs(10);
 const STOP_TIMEOUT: Duration = Duration::from_millis(500);
+const OWNER_TURN_CAPACITY: usize = 32;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VoiceOwnerTurn {
+    pub session_id: i64,
+    pub utterance_id: u64,
+    pub text: String,
+    pub start_ms: u64,
+    pub end_ms: u64,
+}
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -135,6 +145,9 @@ struct Inner {
     input: Option<Box<dyn Write + Send>>,
     process: Option<Arc<Mutex<Box<dyn ListenerProcess>>>>,
     failures: VecDeque<Instant>,
+    session_id: Option<i64>,
+    accepted_utterances: HashSet<u64>,
+    active_utterance: Option<u64>,
 }
 
 struct Shared {
@@ -142,11 +155,13 @@ struct Shared {
     log: EventLog,
     launcher: Arc<dyn ListenerLauncher>,
     permission: Arc<dyn VoicePermission>,
+    owner_turns: mpsc::SyncSender<VoiceOwnerTurn>,
     inner: Mutex<Inner>,
 }
 
 pub struct VoiceSupervisor {
     shared: Arc<Shared>,
+    owner_turns: Mutex<Option<mpsc::Receiver<VoiceOwnerTurn>>>,
 }
 
 impl VoiceSupervisor {
@@ -165,12 +180,14 @@ impl VoiceSupervisor {
         launcher: Arc<dyn ListenerLauncher>,
         permission: Arc<dyn VoicePermission>,
     ) -> Self {
+        let (owner_turns, owner_turn_receiver) = mpsc::sync_channel(OWNER_TURN_CAPACITY);
         Self {
             shared: Arc::new(Shared {
                 config,
                 log,
                 launcher,
                 permission,
+                owner_turns,
                 inner: Mutex::new(Inner {
                     status: VoiceStatus::default(),
                     desired: false,
@@ -178,9 +195,17 @@ impl VoiceSupervisor {
                     input: None,
                     process: None,
                     failures: VecDeque::new(),
+                    session_id: None,
+                    accepted_utterances: HashSet::new(),
+                    active_utterance: None,
                 }),
             }),
+            owner_turns: Mutex::new(Some(owner_turn_receiver)),
         }
+    }
+
+    pub fn take_owner_turns(&self) -> Option<mpsc::Receiver<VoiceOwnerTurn>> {
+        self.owner_turns.lock().unwrap().take()
     }
 
     pub fn start(&self) -> Result<VoiceStatus, String> {
@@ -206,6 +231,36 @@ impl VoiceSupervisor {
                 inner.desired = false;
             }
             return Err(reason);
+        }
+        let session_id = match self
+            .shared
+            .log
+            .append("voice", "voice.session.started", &json!({}))
+        {
+            Ok(event) => event.seq,
+            Err(error) => {
+                let reason = format!("voice session could not be recorded: {error}");
+                transition_generation(
+                    &self.shared,
+                    generation,
+                    VoiceState::Error,
+                    Some(reason.clone()),
+                );
+                let mut inner = self.shared.inner.lock().unwrap();
+                if inner.generation == generation {
+                    inner.desired = false;
+                }
+                return Err(reason);
+            }
+        };
+        {
+            let mut inner = self.shared.inner.lock().unwrap();
+            if !inner.desired || inner.generation != generation {
+                return Ok(inner.status.clone());
+            }
+            inner.session_id = Some(session_id);
+            inner.accepted_utterances.clear();
+            inner.active_utterance = None;
         }
         transition_generation(
             &self.shared,
@@ -240,6 +295,8 @@ impl VoiceSupervisor {
             let mut inner = self.shared.inner.lock().unwrap();
             inner.desired = false;
             inner.generation = inner.generation.wrapping_add(1);
+            inner.session_id = None;
+            inner.active_utterance = None;
             (inner.input.take(), inner.process.take())
         };
         if let Some(writer) = input.as_mut() {
@@ -285,6 +342,53 @@ impl VoiceSupervisor {
 
     pub fn state(&self) -> VoiceStatus {
         self.shared.inner.lock().unwrap().status.clone()
+    }
+
+    pub fn owner_turn_finished(
+        &self,
+        session_id: i64,
+        utterance_id: u64,
+        waiting: bool,
+    ) {
+        let generation = {
+            let mut inner = self.shared.inner.lock().unwrap();
+            if inner.session_id != Some(session_id)
+                || inner.active_utterance != Some(utterance_id)
+            {
+                return;
+            }
+            inner.active_utterance = None;
+            inner.generation
+        };
+        transition_generation(
+            &self.shared,
+            generation,
+            if waiting {
+                VoiceState::Paused
+            } else {
+                VoiceState::Listening
+            },
+            None,
+        );
+    }
+
+    pub fn owner_turn_failed(&self, session_id: i64, utterance_id: u64) {
+        let generation = {
+            let mut inner = self.shared.inner.lock().unwrap();
+            if inner.session_id != Some(session_id)
+                || inner.active_utterance != Some(utterance_id)
+            {
+                return;
+            }
+            inner.active_utterance = None;
+            inner.generation
+        };
+        transition_generation(
+            &self.shared,
+            generation,
+            VoiceState::Error,
+            Some("voice task failed".into()),
+        );
     }
 }
 
@@ -351,9 +455,52 @@ fn apply_event(shared: &Arc<Shared>, generation: u64, event: Event) {
         Event::Gate { open: false, .. } | Event::Dropped { .. } => {
             transition_generation(shared, generation, VoiceState::Listening, None)
         }
-        Event::Utterance { .. } => {
+        Event::Utterance {
+            id,
+            text,
+            complete,
+            start_ms,
+            end_ms,
+            ..
+        } if complete => {
+            let turn = {
+                let mut inner = shared.inner.lock().unwrap();
+                if inner.generation != generation || !inner.desired {
+                    return;
+                }
+                let Some(session_id) = inner.session_id else {
+                    return;
+                };
+                if !inner.accepted_utterances.insert(id) {
+                    return;
+                }
+                inner.active_utterance = Some(id);
+                VoiceOwnerTurn {
+                    session_id,
+                    utterance_id: id,
+                    text,
+                    start_ms,
+                    end_ms,
+                }
+            };
+            if shared.owner_turns.try_send(turn).is_err() {
+                let mut inner = shared.inner.lock().unwrap();
+                inner.accepted_utterances.remove(&id);
+                if inner.active_utterance == Some(id) {
+                    inner.active_utterance = None;
+                }
+                drop(inner);
+                transition_generation(
+                    shared,
+                    generation,
+                    VoiceState::Error,
+                    Some("voice task ingress unavailable".into()),
+                );
+                return;
+            }
             transition_generation(shared, generation, VoiceState::Thinking, None)
         }
+        Event::Utterance { .. } => {}
         Event::Barge { .. } => {
             transition_generation(shared, generation, VoiceState::Hearing, None)
         }

@@ -54,6 +54,20 @@ pub enum NativeTurnOutcome {
     },
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VoiceSource {
+    pub session_id: i64,
+    pub utterance_id: u64,
+    pub start_ms: u64,
+    pub end_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum VoiceTurnOutcome {
+    Enqueued(NativeTurnOutcome),
+    Duplicate { task_id: TaskId },
+}
+
 struct UnavailableHarness;
 
 impl Harness for UnavailableHarness {
@@ -197,6 +211,33 @@ impl NativeTaskRuntime {
         Err(DriverError::CorruptState)
     }
 
+    pub fn enqueue_owner_turn(
+        &mut self,
+        scope: Scope,
+        text: String,
+        source: VoiceSource,
+    ) -> Result<VoiceTurnOutcome, DriverError> {
+        let task_id = TaskId::new(format!(
+            "voice-{}-{}",
+            source.session_id, source.utterance_id
+        ))
+        .map_err(|_| DriverError::CorruptState)?;
+        if self
+            .driver
+            .store()
+            .get(&scope, &task_id)?
+            .is_some()
+        {
+            return Ok(VoiceTurnOutcome::Duplicate { task_id });
+        }
+        let context = format!(
+            "Owner voice request. Session {} utterance {} from {}ms through {}ms.\n{}",
+            source.session_id, source.utterance_id, source.start_ms, source.end_ms, text
+        );
+        self.submit(task_id, scope, text, context)
+            .map(VoiceTurnOutcome::Enqueued)
+    }
+
     #[cfg(test)]
     fn driver(&self) -> &Driver {
         &self.driver
@@ -253,6 +294,15 @@ mod tests {
         Scope::new("owner", "personal").unwrap()
     }
 
+    fn voice_source() -> VoiceSource {
+        VoiceSource {
+            session_id: 41,
+            utterance_id: 7,
+            start_ms: 100,
+            end_ms: 900,
+        }
+    }
+
     #[test]
     fn selected_native_turn_runs_through_the_durable_driver() {
         let (root, mut runtime, log) = fixture([Ok(RawStep::new(
@@ -286,6 +336,53 @@ mod tests {
             .unwrap()
             .iter()
             .any(|event| event.payload["step"]["text"] == "finished"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn duplicate_voice_final_creates_one_task_and_one_model_step() {
+        let server = mote_testkit::ScriptedServer::start().unwrap();
+        server.set_chat_chunks(vec![
+            serde_json::json!({
+                "message":{"role":"assistant","content":"{\"type\":\"complete\",\"text\":\"finished\",\"sources\":[]}"},
+                "done":true
+            })
+            .to_string(),
+        ]);
+        let root = std::env::temp_dir().join(format!(
+            "mote-native-voice-{}-{}",
+            std::process::id(),
+            SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let database = root.join("mote.db");
+        let log = EventLog::open(&database).unwrap();
+        let mut runtime = NativeTaskRuntime::production(
+            &database,
+            log,
+            Ollama::new(server.base_url()),
+            Arc::new(crate::config::AllowAll),
+        )
+        .unwrap();
+        let first = runtime
+            .enqueue_owner_turn(scope(), "hello mote".into(), voice_source())
+            .unwrap();
+        assert!(matches!(first, VoiceTurnOutcome::Enqueued(_)));
+        assert_eq!(
+            runtime
+                .enqueue_owner_turn(scope(), "hello mote".into(), voice_source())
+                .unwrap(),
+            VoiceTurnOutcome::Duplicate {
+                task_id: task_id("voice-41-7")
+            }
+        );
+        assert_eq!(
+            ContextStore::open(&database)
+                .unwrap()
+                .count_ledger()
+                .unwrap(),
+            1
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 
