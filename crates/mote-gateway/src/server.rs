@@ -349,10 +349,7 @@ fn serve<D: Dispatch>(stream: TcpStream, shared: &Shared, dispatch: &D) -> Resul
                 request_id,
                 method.as_str(),
                 params.clone(),
-                matches!(
-                    method.as_str(),
-                    "hello" | "ping" | "status" | "turn" | "snapshot"
-                ),
+                paired_call_allowed(method),
             ),
             ClientFrame::Interaction {
                 request_id,
@@ -450,6 +447,20 @@ fn serve<D: Dispatch>(stream: TcpStream, shared: &Shared, dispatch: &D) -> Resul
         }
     }
     Ok(())
+}
+
+fn paired_call_allowed(method: &str) -> bool {
+    matches!(
+        method,
+        "hello"
+            | "ping"
+            | "status"
+            | "turn"
+            | "snapshot"
+            | "voice.start"
+            | "voice.stop"
+            | "voice.state"
+    )
 }
 fn error(request_id: Option<RequestId>, code: HostErrorCode, message: &str) -> HostFrame {
     HostFrame::Error {
@@ -617,6 +628,16 @@ fn send(stream: &mut Socket, session: &mut NoiseSession, frame: &HostFrame) -> R
 mod snapshot_delivery_tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
+
+    #[test]
+    fn paired_voice_allowlist_exposes_controls_but_not_listener_commands() {
+        for method in ["voice.start", "voice.stop", "voice.state"] {
+            assert!(paired_call_allowed(method), "{method}");
+        }
+        for method in ["voice.send", "config.set", "gateway.confirm"] {
+            assert!(!paired_call_allowed(method), "{method}");
+        }
+    }
 
     struct DeliveryCounter(AtomicUsize);
     impl Dispatch for DeliveryCounter {

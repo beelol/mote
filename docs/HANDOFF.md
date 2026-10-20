@@ -29,9 +29,15 @@ The loopback-only Tencent adapter is pushed in `8394c17` with scoped sidecar val
 server-generated candidate IDs, conservative ambiguous-write recovery, corrections and durable
 forget tombstones. SQLite remains the default and the pinned MemoryCore lifecycle remains later
 work. P2V-03 is complete and pushed in `0325980`; P2V-04 is pushed in `d7c51e7`. P2V-05 is
-complete: voice is Off by default, starts only through an owner action, handles permission and
-child failures conservatively, and leaves typed turns healthy. This Mac has no local Whisper
-model yet, so production Start truthfully reports Unavailable.
+complete and pushed in `2d806be`: voice is Off by default, starts only through an owner action,
+handles permission and child failures conservatively, and leaves typed turns healthy. This Mac
+has no local Whisper model yet, so production Start truthfully reports Unavailable.
+
+The paired iPad voice bridge is implemented as a partial P2V-08 increment. The existing immediate
+egui avatar uses the selected host's authenticated Start, Stop and State calls, durable state
+events and reconnect refresh. State and pending requests are isolated per host, transport failure
+clears optimistic state, and `voice.send` remains local-only. P2V-08 stays open because the avatar
+is not yet a Matrix language node and Simulator journeys are not complete.
 
 ## Verification state
 
@@ -43,6 +49,6 @@ Preserve the owner's untracked `.DS_Store` and `.superpowers/`.
 
 ## Next action
 
-Bridge authenticated paired-device Start, Stop and state to the existing avatar. Then route final
-utterances through durable tasks and speech accounting for P2V-06 and P2V-07. Do not claim live
-in-app voice or P2V-08 until the bridge and local Whisper model are verified.
+Route final utterances through durable tasks and speech accounting for P2V-06 and P2V-07. Then
+make the avatar a first-class Matrix surface, finish Simulator journeys and provision the local
+Whisper model before claiming live in-app voice or completing P2V-08.

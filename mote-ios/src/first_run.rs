@@ -442,6 +442,7 @@ mod tests {
             commands: Default::default(),
             status: Default::default(),
             approval_requests: Default::default(),
+            voice: Default::default(),
             authenticated: true,
         };
         let mut first_run = FirstRun {

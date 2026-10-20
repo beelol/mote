@@ -1,12 +1,14 @@
 use accesskit::Role;
 use egui::{Color32, Pos2, Sense, Stroke, Vec2};
+use serde::{Deserialize, Serialize};
 
 const AVATAR_SIZE: f32 = 184.0;
 const COMPACT_AVATAR_SIZE: f32 = 56.0;
 const CONTROL_SIZE: Vec2 = Vec2::new(168.0, 48.0);
 const TAU: f32 = std::f32::consts::TAU;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum VoiceState {
     #[default]
     Off,

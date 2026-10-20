@@ -42,6 +42,43 @@ fn subscribe(
 }
 
 #[test]
+fn paired_voice_controls_route_but_listener_commands_remain_local() {
+    let models = mote_testkit::ScriptedServer::start().unwrap();
+    let host = fixture(&models);
+    let mut client = host
+        .pair(&host.open_pairing().unwrap(), "Voice iPad")
+        .unwrap();
+
+    let state = client
+        .exchange(&call("voice-state", "voice.state", json!({})))
+        .unwrap();
+    assert!(matches!(state, HostFrame::Result { result, .. } if result["state"] == "off"));
+
+    let stopped = client
+        .exchange(&call("voice-stop", "voice.stop", json!({})))
+        .unwrap();
+    assert!(matches!(stopped, HostFrame::Result { result, .. } if result["state"] == "off"));
+
+    let start = client
+        .exchange(&call("voice-start", "voice.start", json!({})))
+        .unwrap();
+    assert!(matches!(start, HostFrame::Error { error, .. } if error.code == mote_protocol::HostErrorCode::InvalidParams));
+    assert!(host
+        .events_after(0)
+        .unwrap()
+        .iter()
+        .any(|event| event.kind == "voice.state"));
+
+    for (id, method) in [
+        ("voice-send", "voice.send"),
+        ("voice-config", "config.set"),
+    ] {
+        let denied = client.exchange(&call(id, method, json!({}))).unwrap();
+        assert!(matches!(denied, HostFrame::Error { error, .. } if error.code == mote_protocol::HostErrorCode::Unauthorized));
+    }
+}
+
+#[test]
 fn paired_loopback_chat_surface_interaction_and_approval_journey() {
     let models = mote_testkit::ScriptedServer::start().unwrap();
     models.set_chat_chunks(vec![json!({"message":{"role":"assistant","content":"{\"route\":\"talk\",\"reason\":\"greeting\"}"},"done":true}).to_string()]);

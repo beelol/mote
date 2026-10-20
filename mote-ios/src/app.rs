@@ -10,7 +10,6 @@ pub struct MoteApp {
     last_event: String,
     reduced_motion: bool,
     voice_preview_state: VoiceState,
-    voice_session: VoiceSession,
     #[cfg(target_os = "ios")]
     appearance_bridge: Option<crate::appearance::Bridge>,
     #[cfg(target_os = "ios")]
@@ -29,7 +28,6 @@ impl Default for MoteApp {
             last_event: "No interaction yet".into(),
             reduced_motion: false,
             voice_preview_state: VoiceState::Off,
-            voice_session: VoiceSession::default(),
             #[cfg(target_os = "ios")]
             appearance_bridge: None,
             #[cfg(target_os = "ios")]
@@ -38,36 +36,6 @@ impl Default for MoteApp {
             first_run: None,
             #[cfg(all(target_os = "ios", target_abi = "sim"))]
             probe: None,
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct VoiceSession {
-    state: VoiceState,
-    notice: &'static str,
-}
-
-impl Default for VoiceSession {
-    fn default() -> Self {
-        Self {
-            state: VoiceState::Off,
-            notice: "Voice is off. Typed chat remains available.",
-        }
-    }
-}
-
-impl VoiceSession {
-    fn apply(&mut self, action: VoiceAction) {
-        match action {
-            VoiceAction::Start => {
-                self.state = VoiceState::Unavailable;
-                self.notice = "Voice runtime is not available. Typed chat remains available.";
-            }
-            VoiceAction::Stop => {
-                self.state = VoiceState::Off;
-                self.notice = "Voice is off. Typed chat remains available.";
-            }
         }
     }
 }
@@ -155,11 +123,13 @@ impl MoteApp {
                 return;
             }
         }
+        if let Some(live) = &mut self.live {
+            live.drain();
+        }
         if self.live.is_some() {
             self.draw_live_voice(ctx, safe_area, system_reduced);
         }
         if let Some(live) = &mut self.live {
-            live.drain();
             let mut content_safe_area = safe_area;
             content_safe_area.top = 0;
             if live.draw(ctx, content_safe_area, &mut self.composer) {
@@ -289,6 +259,11 @@ impl MoteApp {
         safe_area: egui::Margin,
         system_reduced: bool,
     ) {
+        let voice = self
+            .live
+            .as_ref()
+            .map(crate::live::LiveRuntime::selected_voice)
+            .unwrap_or_default();
         let mut frame = egui::Frame::side_top_panel(&ctx.style());
         frame.inner_margin.top = frame.inner_margin.top.saturating_add(safe_area.top);
         frame.inner_margin.left = frame.inner_margin.left.saturating_add(safe_area.left);
@@ -298,19 +273,21 @@ impl MoteApp {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     let action = VoiceAvatar {
-                        state: self.voice_session.state,
+                        state: voice.state,
                         elapsed_seconds: ctx.input(|input| input.time),
                         reduced_motion: self.reduced_motion || system_reduced,
                     }
                     .draw_compact(ui);
-                    ui.label(self.voice_session.notice);
+                    ui.label(&voice.notice);
                     if let Some(action) = action {
-                        self.voice_session.apply(action);
+                        if let Some(live) = self.live.as_mut() {
+                            live.voice_action(action);
+                        }
                         ctx.request_repaint();
                     }
                 });
             });
-        if self.voice_session.state.is_animated() && !self.reduced_motion && !system_reduced {
+        if voice.state.is_animated() && !self.reduced_motion && !system_reduced {
             ctx.request_repaint();
         }
     }
@@ -374,6 +351,17 @@ mod tests {
     use super::*;
 
     fn live_app(name: &str) -> MoteApp {
+        live_app_with_voice(name).0
+    }
+
+    fn live_app_with_voice(
+        name: &str,
+    ) -> (
+        MoteApp,
+        std::sync::mpsc::Receiver<mote_host_client::HostCommand>,
+        std::sync::mpsc::Sender<mote_host_client::HostUpdate>,
+        mote_protocol::HostId,
+    ) {
         use mote_host_client::{ConnectionState, HostDirectory, PairedHost};
         use mote_protocol::VersionRange;
 
@@ -386,18 +374,21 @@ mod tests {
             .set_connection(&host_id, ConnectionState::Online)
             .unwrap();
         let (persist, rx) = std::sync::mpsc::channel();
-        MoteApp {
+        let (commands, outgoing) = std::sync::mpsc::channel();
+        let app = MoteApp {
             live: Some(crate::live::LiveRuntime {
                 directory,
                 rx,
-                persist,
-                commands: Default::default(),
+                persist: persist.clone(),
+                commands: std::collections::BTreeMap::from([(host_id.clone(), commands)]),
                 status: Default::default(),
                 approval_requests: Default::default(),
+                voice: Default::default(),
                 authenticated: true,
             }),
             ..Default::default()
-        }
+        };
+        (app, outgoing, persist, host_id)
     }
 
     #[test]
@@ -430,18 +421,19 @@ mod tests {
                 &shape.shape,
                 egui::Shape::Text(text) if text.galley.text() == "Message your Mote host"
             )));
-            assert_eq!(app.voice_session.state, VoiceState::Off);
+            let voice = app.live.as_ref().unwrap().selected_voice();
+            assert_eq!(voice.state, VoiceState::Off);
             assert_eq!(
-                app.voice_session.notice,
+                voice.notice,
                 "Voice is off. Typed chat remains available."
             );
         }
     }
 
     #[test]
-    fn live_voice_start_fails_honestly_and_stop_returns_to_off() {
+    fn live_voice_start_and_stop_use_the_selected_host() {
         let ctx = egui::Context::default();
-        let mut app = live_app("Voice host");
+        let (mut app, outgoing, updates, host_id) = live_app_with_voice("Voice host");
         let size = egui::vec2(834.0, 1210.0);
         frame(&mut app, &ctx, size, vec![]);
         let output = frame(&mut app, &ctx, size, vec![]);
@@ -475,15 +467,40 @@ mod tests {
                 },
             ],
         );
-        assert_eq!(app.voice_session.state, VoiceState::Unavailable);
+        let start = outgoing.recv().unwrap();
+        let mote_protocol::ClientFrame::Call {
+            request_id,
+            method,
+            params,
+        } = start.frame
+        else {
+            panic!("voice call");
+        };
+        assert_eq!(start.host_id, host_id);
+        assert_eq!(method, "voice.start");
+        assert_eq!(params, serde_json::json!({}));
+        updates
+            .send(mote_host_client::HostUpdate::Frame {
+                host_id: host_id.clone(),
+                frame: mote_protocol::HostFrame::Result {
+                    request_id,
+                    result: serde_json::json!({"state":"listening"}),
+                },
+            })
+            .unwrap();
+        app.live.as_mut().unwrap().drain();
         assert_eq!(
-            app.voice_session.notice,
-            "Voice runtime is not available. Typed chat remains available."
+            app.live.as_ref().unwrap().selected_voice().state,
+            VoiceState::Listening
         );
 
-        app.voice_session.state = VoiceState::Listening;
-        app.voice_session.apply(VoiceAction::Stop);
-        assert_eq!(app.voice_session, VoiceSession::default());
+        assert!(app
+            .live
+            .as_mut()
+            .unwrap()
+            .voice_action(VoiceAction::Stop));
+        let stop = outgoing.recv().unwrap();
+        assert!(matches!(stop.frame, mote_protocol::ClientFrame::Call { method, .. } if method == "voice.stop"));
     }
 
     #[test]
@@ -517,6 +534,7 @@ mod tests {
                     commands: Default::default(),
                     status: Default::default(),
                     approval_requests: Default::default(),
+                    voice: Default::default(),
                     authenticated: true,
                 });
             }
@@ -589,6 +607,7 @@ mod tests {
                 commands: std::collections::BTreeMap::from([(id.clone(), commands)]),
                 status: Default::default(),
                 approval_requests: Default::default(),
+                voice: Default::default(),
                 authenticated: false,
             }),
             ..Default::default()
@@ -739,6 +758,7 @@ mod tests {
                     commands: Default::default(),
                     status: Default::default(),
                     approval_requests: Default::default(),
+                    voice: Default::default(),
                     authenticated: false,
                 }),
                 ..Default::default()
@@ -796,6 +816,7 @@ mod tests {
                 commands: Default::default(),
                 status: Default::default(),
                 approval_requests: Default::default(),
+                voice: Default::default(),
                 authenticated: false,
             }),
             ..Default::default()
@@ -869,6 +890,7 @@ mod tests {
                 commands: Default::default(),
                 status: Default::default(),
                 approval_requests: Default::default(),
+                voice: Default::default(),
                 authenticated: false,
             }),
             ..Default::default()

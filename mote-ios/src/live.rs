@@ -7,6 +7,8 @@ use mote_host_client::{
 use mote_protocol::{
     ClientFrame, Cursor, HostError, HostErrorCode, HostFrame, HostId, HostSnapshot, RequestId,
 };
+use mote_client_core::voice_avatar::{VoiceAction, VoiceState};
+use serde::Deserialize;
 use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},
@@ -400,7 +402,59 @@ pub struct LiveRuntime {
     pub(crate) commands: BTreeMap<HostId, Sender<HostCommand>>,
     pub(crate) status: BTreeMap<HostId, String>,
     pub(crate) approval_requests: BTreeMap<(HostId, RequestId), RequestId>,
+    pub(crate) voice: VoiceRuntimeState,
     pub(crate) authenticated: bool,
+}
+
+#[derive(Default)]
+pub(crate) struct VoiceRuntimeState {
+    statuses: BTreeMap<HostId, VoicePresentation>,
+    requests: BTreeMap<RequestId, HostId>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct VoicePresentation {
+    pub state: VoiceState,
+    pub notice: String,
+}
+
+impl Default for VoicePresentation {
+    fn default() -> Self {
+        Self {
+            state: VoiceState::Off,
+            notice: "Voice is off. Typed chat remains available.".into(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WireVoiceStatus {
+    state: VoiceState,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+impl From<WireVoiceStatus> for VoicePresentation {
+    fn from(status: WireVoiceStatus) -> Self {
+        let notice = status.reason.unwrap_or_else(|| match status.state {
+            VoiceState::Off => "Voice is off. Typed chat remains available.".into(),
+            VoiceState::Starting => "Starting voice on the selected host.".into(),
+            VoiceState::Listening => "Listening on the selected host.".into(),
+            VoiceState::Hearing => "The selected host is hearing you.".into(),
+            VoiceState::Thinking => "The selected host is processing your request.".into(),
+            VoiceState::Speaking => "The selected host is speaking.".into(),
+            VoiceState::Paused => "Voice is paused on the selected host.".into(),
+            VoiceState::Unavailable => {
+                "Voice is unavailable. Typed chat remains available.".into()
+            }
+            VoiceState::Error => "Voice failed. Typed chat remains available.".into(),
+        });
+        Self {
+            state: status.state,
+            notice,
+        }
+    }
 }
 
 fn live_label(ui: &mut egui::Ui, id: egui::Id, text: String) {
@@ -543,6 +597,7 @@ impl LiveRuntime {
             commands,
             status: BTreeMap::new(),
             approval_requests: BTreeMap::new(),
+            voice: VoiceRuntimeState::default(),
             authenticated: false,
         })
     }
@@ -550,6 +605,14 @@ impl LiveRuntime {
     pub fn drain(&mut self) {
         while let Ok(update) = self.rx.try_recv() {
             let host = update.host_id().clone();
+            self.observe_voice_update(&host, &update);
+            let refresh_voice = matches!(
+                &update,
+                HostUpdate::Connection {
+                    state: ConnectionState::Online,
+                    ..
+                }
+            );
             if matches!(
                 &update,
                 HostUpdate::Connection {
@@ -586,7 +649,142 @@ impl LiveRuntime {
                     })
                 })
             });
+            if refresh_voice {
+                self.send_voice_method(&host, "voice.state", None);
+            }
         }
+    }
+
+    pub(crate) fn selected_voice(&self) -> VoicePresentation {
+        let Some(host) = self.directory.selected_host() else {
+            return VoicePresentation {
+                state: VoiceState::Unavailable,
+                notice: "Select a host to use voice. Typed chat remains available.".into(),
+            };
+        };
+        if !self
+            .directory
+            .state(host)
+            .is_ok_and(|state| state.connection() == &ConnectionState::Online)
+        {
+            return VoicePresentation {
+                state: VoiceState::Unavailable,
+                notice: "The selected host is offline. Typed chat remains available.".into(),
+            };
+        }
+        self.voice.statuses.get(host).cloned().unwrap_or_default()
+    }
+
+    pub(crate) fn voice_action(&mut self, action: VoiceAction) -> bool {
+        let Some(host) = self.directory.selected_host().cloned() else {
+            return false;
+        };
+        let method = match action {
+            VoiceAction::Start => "voice.start",
+            VoiceAction::Stop => "voice.stop",
+        };
+        self.send_voice_method(&host, method, Some(action))
+    }
+
+    fn send_voice_method(
+        &mut self,
+        host: &HostId,
+        method: &'static str,
+        action: Option<VoiceAction>,
+    ) -> bool {
+        let request_id = RequestId::new(format!("voice-{}", unique_id())).expect("generated ID");
+        self.voice.requests.insert(request_id.clone(), host.clone());
+        if let Some(action) = action {
+            let presentation = self.voice.statuses.entry(host.clone()).or_default();
+            match action {
+                VoiceAction::Start => {
+                    presentation.state = VoiceState::Starting;
+                    presentation.notice = "Starting voice on the selected host.".into();
+                }
+                VoiceAction::Stop => {
+                    presentation.notice = "Stopping voice on the selected host.".into();
+                }
+            }
+        }
+        let sent = self.send(
+            host,
+            ClientFrame::Call {
+                request_id: request_id.clone(),
+                method: method.into(),
+                params: serde_json::json!({}),
+            },
+        );
+        if !sent {
+            self.voice.requests.remove(&request_id);
+            self.voice.statuses.insert(
+                host.clone(),
+                VoicePresentation {
+                    state: VoiceState::Unavailable,
+                    notice: "The selected host is unavailable. Typed chat remains available."
+                        .into(),
+                },
+            );
+        }
+        sent
+    }
+
+    fn observe_voice_update(&mut self, host: &HostId, update: &HostUpdate) {
+        match update {
+            HostUpdate::Frame {
+                host_id,
+                frame: HostFrame::Event { host_id: source, event },
+            } if host_id == host && source == host && event.kind == "voice.state" => {
+                self.install_voice_status(host, event.payload.clone());
+            }
+            HostUpdate::Frame {
+                host_id,
+                frame: HostFrame::Result { request_id, result },
+            } if host_id == host && self.voice.requests.get(request_id) == Some(host) => {
+                self.voice.requests.remove(request_id);
+                self.install_voice_status(host, result.clone());
+            }
+            HostUpdate::Frame {
+                host_id,
+                frame:
+                    HostFrame::Error {
+                        request_id: Some(request_id),
+                        ..
+                    },
+            } if host_id == host && self.voice.requests.get(request_id) == Some(host) => {
+                self.voice.requests.remove(request_id);
+                self.voice.statuses.insert(
+                    host.clone(),
+                    VoicePresentation {
+                        state: VoiceState::Error,
+                        notice: "The host refused the voice request. Typed chat remains available."
+                            .into(),
+                    },
+                );
+            }
+            HostUpdate::Failed { host_id, .. } if host_id == host => {
+                self.voice.requests.retain(|_, pending| pending != host);
+                self.voice.statuses.insert(
+                    host.clone(),
+                    VoicePresentation {
+                        state: VoiceState::Unavailable,
+                        notice: "The selected host connection failed. Typed chat remains available."
+                            .into(),
+                    },
+                );
+            }
+            _ => {}
+        }
+    }
+
+    fn install_voice_status(&mut self, host: &HostId, value: serde_json::Value) {
+        let status = serde_json::from_value::<WireVoiceStatus>(value)
+            .map(VoicePresentation::from)
+            .unwrap_or_else(|_| VoicePresentation {
+                state: VoiceState::Error,
+                notice: "The host sent an invalid voice state. Typed chat remains available."
+                    .into(),
+            });
+        self.voice.statuses.insert(host.clone(), status);
     }
 
     fn send(&mut self, host: &HostId, frame: ClientFrame) -> bool {
@@ -1335,6 +1533,176 @@ mod recovery_tests {
             self.0.remove(id);
             Ok(())
         }
+    }
+
+    fn voice_runtime(
+        hosts: &[(u8, &str)],
+    ) -> (
+        LiveRuntime,
+        Sender<HostUpdate>,
+        BTreeMap<HostId, Receiver<HostCommand>>,
+    ) {
+        let mut directory = HostDirectory::default();
+        let mut commands = BTreeMap::new();
+        let mut outgoing = BTreeMap::new();
+        for (index, name) in hosts {
+            let host = mote_host_client::PairedHost::new(
+                [*index; 32],
+                *name,
+                None,
+                mote_protocol::VersionRange::current(),
+            )
+            .unwrap();
+            let id = host.host_id().clone();
+            directory.register(host).unwrap();
+            directory
+                .set_connection(&id, ConnectionState::Online)
+                .unwrap();
+            let (send, receive) = mpsc::channel();
+            commands.insert(id.clone(), send);
+            outgoing.insert(id, receive);
+        }
+        let selected = HostId::from_public_key(&[hosts[0].0; 32]);
+        directory.select_host(&selected).unwrap();
+        let (updates, rx) = mpsc::channel();
+        (
+            LiveRuntime {
+                directory,
+                rx,
+                persist: updates.clone(),
+                commands,
+                status: Default::default(),
+                approval_requests: Default::default(),
+                voice: Default::default(),
+                authenticated: true,
+            },
+            updates,
+            outgoing,
+        )
+    }
+
+    fn voice_event(host: &HostId, seq: i64, state: &str) -> HostUpdate {
+        HostUpdate::Frame {
+            host_id: host.clone(),
+            frame: HostFrame::Event {
+                host_id: host.clone(),
+                event: mote_protocol::Event {
+                    seq,
+                    ts: 0,
+                    scope_id: "voice".into(),
+                    kind: "voice.state".into(),
+                    payload: serde_json::json!({"state":state}),
+                },
+            },
+        }
+    }
+
+    #[test]
+    fn durable_voice_events_and_reconnect_state_results_refresh_one_host() {
+        let (mut runtime, updates, outgoing) = voice_runtime(&[(41, "Home")]);
+        let host = HostId::from_public_key(&[41; 32]);
+        updates.send(voice_event(&host, 1, "listening")).unwrap();
+        runtime.drain();
+        assert_eq!(runtime.selected_voice().state, VoiceState::Listening);
+
+        updates
+            .send(HostUpdate::Connection {
+                host_id: host.clone(),
+                state: ConnectionState::Offline,
+            })
+            .unwrap();
+        runtime.drain();
+        assert_eq!(runtime.selected_voice().state, VoiceState::Unavailable);
+        updates
+            .send(HostUpdate::Connection {
+                host_id: host.clone(),
+                state: ConnectionState::Online,
+            })
+            .unwrap();
+        runtime.drain();
+        let query = outgoing[&host].recv().unwrap();
+        let ClientFrame::Call {
+            request_id, method, ..
+        } = query.frame
+        else {
+            panic!("voice state call");
+        };
+        assert_eq!(method, "voice.state");
+        updates
+            .send(HostUpdate::Frame {
+                host_id: host.clone(),
+                frame: HostFrame::Result {
+                    request_id,
+                    result: serde_json::json!({"state":"paused"}),
+                },
+            })
+            .unwrap();
+        runtime.drain();
+        assert_eq!(runtime.selected_voice().state, VoiceState::Paused);
+    }
+
+    #[test]
+    fn voice_status_isolated_by_selected_host() {
+        let (mut runtime, updates, outgoing) = voice_runtime(&[(51, "Home"), (52, "Office")]);
+        let home = HostId::from_public_key(&[51; 32]);
+        let office = HostId::from_public_key(&[52; 32]);
+        updates.send(voice_event(&home, 1, "hearing")).unwrap();
+        updates.send(voice_event(&office, 2, "paused")).unwrap();
+        runtime.drain();
+        assert_eq!(runtime.selected_voice().state, VoiceState::Hearing);
+        runtime.directory.select_host(&office).unwrap();
+        assert_eq!(runtime.selected_voice().state, VoiceState::Paused);
+        runtime.directory.select_host(&home).unwrap();
+        assert_eq!(runtime.selected_voice().state, VoiceState::Hearing);
+
+        assert!(runtime.voice_action(VoiceAction::Start));
+        let request = outgoing[&home].recv().unwrap();
+        let ClientFrame::Call { request_id, .. } = request.frame else {
+            panic!("voice start call");
+        };
+        updates
+            .send(HostUpdate::Frame {
+                host_id: office.clone(),
+                frame: HostFrame::Result {
+                    request_id: request_id.clone(),
+                    result: serde_json::json!({"state":"paused"}),
+                },
+            })
+            .unwrap();
+        runtime.drain();
+        assert_eq!(runtime.selected_voice().state, VoiceState::Starting);
+        assert_eq!(runtime.voice.requests.get(&request_id), Some(&home));
+        updates
+            .send(HostUpdate::Frame {
+                host_id: home.clone(),
+                frame: HostFrame::Result {
+                    request_id,
+                    result: serde_json::json!({"state":"listening"}),
+                },
+            })
+            .unwrap();
+        runtime.drain();
+        assert_eq!(runtime.selected_voice().state, VoiceState::Listening);
+    }
+
+    #[test]
+    fn voice_transport_failure_clears_optimistic_and_pending_state() {
+        let (mut runtime, updates, outgoing) = voice_runtime(&[(61, "Home")]);
+        let host = HostId::from_public_key(&[61; 32]);
+        assert!(runtime.voice_action(VoiceAction::Start));
+        let request = outgoing[&host].recv().unwrap();
+        let ClientFrame::Call { request_id, .. } = request.frame else {
+            panic!("voice start call");
+        };
+        updates
+            .send(HostUpdate::Failed {
+                host_id: host.clone(),
+                error: HostError::new(HostErrorCode::Internal, "transport failed"),
+            })
+            .unwrap();
+        runtime.drain();
+        assert_eq!(runtime.selected_voice().state, VoiceState::Unavailable);
+        assert!(!runtime.voice.requests.contains_key(&request_id));
     }
 
     #[test]

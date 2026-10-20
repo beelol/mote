@@ -99,7 +99,9 @@ pub fn dispatch(
         return Err(RpcError::new("unauthorized", "wrong host"));
     }
     match method {
-        "hello" | "ping" => daemon.call(method, params),
+        "hello" | "ping" | "voice.start" | "voice.stop" | "voice.state" => {
+            daemon.call(method, params)
+        }
         "turn" => {
             let params = serde_json::from_str(&mote_redact::redact(&params.to_string()))
                 .map_err(|e| RpcError::internal(e.to_string()))?;
