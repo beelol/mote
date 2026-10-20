@@ -1,11 +1,11 @@
 //! Platform-neutral Matrix rendering and chat state shared by native host adapters.
 
 pub mod accessibility;
-pub mod native_accessibility;
-pub mod native_text;
 pub mod approval;
 pub mod contract;
 pub mod gallery;
+pub mod native_accessibility;
+pub mod native_text;
 #[cfg(any(test, feature = "test-observation"))]
 pub mod observation;
 pub mod state;
@@ -13,6 +13,7 @@ pub mod surface;
 pub mod surface_v1;
 pub mod theme;
 pub mod transition;
+pub mod voice_avatar;
 
 pub use contract::Surface;
 pub use state::ChatState;

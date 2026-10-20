@@ -10,11 +10,12 @@ pub enum GalleryPage {
     List,
     Form,
     Dashboard,
+    Voice,
     Fixture,
 }
 
 impl GalleryPage {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Layout,
         Self::Toggle,
         Self::Slider,
@@ -22,6 +23,7 @@ impl GalleryPage {
         Self::List,
         Self::Form,
         Self::Dashboard,
+        Self::Voice,
         Self::Fixture,
     ];
 
@@ -34,6 +36,7 @@ impl GalleryPage {
             Self::List => "List",
             Self::Form => "Form",
             Self::Dashboard => "Dashboard",
+            Self::Voice => "Voice",
             Self::Fixture => "Fixture",
         }
     }
@@ -46,6 +49,9 @@ impl GalleryPage {
             Self::Fixture => mote_ui::v1::validate(include_bytes!(
                 "../../mote-ui/fixtures-v1/01_slider_layout.json"
             )),
+            Self::Voice => mote_ui::v1::validate(
+                br#"{"version":1,"root":{"type":"screen","title":"Voice","children":[{"type":"text","value":"Interactive voice preview"}]}}"#,
+            ),
             _ => {
                 let children = match self {
                     Self::Layout => json!([
@@ -90,7 +96,7 @@ impl GalleryPage {
                             {"type":"row", "children":[{"type":"button", "label":"Submit preview", "event":"gallery.submit", "intent":"primary"}]}
                         ]}
                     ]),
-                    Self::Dashboard | Self::Fixture => unreachable!(),
+                    Self::Dashboard | Self::Voice | Self::Fixture => unreachable!(),
                 };
                 let encoded = serde_json::to_vec(&json!({
                     "version":1,
@@ -308,6 +314,11 @@ mod tests {
                     json!({"type":"select", "field":"models.think", "value":"qwen3-coder:30b-64k"}),
                     json!({"type":"button", "event":"refresh"}),
                 ],
+            ),
+            (
+                GalleryPage::Voice,
+                "Voice",
+                vec![json!({"type":"text", "value":"Interactive voice preview"})],
             ),
             (
                 GalleryPage::Fixture,

@@ -1,6 +1,7 @@
 use mote_client_core::{
     gallery::{Gallery, GalleryPage},
     surface_v1,
+    voice_avatar::{VoiceAction, VoiceAvatar, VoiceState},
 };
 
 pub struct MoteApp {
@@ -8,6 +9,8 @@ pub struct MoteApp {
     composer: String,
     last_event: String,
     reduced_motion: bool,
+    voice_preview_state: VoiceState,
+    voice_session: VoiceSession,
     #[cfg(target_os = "ios")]
     appearance_bridge: Option<crate::appearance::Bridge>,
     #[cfg(target_os = "ios")]
@@ -25,6 +28,8 @@ impl Default for MoteApp {
             composer: String::new(),
             last_event: "No interaction yet".into(),
             reduced_motion: false,
+            voice_preview_state: VoiceState::Off,
+            voice_session: VoiceSession::default(),
             #[cfg(target_os = "ios")]
             appearance_bridge: None,
             #[cfg(target_os = "ios")]
@@ -33,6 +38,36 @@ impl Default for MoteApp {
             first_run: None,
             #[cfg(all(target_os = "ios", target_abi = "sim"))]
             probe: None,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct VoiceSession {
+    state: VoiceState,
+    notice: &'static str,
+}
+
+impl Default for VoiceSession {
+    fn default() -> Self {
+        Self {
+            state: VoiceState::Off,
+            notice: "Voice is off. Typed chat remains available.",
+        }
+    }
+}
+
+impl VoiceSession {
+    fn apply(&mut self, action: VoiceAction) {
+        match action {
+            VoiceAction::Start => {
+                self.state = VoiceState::Unavailable;
+                self.notice = "Voice runtime is not available. Typed chat remains available.";
+            }
+            VoiceAction::Stop => {
+                self.state = VoiceState::Off;
+                self.notice = "Voice is off. Typed chat remains available.";
+            }
         }
     }
 }
@@ -120,9 +155,14 @@ impl MoteApp {
                 return;
             }
         }
+        if self.live.is_some() {
+            self.draw_live_voice(ctx, safe_area, system_reduced);
+        }
         if let Some(live) = &mut self.live {
             live.drain();
-            if live.draw(ctx, safe_area, &mut self.composer) {
+            let mut content_safe_area = safe_area;
+            content_safe_area.top = 0;
+            if live.draw(ctx, content_safe_area, &mut self.composer) {
                 self.first_run = Some(crate::first_run::FirstRun::additional(ctx));
             }
             return;
@@ -218,6 +258,10 @@ impl MoteApp {
         body.inner_margin.left = body.inner_margin.left.saturating_add(safe_area.left);
         body.inner_margin.right = body.inner_margin.right.saturating_add(safe_area.right);
         egui::CentralPanel::default().frame(body).show(ctx, |ui| {
+            if self.gallery.selected() == GalleryPage::Voice {
+                self.draw_voice_gallery(ui, ctx, system_reduced);
+                return;
+            }
             let mut events = Vec::new();
             surface_v1::draw(
                 ui,
@@ -238,11 +282,209 @@ impl MoteApp {
             }
         });
     }
+
+    fn draw_live_voice(
+        &mut self,
+        ctx: &egui::Context,
+        safe_area: egui::Margin,
+        system_reduced: bool,
+    ) {
+        let mut frame = egui::Frame::side_top_panel(&ctx.style());
+        frame.inner_margin.top = frame.inner_margin.top.saturating_add(safe_area.top);
+        frame.inner_margin.left = frame.inner_margin.left.saturating_add(safe_area.left);
+        frame.inner_margin.right = frame.inner_margin.right.saturating_add(safe_area.right);
+        egui::TopBottomPanel::top("live-voice")
+            .frame(frame)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    let action = VoiceAvatar {
+                        state: self.voice_session.state,
+                        elapsed_seconds: ctx.input(|input| input.time),
+                        reduced_motion: self.reduced_motion || system_reduced,
+                    }
+                    .draw_compact(ui);
+                    ui.label(self.voice_session.notice);
+                    if let Some(action) = action {
+                        self.voice_session.apply(action);
+                        ctx.request_repaint();
+                    }
+                });
+            });
+        if self.voice_session.state.is_animated() && !self.reduced_motion && !system_reduced {
+            ctx.request_repaint();
+        }
+    }
+
+    fn draw_voice_gallery(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, system_reduced: bool) {
+        ui.heading("Voice");
+        ui.label("Immediate UI preview. Audio capture is not connected in the gallery.");
+        ui.add_space(12.0);
+        ui.vertical_centered(|ui| {
+            let elapsed_seconds = ctx.input(|input| input.time);
+            let action = VoiceAvatar {
+                state: self.voice_preview_state,
+                elapsed_seconds,
+                reduced_motion: self.reduced_motion || system_reduced,
+            }
+            .draw(ui);
+            if let Some(action) = action {
+                self.voice_preview_state = match action {
+                    VoiceAction::Start => VoiceState::Starting,
+                    VoiceAction::Stop => VoiceState::Off,
+                };
+                self.last_event = match action {
+                    VoiceAction::Start => "Voice preview started".into(),
+                    VoiceAction::Stop => "Voice preview stopped".into(),
+                };
+            }
+        });
+        ui.add_space(16.0);
+        ui.label("Preview state");
+        ui.horizontal_wrapped(|ui| {
+            for state in VoiceState::ALL {
+                let response = ui.add_sized(
+                    [120.0, 48.0],
+                    egui::Button::new(state.label())
+                        .selected(self.voice_preview_state == state)
+                        .fill(ui.visuals().panel_fill),
+                );
+                #[cfg(target_os = "ios")]
+                mote_client_core::native_accessibility::record(
+                    ui,
+                    response.id,
+                    mote_client_core::native_accessibility::Role::Button,
+                    state.label(),
+                    None,
+                    &response,
+                );
+                if response.clicked() {
+                    self.voice_preview_state = state;
+                    self.last_event = format!("Voice preview: {}", state.label());
+                }
+            }
+        });
+        if !self.reduced_motion && !system_reduced {
+            ctx.request_repaint();
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn live_app(name: &str) -> MoteApp {
+        use mote_host_client::{ConnectionState, HostDirectory, PairedHost};
+        use mote_protocol::VersionRange;
+
+        let host = PairedHost::new([29; 32], name, None, VersionRange::current()).unwrap();
+        let host_id = host.host_id().clone();
+        let mut directory = HostDirectory::default();
+        directory.register(host).unwrap();
+        directory.select_host(&host_id).unwrap();
+        directory
+            .set_connection(&host_id, ConnectionState::Online)
+            .unwrap();
+        let (persist, rx) = std::sync::mpsc::channel();
+        MoteApp {
+            live: Some(crate::live::LiveRuntime {
+                directory,
+                rx,
+                persist,
+                commands: Default::default(),
+                status: Default::default(),
+                approval_requests: Default::default(),
+                authenticated: true,
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn live_shell_shows_voice_by_default_without_replacing_typed_chat() {
+        for size in [
+            egui::vec2(834.0, 1210.0),
+            egui::vec2(1210.0, 834.0),
+            egui::vec2(1032.0, 1376.0),
+            egui::vec2(1376.0, 1032.0),
+        ] {
+            let ctx = egui::Context::default();
+            ctx.enable_accesskit();
+            let mut app = live_app("Voice host");
+
+            frame(&mut app, &ctx, size, vec![]);
+            let output = frame(&mut app, &ctx, size, vec![]);
+            let update = output
+                .platform_output
+                .accesskit_update
+                .expect("accessibility update");
+            let voice = update
+                .nodes
+                .iter()
+                .find(|(_, node)| node.label() == Some("Start voice"))
+                .expect("default live voice control");
+            let bounds = voice.1.bounds().expect("voice bounds");
+            assert!(bounds.width() >= 48.0 && bounds.height() >= 48.0);
+            assert!(bounds.max_x() <= f64::from(size.x) && bounds.max_y() <= f64::from(size.y));
+            assert!(output.shapes.iter().any(|shape| matches!(
+                &shape.shape,
+                egui::Shape::Text(text) if text.galley.text() == "Message your Mote host"
+            )));
+            assert_eq!(app.voice_session.state, VoiceState::Off);
+            assert_eq!(
+                app.voice_session.notice,
+                "Voice is off. Typed chat remains available."
+            );
+        }
+    }
+
+    #[test]
+    fn live_voice_start_fails_honestly_and_stop_returns_to_off() {
+        let ctx = egui::Context::default();
+        let mut app = live_app("Voice host");
+        let size = egui::vec2(834.0, 1210.0);
+        frame(&mut app, &ctx, size, vec![]);
+        let output = frame(&mut app, &ctx, size, vec![]);
+        let center = output
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == "Start voice" => {
+                    Some(text.pos + text.galley.size() / 2.0)
+                }
+                _ => None,
+            })
+            .expect("voice start is visible");
+        frame(
+            &mut app,
+            &ctx,
+            size,
+            vec![
+                egui::Event::PointerMoved(center),
+                egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                },
+                egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: Default::default(),
+                },
+            ],
+        );
+        assert_eq!(app.voice_session.state, VoiceState::Unavailable);
+        assert_eq!(
+            app.voice_session.notice,
+            "Voice runtime is not available. Typed chat remains available."
+        );
+
+        app.voice_session.state = VoiceState::Listening;
+        app.voice_session.apply(VoiceAction::Stop);
+        assert_eq!(app.voice_session, VoiceSession::default());
+    }
 
     #[test]
     fn every_draw_path_combines_and_refreshes_native_motion_with_explicit_override() {
@@ -766,7 +1008,7 @@ mod tests {
                         }
                     }
                 }
-                assert_eq!(page_targets, 8, "all page targets must be measurable");
+                assert_eq!(page_targets, 9, "all page targets must be measurable");
                 let center = output
                     .shapes
                     .iter()
@@ -805,7 +1047,9 @@ mod tests {
                 );
                 assert_eq!(app.gallery.selected(), page);
                 let controls = mote_client_core::observation::take_matrix();
-                assert!(controls.iter().any(|node| node.kind == "screen"));
+                if page != GalleryPage::Voice {
+                    assert!(controls.iter().any(|node| node.kind == "screen"));
+                }
                 for node in controls
                     .iter()
                     .filter(|node| matches!(node.kind, "toggle" | "slider" | "select" | "button"))
@@ -971,6 +1215,7 @@ mod tests {
             "List",
             "Form",
             "Dashboard",
+            "Voice",
             "Fixture",
         ] {
             assert!(

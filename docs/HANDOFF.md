@@ -20,9 +20,10 @@ opt-in or partial as recorded in P2-06, P2-11 and P2-12 evidence. Native tool ef
 before execution.
 
 P2V-01 and P2V-02 are complete. The product-neutral wire protocol and portable PCM, speech gate,
-endpoint and word decisions are strict, bounded and deterministic. The immediate-egui circling
-avatar is implemented but not yet committed in the live iPad shell and offline gallery. It reports
-capture as unavailable honestly until the macOS runtime and supervisor are connected.
+endpoint and word decisions are strict, bounded and deterministic. P2V-08 is partial: the
+immediate-egui circling avatar is present by default in the live iPad shell and offline gallery,
+with accessible state labels and reduced motion. It reports capture as unavailable honestly until
+the macOS runtime and supervisor are connected.
 
 The Tencent adapter is implemented in an uncommitted crate with loopback-only transport, scoped
 sidecar validation, corrections and forget tombstones. It still needs root workspace integration,
@@ -38,6 +39,6 @@ Preserve the owner's untracked `.DS_Store` and `.superpowers/`.
 
 ## Next action
 
-Commit and push P2V-02, then verify and commit the voice surface as a separate increment. Integrate
-the Tencent crate without changing the default backend. Continue with the macOS voice runtime,
-bounded listener and supervisor before claiming live voice capture.
+Commit and push the voice surface. Integrate the Tencent crate without changing the default
+backend. Continue with the macOS voice runtime, bounded listener and supervisor before claiming
+live voice capture or completing P2V-08.
