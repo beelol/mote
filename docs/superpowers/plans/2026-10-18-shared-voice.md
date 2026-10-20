@@ -99,12 +99,12 @@
 - Produces: `Microphone`, `CallMonitor`, `Recognizer`, `SpeechOutput` and `MacVoiceRuntime` traits or structs with explicit `start`, `stop` and callback lifetimes.
 - Consumes: portable `PcmFrame`, protocol events and a caller-supplied vocabulary hint.
 
-- [ ] **Step 1:** Add target-gated tests for scripted recognition, in-memory speech buffers and pause/resume when the fake call monitor changes state.
+- [x] **Step 1:** Add target-gated tests for scripted recognition, in-memory speech buffers and pause/resume when the fake call monitor changes state.
 - [ ] **Step 2:** Run `cargo test -p mote-voice-macos` and confirm it fails before the crate exists.
-- [ ] **Step 3:** Port the pinned capture, call, recognition and speech modules while removing Overseer process and task dependencies.
-- [ ] **Step 4:** Keep `whisper-rs = 0.16` Metal support target-specific and make non-macOS workspace checks compile a documented unavailable stub.
-- [ ] **Step 5:** Run the targeted tests and `cargo check -p mote-voice-macos --target aarch64-apple-darwin`.
-- [ ] **Step 6:** Run workspace gates, add P2V-03 evidence, commit `feat: extract macOS voice runtime` and push.
+- [x] **Step 3:** Port the pinned capture, call, recognition and speech modules while removing Overseer process and task dependencies.
+- [x] **Step 4:** Keep `whisper-rs = 0.16` Metal support target-specific and make non-macOS workspace checks compile a documented unavailable stub.
+- [x] **Step 5:** Run the targeted tests and `cargo check -p mote-voice-macos --target aarch64-apple-darwin`.
+- [x] **Step 6:** Run workspace gates, add P2V-03 evidence, commit `feat: extract macOS voice runtime` and push.
 
 ### Task 4: Bounded listener binary
 

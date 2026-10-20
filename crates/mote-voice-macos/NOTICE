@@ -1,0 +1,18 @@
+mote-voice-macos
+
+Portions of this crate are adapted from the Overseer voice crate at revision
+2b1a19a9b6e639628367a22e16155af20df4f86a. The source package declares the MIT license.
+
+Derived source files:
+  voice/src/mic.rs
+  voice/src/calls.rs
+  voice/src/recognize.rs
+  voice/src/memspeech.rs
+  voice/src/speak.rs
+  voice/src/synth.rs
+
+Adaptations make the code product-neutral, replace built-in vocabulary with caller data, expose
+explicit lifecycle traits, add deterministic fakes, keep Whisper target-specific and return an
+unavailable result on non-macOS targets. No Overseer daemon or task-runtime code is included.
+
+The resulting crate is distributed under Mote's MIT OR Apache-2.0 license.

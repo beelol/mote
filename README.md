@@ -145,8 +145,8 @@ authoritative. Physical iPad voice testing and external Apple work are deferred.
     Overseer source without carrying production PCM. [evidence](docs/verification/P2V-01.md)
   - [x] **P2V-02** PCM, gate, endpoint and word logic run deterministically without OS, model,
     daemon or network dependencies. [evidence](docs/verification/P2V-02.md)
-  - [ ] **P2V-03** The optional macOS crate provides local capture, call detection, Whisper and
-    in-memory speech.
+  - [x] **P2V-03** The optional macOS crate provides local capture, call detection, Whisper and
+    in-memory speech. [evidence](docs/verification/P2V-03.md)
   - [ ] **P2V-04** The listener enforces audio bounds and opens no outbound socket.
   - [ ] **P2V-05** `moted` includes voice in normal app builds, starts capture only after an
     explicit owner action and permission and never breaks typed interaction.
