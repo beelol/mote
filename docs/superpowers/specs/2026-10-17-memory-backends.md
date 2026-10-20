@@ -65,8 +65,10 @@ The candidate revision is
 MemoryCore service is considered.
 
 The adapter uses v3 identifiers for `team_id`, `agent_id` and `user_id`. Mote maps its account and
-realm into every request and verifies returned scope. The configured base URL must resolve to
-loopback. Redirects, proxies and non-loopback destinations are refused.
+realm into every request. The pinned L0 response schema may omit those fields, so present scope
+fields must match and each server-generated candidate ID and exact content must match Mote's
+isolated sidecar for the requested scope. Unknown IDs are refused. The configured base URL must
+resolve to loopback. Redirects, proxies and non-loopback destinations are refused.
 
 Remote embeddings are disabled. Extraction is disabled unless MemoryCore is configured to use a
 Mote-owned loopback model proxy that writes the normal ledger and enforces the v0 model allowlist.

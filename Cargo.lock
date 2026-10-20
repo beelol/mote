@@ -2940,6 +2940,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "mote-memory-tencent"
+version = "0.0.0"
+dependencies = [
+ "mote-memory",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "ureq",
+ "url",
+]
+
+[[package]]
 name = "mote-paths"
 version = "0.0.0"
 dependencies = [

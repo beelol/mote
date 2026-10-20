@@ -157,19 +157,22 @@
   timeout) -> Result<TencentConfig, MemoryError>` and `TencentMemory::new(config, client)`.
 - Uses `POST /v3/conversation/add`, `/query`, `/search`, `/delete` for model-free L0 memory and optional `/v3/atomic/query`, `/search`, `/update`, `/delete` for ledgered extraction mode.
 - Maps account to `user_id` and realm to `agent_id` under the configured namespace prefix. It
-  sends explicit `team_id`, `agent_id` and `user_id` in every request and refuses a returned item
-  with a missing or mismatched scope field.
+  sends explicit `team_id`, `agent_id` and `user_id` in every request. The pinned L0 response
+  schema makes those fields optional, so present scope fields must match and every returned
+  server-generated candidate ID and exact content must be bound to the isolated sidecar for the
+  requested scope. Unknown IDs, mismatched content and mismatched scope fields are refused.
 - Keeps only candidate record, version, source and partial-operation mappings in the adapter's
   isolated sidecar state path. It never opens Mote's production SQLite database.
 
-- [ ] **Step 1:** Build a loopback fixture server with success, nonzero envelope, malformed JSON, timeout, redirect, mismatched scope and partial delete responses.
+- [x] **Step 1:** Build a loopback fixture server with success, nonzero envelope, malformed JSON, timeout, redirect, mismatched scope and partial delete responses.
 - [ ] **Step 2:** Run adapter tests and confirm the crate is missing.
-- [ ] **Step 3:** Implement URL validation that accepts only literal loopback or names resolving exclusively to loopback, disables redirects and ignores proxy environment variables.
-- [ ] **Step 4:** Map write to one-message `conversation/add` in a record-specific session,
-  retrieve to `conversation/search`, source to scoped `conversation/query`, correction to delete
-  then add with partial state, and forget to scoped delete.
-- [ ] **Step 5:** Run the common contract and HTTP refusal tests without starting Tencent.
-- [ ] **Step 6:** Run workspace gates, commit `feat: add loopback Tencent memory adapter` and push.
+- [x] **Step 3:** Implement URL validation that accepts only literal loopback or names resolving exclusively to loopback, disables redirects and ignores proxy environment variables.
+- [x] **Step 4:** Map write to one-message `conversation/add` in a record-specific session and
+  retain the server-generated candidate ID, retrieve to `conversation/search`, source to scoped
+  `conversation/query`, correction to checkpoint and add the replacement before deleting the old
+  candidate, and forget to scoped delete. Ambiguous writes remain hidden until reconciled.
+- [x] **Step 5:** Run the common contract and HTTP refusal tests without starting Tencent.
+- [x] **Step 6:** Run workspace gates, commit `feat: add loopback Tencent memory adapter` and push.
 
 ### Task 7: Pinned MemoryCore lifecycle and ledgered extraction
 
