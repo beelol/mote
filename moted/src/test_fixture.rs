@@ -32,6 +32,7 @@ pub(super) fn build(
         gate,
     )
     .map_err(std::io::Error::other)?;
+    let voice = voice_supervisor(&config, data, log.clone());
     let daemon = Daemon {
         browser: Mutex::new(None),
         host_id: identity.host_id().clone(),
@@ -58,6 +59,7 @@ pub(super) fn build(
         matrix_candidates: Mutex::new(HashMap::new()),
         inferred_retry_budget: Mutex::new(inferred_ui::RetryBudget::default()),
         inferred_surface_turns: Mutex::new(HashMap::new()),
+        voice,
         data_dir: data.to_path_buf(),
         started: std::time::Instant::now(),
     };

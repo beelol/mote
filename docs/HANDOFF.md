@@ -1,6 +1,6 @@
 # Current development handoff
 
-Updated 2026-10-19 in America/Los_Angeles. This file is a replacement snapshot.
+Updated 2026-10-20 in America/Los_Angeles. This file is a replacement snapshot.
 
 ## Active goal
 
@@ -28,12 +28,14 @@ It reports capture as unavailable honestly until the macOS runtime and superviso
 The loopback-only Tencent adapter is pushed in `8394c17` with scoped sidecar validation,
 server-generated candidate IDs, conservative ambiguous-write recovery, corrections and durable
 forget tombstones. SQLite remains the default and the pinned MemoryCore lifecycle remains later
-work. P2V-03 is complete and pushed in `0325980`. P2V-04 is complete: the bounded listener passes
-its deterministic tests and a live process inspection found no network descriptors.
+work. P2V-03 is complete and pushed in `0325980`; P2V-04 is pushed in `d7c51e7`. P2V-05 is
+complete: voice is Off by default, starts only through an owner action, handles permission and
+child failures conservatively, and leaves typed turns healthy. This Mac has no local Whisper
+model yet, so production Start truthfully reports Unavailable.
 
 ## Verification state
 
-`cargo test --workspace` and `cargo clippy --workspace -- -D warnings` passed on 2026-10-19 with
+`cargo test --workspace` and `cargo clippy --workspace -- -D warnings` passed on 2026-10-20 with
 explicit live hardware, Simulator, Bonjour and headed-browser tests ignored. The workspace tests
 require local loopback permission.
 
@@ -41,6 +43,6 @@ Preserve the owner's untracked `.DS_Store` and `.superpowers/`.
 
 ## Next action
 
-Commit and push the bounded listener as P2V-04, then implement the owner-activated voice supervisor
-and configuration for P2V-05. Do not claim live in-app voice or complete P2V-08 until daemon state
-and final utterances are actually connected to the app journey.
+Bridge authenticated paired-device Start, Stop and state to the existing avatar. Then route final
+utterances through durable tasks and speech accounting for P2V-06 and P2V-07. Do not claim live
+in-app voice or P2V-08 until the bridge and local Whisper model are verified.

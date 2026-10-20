@@ -38,7 +38,12 @@ enum Ty {
 fn schema(key: &str) -> Option<Ty> {
     match key {
         "models.local_only" => Some(Ty::Bool),
-        "models.talk" | "models.router" | "models.think" | "agent.harness" => Some(Ty::Str),
+        "models.talk"
+        | "models.router"
+        | "models.think"
+        | "agent.harness"
+        | "voice.input"
+        | "voice.model_path" => Some(Ty::Str),
         "budgets.talk_first_token" | "budgets.router" | "budgets.think_first_token" => {
             Some(Ty::Int)
         }
@@ -174,6 +179,19 @@ impl ConfigStore {
             return Err(SetError::Rejected(
                 "agent.harness must be opencode or mote".into(),
             ));
+        }
+        if key == "voice.input" && new.as_str() != Some("mic") {
+            return Err(SetError::Rejected(
+                "voice.input must be mic; fixture input is test-only".into(),
+            ));
+        }
+        if key == "voice.model_path" {
+            let path = new.as_str().unwrap_or_default();
+            if path.is_empty() || path.contains("://") {
+                return Err(SetError::Rejected(
+                    "voice.model_path must be a local filesystem path".into(),
+                ));
+            }
         }
         let old = self.get(key);
         self.set_dotted(key, new.clone());
@@ -354,6 +372,41 @@ mod tests {
             .unwrap();
         cs.revert(changed.seq).unwrap();
         assert_eq!(cs.get_json("agent.harness"), None);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn voice_overrides_are_optional_local_only_and_leave_defaults_unchanged() {
+        let dir = std::env::temp_dir().join(format!("mote-cfg-voice-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut cs = store(&dir);
+
+        assert_eq!(cs.get_json("voice.input"), None);
+        assert_eq!(cs.get_json("voice.model_path"), None);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("config.toml")).unwrap(),
+            DEFAULT_CONFIG_TOML
+        );
+        cs.set("voice.input", toml::Value::String("mic".into()))
+            .unwrap();
+        cs.set(
+            "voice.model_path",
+            toml::Value::String("/Users/owner/.local/models/voice.bin".into()),
+        )
+        .unwrap();
+        assert!(matches!(
+            cs.set("voice.input", toml::Value::String("fixture".into())),
+            Err(SetError::Rejected(_))
+        ));
+        assert!(matches!(
+            cs.set(
+                "voice.model_path",
+                toml::Value::String("https://example.invalid/model.bin".into())
+            ),
+            Err(SetError::Rejected(_))
+        ));
 
         std::fs::remove_dir_all(&dir).ok();
     }

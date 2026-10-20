@@ -149,8 +149,9 @@ authoritative. Physical iPad voice testing and external Apple work are deferred.
     in-memory speech. [evidence](docs/verification/P2V-03.md)
   - [x] **P2V-04** The listener enforces audio bounds and opens no outbound socket.
     [evidence](docs/verification/P2V-04.md)
-  - [ ] **P2V-05** `moted` includes voice in normal app builds, starts capture only after an
+  - [x] **P2V-05** `moted` includes voice in normal app builds, starts capture only after an
     explicit owner action and permission and never breaks typed interaction.
+    [evidence](docs/verification/P2V-05.md)
   - [ ] **P2V-06** Final utterances enter `mote-hrns` once while partial events never invoke a
     harness.
   - [ ] **P2V-07** Speech interruption preserves played context and outstanding approvals.

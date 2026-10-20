@@ -398,7 +398,6 @@ fn run_microphone(config: ListenerConfig) -> Result<(), String> {
     let recognizer = LocalWhisper::load(&config.model_path).map_err(|error| error.to_string())?;
     let stdout = std::io::stdout();
     let mut listener = Listener::new(stdout.lock(), Box::new(recognizer), config.utterance_ms);
-    listener.ready("mic", &config.model_path);
     let (sender, receiver) = mpsc::channel();
     let audio_sender = sender.clone();
     let mut microphone = MacMicrophone::default();
@@ -407,6 +406,7 @@ fn run_microphone(config: ListenerConfig) -> Result<(), String> {
             let _ = audio_sender.send(MicInput::Frame(Box::new(samples)));
         }))
         .map_err(|error| error.to_string())?;
+    listener.ready("mic", &config.model_path);
     std::thread::spawn(move || {
         let stdin = std::io::stdin();
         for line in stdin.lock().lines() {

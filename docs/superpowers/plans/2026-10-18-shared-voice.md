@@ -138,12 +138,12 @@
   `voice.model_path` overrides remain local-only and leave `DEFAULT_CONFIG_TOML` unchanged.
 - Produces: `VoiceSupervisor::start`, `stop`, `send`, `state` and `VoiceState::{Off, Starting, Listening, Hearing, Thinking, Speaking, Paused, Unavailable, Error}`.
 
-- [ ] **Step 1:** Add supervisor tests for default availability with no capture, permission denial,
+- [x] **Step 1:** Add supervisor tests for default availability with no capture, permission denial,
   start, clean stop, malformed event, child crash and rapid-failure backoff.
 - [ ] **Step 2:** Run the tests and confirm missing config keys and supervisor APIs fail.
-- [ ] **Step 3:** Implement child supervision with bounded restart attempts and redacted state events.
-- [ ] **Step 4:** Prove typed turns continue when voice is unavailable or the child exits.
-- [ ] **Step 5:** Run workspace gates, add P2V-05 evidence, commit `feat: supervise optional voice mode` and push.
+- [x] **Step 3:** Implement child supervision with bounded restart attempts and redacted state events.
+- [x] **Step 4:** Prove typed turns continue when voice is unavailable or the child exits.
+- [x] **Step 5:** Run workspace gates, add P2V-05 evidence, commit `feat: supervise optional voice mode` and push.
 
 ### Task 6: Task routing, speech and barge-in
 

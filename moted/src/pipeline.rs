@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 pub const PIPELINE_EVENT_LIMIT: usize = 200;
 pub const PIPELINE_REQUEST_LIMIT: usize = RETENTION_LIMIT as usize;
-pub const CONFIG_KEYS: [&str; 10] = [
+pub const CONFIG_KEYS: [&str; 12] = [
     "models.local_only",
     "models.talk",
     "models.router",
@@ -17,6 +17,8 @@ pub const CONFIG_KEYS: [&str; 10] = [
     "packs.talk",
     "packs.think",
     "agent.harness",
+    "voice.input",
+    "voice.model_path",
 ];
 const HOUR_MS: i64 = 60 * 60 * 1000;
 
@@ -28,6 +30,7 @@ pub struct PipelineSnapshot {
     pub window_ms: i64,
     pub config: BTreeMap<String, Value>,
     pub harness: HarnessSnapshot,
+    pub voice: super::voice::VoiceStatus,
     pub events: Vec<Event>,
     pub numbers: Vec<StageNumbers>,
     pub requests: Vec<RequestRow>,
@@ -116,6 +119,7 @@ pub fn build_snapshot(
         window_ms: HOUR_MS,
         config,
         harness,
+        voice: super::voice::VoiceStatus::default(),
         events,
         numbers,
         requests,

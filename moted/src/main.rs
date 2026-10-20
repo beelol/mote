@@ -30,6 +30,7 @@ pub(crate) mod pipeline;
 mod service;
 mod shutdown;
 mod surface_activation;
+pub(crate) mod voice;
 mod watchers;
 
 #[cfg(any(test, feature = "test-fixture"))]
@@ -216,6 +217,7 @@ pub(crate) struct Daemon {
     matrix_candidates: Mutex<HashMap<(String, String), matrix_lang::CandidateStream>>,
     inferred_retry_budget: Mutex<inferred_ui::RetryBudget>,
     inferred_surface_turns: Mutex<HashMap<String, i64>>,
+    voice: voice::VoiceSupervisor,
     data_dir: PathBuf,
     started: std::time::Instant,
 }
@@ -353,8 +355,10 @@ impl Daemon {
             pending: selection.pending.map(hrns::harness_name).map(str::to_string),
         };
         let store = self.store.lock().unwrap();
-        pipeline::build_snapshot(&self.log, &store, config, harness, now_ms())
-            .map_err(|error| RpcError::internal(format!("read pipeline snapshot: {error}")))
+        let mut snapshot = pipeline::build_snapshot(&self.log, &store, config, harness, now_ms())
+            .map_err(|error| RpcError::internal(format!("read pipeline snapshot: {error}")))?;
+        snapshot.voice = self.voice.state();
+        Ok(snapshot)
     }
 
     fn compile_matrix_with_host(
@@ -1135,6 +1139,26 @@ impl Dispatch for Daemon {
                 })?;
                 let new_seq = self.revert_config(seq)?;
                 Ok(json!({ "seq": new_seq }))
+            }
+            "voice.start" => self
+                .voice
+                .start()
+                .and_then(|status| serde_json::to_value(status).map_err(|error| error.to_string()))
+                .map_err(RpcError::invalid_params),
+            "voice.stop" => self
+                .voice
+                .stop()
+                .and_then(|status| serde_json::to_value(status).map_err(|error| error.to_string()))
+                .map_err(RpcError::internal),
+            "voice.state" => serde_json::to_value(self.voice.state())
+                .map_err(|error| RpcError::internal(error.to_string())),
+            "voice.send" => {
+                let command: mote_voice_protocol::Command = serde_json::from_value(params)
+                    .map_err(|_| RpcError::invalid_params("invalid voice command"))?;
+                self.voice
+                    .send(&command)
+                    .map_err(RpcError::invalid_params)?;
+                Ok(json!({"ok":true}))
             }
             "pipeline.snapshot" => {
                 let snapshot = self.pipeline_snapshot()?;
@@ -1945,6 +1969,7 @@ mod approval_dispatch_tests {
         .unwrap();
         let configured_harness =
             hrns::configured_harness(config.get_json("agent.harness").as_ref()).unwrap();
+        let voice = voice_supervisor(&config, data_dir, log.clone());
         Daemon {
             browser: Mutex::new(None),
             host_id: mote_protocol::HostId::from_public_key(&[7;32]),
@@ -1971,9 +1996,53 @@ mod approval_dispatch_tests {
             matrix_candidates: Mutex::new(HashMap::new()),
             inferred_retry_budget: Mutex::new(inferred_ui::RetryBudget::default()),
             inferred_surface_turns: Mutex::new(HashMap::new()),
+            voice,
             data_dir: data_dir.to_path_buf(),
             started: std::time::Instant::now(),
         }
+    }
+
+    #[test]
+    fn unavailable_voice_keeps_the_typed_turn_path_healthy() {
+        let server = mote_testkit::ScriptedServer::start().unwrap();
+        server.set_chat_chunks(vec![json!({
+            "message":{"role":"assistant","content":"{\"route\":\"talk\",\"reason\":\"greeting\"}"},
+            "done":true
+        })
+        .to_string()]);
+        let (data, _) = dirs("voice-typed-fallback");
+        let mut daemon = daemon(&data);
+        daemon.client = Ollama::new(server.base_url());
+
+        assert_eq!(daemon.call("voice.state", json!({})).unwrap()["state"], "off");
+        assert_eq!(
+            daemon.call("pipeline.snapshot", json!({})).unwrap()["voice"]["state"],
+            "off"
+        );
+        assert!(daemon.call("voice.start", json!({})).is_err());
+        assert_eq!(
+            daemon.call("voice.state", json!({})).unwrap()["state"],
+            "unavailable"
+        );
+
+        let response = daemon
+            .handle_turn(&json!({
+                "thread":"main",
+                "message":"typed still works",
+                "client_message_id":"voice-fallback"
+            }))
+            .unwrap();
+        assert_eq!(response["status"], "done");
+        assert_eq!(
+            daemon
+                .log
+                .recent_kind_since("turn.user", i64::MIN, 1)
+                .unwrap()[0]
+                .payload["text"],
+            "typed still works"
+        );
+
+        std::fs::remove_dir_all(data.parent().unwrap()).ok();
     }
 
     #[test]
@@ -5082,6 +5151,7 @@ mod turn_event_tests {
             Arc::new(AllowAll),
         )
         .unwrap();
+        let voice = voice_supervisor(&config, &data_dir, log.clone());
         let daemon = Arc::new(Daemon {
             browser: Mutex::new(None),
             host_id: mote_protocol::HostId::from_public_key(&[7;32]),
@@ -5108,6 +5178,7 @@ mod turn_event_tests {
             matrix_candidates: Mutex::new(HashMap::new()),
             inferred_retry_budget: Mutex::new(inferred_ui::RetryBudget::default()),
             inferred_surface_turns: Mutex::new(HashMap::new()),
+            voice,
             data_dir: data_dir.clone(),
             started: std::time::Instant::now(),
         });
@@ -5481,6 +5552,25 @@ fn config_snapshot(config: &ConfigStore) -> (bool, String) {
     (local_only, think)
 }
 
+fn voice_supervisor(config: &ConfigStore, data_dir: &Path, log: EventLog) -> voice::VoiceSupervisor {
+    let input = config
+        .get_json("voice.input")
+        .and_then(|value| value.as_str().map(String::from))
+        .unwrap_or_else(|| "mic".into());
+    let model_path = config
+        .get_json("voice.model_path")
+        .and_then(|value| value.as_str().map(PathBuf::from))
+        .unwrap_or_else(|| voice::default_model_path(data_dir));
+    voice::VoiceSupervisor::new(
+        voice::VoiceConfig {
+            listener_path: voice::default_listener_path(),
+            input,
+            model_path,
+        },
+        log,
+    )
+}
+
 fn run() -> Result<(), i32> {
     let shutdown = shutdown::Shutdown::install().map_err(|error| {
         eprintln!("moted: cannot install shutdown handlers: {error}");
@@ -5584,6 +5674,7 @@ fn run() -> Result<(), i32> {
     })?;
 
     let socket = mote_paths::socket_path();
+    let voice = voice_supervisor(&config, &data, log.clone());
     let daemon = Arc::new(Daemon {
         browser: Mutex::new(None),
         host_id: identity.host_id().clone(),
@@ -5603,6 +5694,7 @@ fn run() -> Result<(), i32> {
         matrix_candidates: Mutex::new(HashMap::new()),
         inferred_retry_budget: Mutex::new(inferred_ui::RetryBudget::default()),
         inferred_surface_turns: Mutex::new(HashMap::new()),
+        voice,
         data_dir: data.clone(),
         started: std::time::Instant::now(),
     });

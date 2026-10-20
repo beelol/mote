@@ -116,6 +116,7 @@ fn compiler_fixture() -> Result<CompilerFixture, String> {
             active: "opencode".into(),
             pending: None,
         },
+        voice: super::voice::VoiceStatus::default(),
         events: Vec::new(),
         numbers,
         requests: Vec::new(),
@@ -716,6 +717,7 @@ fn surface_bindings() -> Result<matrix::HostBindings, String> {
             active: "opencode".into(),
             pending: None,
         },
+        voice: super::voice::VoiceStatus::default(),
         events: Vec::new(),
         numbers: Vec::new(),
         requests: Vec::new(),
@@ -1224,7 +1226,7 @@ mod tests {
     fn compiler_benchmark_fixture_is_fixed_and_exercises_v1_bindings() {
         let fixture = compiler_fixture().unwrap();
         assert_eq!(fixture.source_hash, "6b35bde2eb18417d9b147ce0dd01fa27c0da7cd8372491829c321003ddde8293");
-        assert_eq!(fixture.combined_hash, "85b49439449619c085a35fbd4bab1a13c3ce659914ee455eac6441b0989fe3c8");
+        assert_eq!(fixture.combined_hash, "9b1ea64d5263bc955e2b69b64583dafa1d7586b091874a285bd8112096263c2d");
         assert_eq!(fixture.config.len(), 9);
         assert_eq!(fixture.pipeline.numbers.len(), 5);
 
