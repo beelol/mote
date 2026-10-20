@@ -154,7 +154,8 @@ authoritative. Physical iPad voice testing and external Apple work are deferred.
     [evidence](docs/verification/P2V-05.md)
   - [x] **P2V-06** Final utterances enter `mote-hrns` once while partial events never invoke a
     harness. [evidence](docs/verification/P2V-06.md)
-  - [ ] **P2V-07** Speech interruption preserves played context and outstanding approvals.
+  - [x] **P2V-07** Speech interruption preserves played context and outstanding approvals.
+    [evidence](docs/verification/P2V-07.md)
   - [ ] **P2V-08** Matrix shows every voice state through a default circling-avatar surface on
     Mac and through the iPad host protocol.
   - [ ] **P2V-09** Derived crates record source, revision, licenses and redacted fixtures.

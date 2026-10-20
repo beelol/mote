@@ -44,6 +44,11 @@ automatic listener restarts retain them, and complete utterances cross a bounded
 scoped durable Mote HRNS driver. Partial speech never enters the worker. Session and utterance IDs
 form deterministic task identities, so duplicate finals do not produce a second model step.
 
+P2V-07 is implemented in the current batch. Completed task replies use the shared in-memory macOS
+speech engine and report phrase progress. Lower, restore, immediate stop, phrase stop and spoken
+stop words are deterministic. Only fully completed words survive interruption into the next task
+context. A pending approval keeps the new voice task queued and no voice control can decide it.
+
 ## Verification state
 
 `cargo test --workspace` and `cargo clippy --workspace -- -D warnings` passed on 2026-10-20 with
@@ -54,7 +59,6 @@ Preserve the owner's untracked `.DS_Store` and `.superpowers/`.
 
 ## Next action
 
-Connect the existing in-memory macOS speech engine to the listener, persist played-word boundaries
-and prove approval-safe barge-in for P2V-07. Then make the avatar a first-class Matrix surface,
+Add explicit STT and TTS operation accounting, then make the avatar a first-class Matrix surface,
 finish Simulator journeys and provision the local Whisper model before claiming live in-app voice
 or completing P2V-08.

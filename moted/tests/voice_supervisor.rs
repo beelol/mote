@@ -80,6 +80,39 @@ impl Write for Sink {
     }
 }
 
+struct CaptureWriter(Arc<Mutex<Vec<u8>>>);
+
+impl Write for CaptureWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+struct CapturingLauncher {
+    input: Arc<Mutex<Vec<u8>>>,
+}
+
+impl ListenerLauncher for CapturingLauncher {
+    fn spawn(&self, _config: &VoiceConfig) -> Result<RunningListener, String> {
+        let killed = Arc::new(AtomicBool::new(false));
+        Ok(RunningListener {
+            input: Box::new(CaptureWriter(self.input.clone())),
+            output: Box::new(ScriptedOutput {
+                bytes: ready(true).output,
+                offset: 0,
+                hold: true,
+                killed: killed.clone(),
+            }),
+            process: Box::new(FakeProcess { killed }),
+        })
+    }
+}
+
 struct ScriptedOutput {
     bytes: Vec<u8>,
     offset: usize,
@@ -235,6 +268,33 @@ fn explicit_start_reaches_listening_and_clean_stop_returns_off() {
     supervisor.stop().unwrap();
     assert_eq!(supervisor.state().state, VoiceState::Off);
     assert_eq!(launcher.spawns.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn completed_task_reply_queues_a_numbered_listener_speech_command() {
+    let input = Arc::new(Mutex::new(Vec::new()));
+    let supervisor = VoiceSupervisor::with_components(
+        config(),
+        EventLog::open_in_memory().unwrap(),
+        Arc::new(CapturingLauncher {
+            input: input.clone(),
+        }),
+        Arc::new(Permission(Ok(()))),
+    );
+    supervisor.start().unwrap();
+    wait_for(&supervisor, VoiceState::Listening);
+    let spoken = supervisor
+        .speak(
+            mote_hrns::TaskId::new("voice-task").unwrap(),
+            "Speak this locally.".into(),
+        )
+        .unwrap();
+    assert_eq!(spoken.line_id, 1);
+    let commands = String::from_utf8(input.lock().unwrap().clone()).unwrap();
+    assert!(commands.contains(
+        r#"{"cmd":"speak","line":1,"text":"Speak this locally."}"#
+    ));
+    supervisor.stop().unwrap();
 }
 
 #[test]

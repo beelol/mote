@@ -1,4 +1,5 @@
 use mote_eventlog::EventLog;
+use mote_hrns::{SpokenLine, TaskId};
 use mote_voice_protocol::{decode_line, encode_line, Command, Event, Frame};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -21,6 +22,7 @@ pub struct VoiceOwnerTurn {
     pub text: String,
     pub start_ms: u64,
     pub end_ms: u64,
+    pub played_context: Option<SpokenLine>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
@@ -148,6 +150,14 @@ struct Inner {
     session_id: Option<i64>,
     accepted_utterances: HashSet<u64>,
     active_utterance: Option<u64>,
+    next_line_id: u64,
+    spoken: Option<SpokenTracker>,
+    last_spoken: Option<SpokenLine>,
+}
+
+struct SpokenTracker {
+    line: SpokenLine,
+    phrase_word_ends: Vec<usize>,
 }
 
 struct Shared {
@@ -198,6 +208,9 @@ impl VoiceSupervisor {
                     session_id: None,
                     accepted_utterances: HashSet::new(),
                     active_utterance: None,
+                    next_line_id: 1,
+                    spoken: None,
+                    last_spoken: None,
                 }),
             }),
             owner_turns: Mutex::new(Some(owner_turn_receiver)),
@@ -297,6 +310,7 @@ impl VoiceSupervisor {
             inner.generation = inner.generation.wrapping_add(1);
             inner.session_id = None;
             inner.active_utterance = None;
+            inner.spoken = None;
             (inner.input.take(), inner.process.take())
         };
         if let Some(writer) = input.as_mut() {
@@ -342,6 +356,49 @@ impl VoiceSupervisor {
 
     pub fn state(&self) -> VoiceStatus {
         self.shared.inner.lock().unwrap().status.clone()
+    }
+
+    pub fn speak(&self, task_id: TaskId, text: String) -> Result<SpokenLine, String> {
+        let phrase_word_ends = mote_voice_macos::speak::phrases(&text)
+            .into_iter()
+            .scan(0_usize, |total, phrase| {
+                *total += mote_voice_core::normalize(&phrase).len();
+                Some(*total)
+            })
+            .collect::<Vec<_>>();
+        if phrase_word_ends.is_empty() {
+            return Err("speech line has no playable words".into());
+        }
+        let (line_id, line) = {
+            let mut inner = self.shared.inner.lock().unwrap();
+            if !inner.desired || inner.input.is_none() {
+                return Err("voice listener is not running".into());
+            }
+            let line_id = inner.next_line_id;
+            inner.next_line_id = inner.next_line_id.saturating_add(1);
+            let line = SpokenLine::new(line_id, task_id, text.clone());
+            inner.spoken = Some(SpokenTracker {
+                line: line.clone(),
+                phrase_word_ends,
+            });
+            (line_id, line)
+        };
+        if let Err(error) = self.send(&Command::Speak {
+            line: line_id,
+            text,
+        }) {
+            let mut inner = self.shared.inner.lock().unwrap();
+            if inner
+                .spoken
+                .as_ref()
+                .is_some_and(|spoken| spoken.line.line_id == line_id)
+            {
+                inner.spoken = None;
+            }
+            return Err(error);
+        }
+        record_spoken_line(&self.shared, &line, "queued");
+        Ok(line)
     }
 
     pub fn owner_turn_finished(
@@ -481,6 +538,7 @@ fn apply_event(shared: &Arc<Shared>, generation: u64, event: Event) {
                     text,
                     start_ms,
                     end_ms,
+                    played_context: inner.last_spoken.clone(),
                 }
             };
             if shared.owner_turns.try_send(turn).is_err() {
@@ -504,9 +562,12 @@ fn apply_event(shared: &Arc<Shared>, generation: u64, event: Event) {
         Event::Barge { .. } => {
             transition_generation(shared, generation, VoiceState::Hearing, None)
         }
-        Event::Spoke { .. } => {
-            transition_generation(shared, generation, VoiceState::Speaking, None)
-        }
+        Event::Spoke {
+            line,
+            event,
+            phrase,
+            ..
+        } => apply_spoke(shared, generation, line, &event, phrase),
         Event::Paused { .. } => {
             transition_generation(shared, generation, VoiceState::Paused, None)
         }
@@ -515,6 +576,69 @@ fn apply_event(shared: &Arc<Shared>, generation: u64, event: Event) {
         }
         Event::End { .. } | Event::Level { .. } => {}
     }
+}
+
+fn apply_spoke(shared: &Arc<Shared>, generation: u64, line_id: u64, event: &str, phrase: usize) {
+    let (line, terminal) = {
+        let mut inner = shared.inner.lock().unwrap();
+        if inner.generation != generation || !inner.desired {
+            return;
+        }
+        let Some(spoken) = inner
+            .spoken
+            .as_mut()
+            .filter(|spoken| spoken.line.line_id == line_id)
+        else {
+            return;
+        };
+        let Some(terminal) = update_spoken(spoken, event, phrase) else {
+            return;
+        };
+        let line = spoken.line.clone();
+        if terminal {
+            inner.last_spoken = Some(line.clone());
+            inner.spoken = None;
+        }
+        (line, terminal)
+    };
+    record_spoken_line(shared, &line, event);
+    let state = match event {
+        "stopped" => VoiceState::Hearing,
+        "finished" => VoiceState::Listening,
+        "lowered" => VoiceState::Hearing,
+        "started" | "restored" | "phrase_finished" => VoiceState::Speaking,
+        _ => return,
+    };
+    transition_generation(shared, generation, state, None);
+    if terminal {
+        let mut inner = shared.inner.lock().unwrap();
+        inner.active_utterance = None;
+    }
+}
+
+fn update_spoken(spoken: &mut SpokenTracker, event: &str, phrase: usize) -> Option<bool> {
+    match event {
+        "phrase_finished" => {
+            if let Some(words) = spoken.phrase_word_ends.get(phrase).copied() {
+                spoken.line.mark_played_through(words);
+            }
+        }
+        "finished" => {
+            let words = spoken.line.word_count();
+            spoken.line.mark_played_through(words);
+        }
+        "started" | "lowered" | "restored" | "stopped" => {}
+        _ => return None,
+    }
+    Some(matches!(event, "finished" | "stopped"))
+}
+
+fn record_spoken_line(shared: &Shared, line: &SpokenLine, event: &str) {
+    let _ = shared.log.append(
+        "voice",
+        "voice.spoken_line",
+        &json!({"event":event,"line":line}),
+    );
 }
 
 fn fail(shared: &Arc<Shared>, generation: u64, reason: &str) {
@@ -618,4 +742,37 @@ pub fn default_listener_path() -> PathBuf {
 
 pub fn default_model_path(data_dir: &std::path::Path) -> PathBuf {
     data_dir.join("models").join("ggml-base.en.bin")
+}
+
+#[cfg(test)]
+mod spoken_line_tests {
+    use super::*;
+
+    fn tracker() -> SpokenTracker {
+        SpokenTracker {
+            line: SpokenLine::new(
+                8,
+                TaskId::new("voice-1-1").unwrap(),
+                "First phrase, second phrase here.".into(),
+            ),
+            phrase_word_ends: vec![2, 5],
+        }
+    }
+
+    #[test]
+    fn interruption_keeps_only_completed_phrases() {
+        let mut spoken = tracker();
+        assert_eq!(update_spoken(&mut spoken, "started", 0), Some(false));
+        assert_eq!(update_spoken(&mut spoken, "phrase_finished", 0), Some(false));
+        assert_eq!(update_spoken(&mut spoken, "stopped", 1), Some(true));
+        assert_eq!(spoken.line.played_through_word, 2);
+        assert_eq!(spoken.line.played_text(), "First phrase,");
+    }
+
+    #[test]
+    fn finished_line_marks_every_word_played() {
+        let mut spoken = tracker();
+        assert_eq!(update_spoken(&mut spoken, "finished", 1), Some(true));
+        assert_eq!(spoken.line.played_through_word, 5);
+    }
 }

@@ -1,14 +1,15 @@
 use base64::Engine as _;
 use mote_voice_core::{
-    pcm, Endpoint, EndpointConfig, EndpointDecision, GateConfig, GateEvent, PcmFrame, SpeechGate,
-    FRAME_SAMPLES, SAMPLE_RATE,
+    classify_barge, pcm, Endpoint, EndpointConfig, EndpointDecision, GateConfig, GateEvent,
+    PcmFrame, SpeechGate, Vocabulary, WordDecision, FRAME_SAMPLES, SAMPLE_RATE,
 };
 use mote_voice_macos::{
-    CallMonitor, LocalWhisper, MacCallMonitor, MacMicrophone, Microphone, Recognizer, ScriptLine,
-    ScriptedRecognizer,
+    BufferedSpeechOutput, CallMonitor, LocalWhisper, MacCallMonitor, MacMicrophone, MacSynthesizer,
+    Microphone, Recognizer, ScriptLine, ScriptedRecognizer, SpeakEvent, SpeechOutput,
+    SpeechRequest, Synthesizer,
 };
 use mote_voice_protocol::{decode_command, encode_line, Command, Event, InputMode, Source};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -97,6 +98,171 @@ struct Listener<W: Write> {
     held_max_samples: usize,
     starts: HashMap<u64, u64>,
     segments: HashMap<u64, String>,
+    observed_words: VecDeque<(u64, String)>,
+    suppressed_utterances: HashSet<u64>,
+    gate_opened: bool,
+}
+
+struct SpeechDriver<S> {
+    output: BufferedSpeechOutput,
+    synthesizer: S,
+    phrase_counts: HashMap<u64, usize>,
+}
+
+impl<S: Synthesizer> SpeechDriver<S> {
+    fn new(output: mote_voice_macos::SharedOutput, synthesizer: S) -> Self {
+        Self {
+            output: BufferedSpeechOutput::new(Some(output)),
+            synthesizer,
+            phrase_counts: HashMap::new(),
+        }
+    }
+
+    fn command<W: Write>(&mut self, listener: &mut Listener<W>, command: Command) {
+        let result = match command {
+            Command::Speak { line, text } => self.speak(line, &text),
+            Command::Restore => {
+                if let Some(event) = self.output.restore() {
+                    self.emit(listener, event);
+                }
+                Ok(())
+            }
+            Command::Stop { line, at } => {
+                if at.as_deref() == Some("phrase") {
+                    if line.is_none_or(|expected| {
+                        self.output.current().is_some_and(|(actual, _)| actual == expected)
+                    }) {
+                        self.output.stop_at_phrase();
+                    }
+                    Ok(())
+                } else if at.is_none() {
+                    let events = self.output.stop_now(line);
+                    for event in events {
+                        self.emit(listener, event);
+                    }
+                    Ok(())
+                } else {
+                    Err("stop boundary must be phrase or omitted".to_string())
+                }
+            }
+            _ => Err("command is not a speech command".to_string()),
+        };
+        if let Err(error) = result {
+            listener.error(error);
+        }
+    }
+
+    fn speak(&mut self, line: u64, text: &str) -> Result<(), String> {
+        if text.trim().is_empty() {
+            return Err("speech line must not be empty".into());
+        }
+        let jobs = self.output.queue(line, text);
+        if jobs.is_empty() {
+            return Err("speech line has no playable phrases".into());
+        }
+        self.phrase_counts.insert(line, jobs.len());
+        for (line, phrase, text) in jobs {
+            let audio = self
+                .synthesizer
+                .synthesize(SpeechRequest {
+                    text: &text,
+                    voice: None,
+                    words_per_minute: None,
+                })
+                .map_err(|error| format!("local speech synthesis failed: {error}"))?;
+            self.output.synthesized(line, phrase, audio);
+        }
+        Ok(())
+    }
+
+    fn tick<W: Write>(&mut self, listener: &mut Listener<W>) {
+        let (_, events, level) = self.output.next(FRAME_SAMPLES);
+        if let Some(value) = level {
+            listener.output.send(&Event::Level {
+                source: Source::Agent,
+                value,
+                t_ms: listener.now_ms(),
+            });
+        }
+        for event in events {
+            self.emit(listener, event);
+        }
+    }
+
+    fn lower<W: Write>(&mut self, listener: &mut Listener<W>) {
+        if let Some(event) = self.output.lower() {
+            self.emit(listener, event);
+        }
+    }
+
+    fn classify_words<W: Write>(
+        &mut self,
+        listener: &mut Listener<W>,
+        utterance_id: u64,
+        words: &str,
+    ) {
+        if self.output.current().is_none() {
+            return;
+        }
+        let vocabulary = Vocabulary::new(
+            ["mm", "mhm", "yeah", "okay", "got it"],
+            ["stop", "wait", "hold on"],
+            self.output.recent_words(),
+        );
+        let decision = classify_barge(words, &vocabulary);
+        match decision {
+            WordDecision::Backchannel | WordDecision::Echo => {
+                if let Some(event) = self.output.restore() {
+                    self.emit(listener, event);
+                }
+                listener.suppress_utterance(utterance_id);
+            }
+            WordDecision::Stop | WordDecision::Barge => {
+                let stop_word = matches!(decision, WordDecision::Stop);
+                let events = self.output.stop_now(None);
+                for event in events {
+                    self.emit(listener, event);
+                }
+                listener.output.send(&Event::Barge {
+                    id: utterance_id,
+                    text: words.to_string(),
+                    stop_word,
+                    t_ms: listener.now_ms(),
+                });
+                if stop_word {
+                    listener.suppress_utterance(utterance_id);
+                }
+            }
+            WordDecision::Ignore => {}
+        }
+    }
+
+    fn emit<W: Write>(&mut self, listener: &mut Listener<W>, event: SpeakEvent) {
+        let (line, event, phrase, terminal) = match event {
+            SpeakEvent::Started { line } => (line, "started", 0, false),
+            SpeakEvent::Lowered { line, phrase } => (line, "lowered", phrase, false),
+            SpeakEvent::Restored { line, phrase } => (line, "restored", phrase, false),
+            SpeakEvent::Stopped { line, phrase } => (line, "stopped", phrase, true),
+            SpeakEvent::PhraseFinished { line, phrase } => {
+                (line, "phrase_finished", phrase, false)
+            }
+            SpeakEvent::Finished { line } => (
+                line,
+                "finished",
+                self.phrase_counts.get(&line).copied().unwrap_or(1) - 1,
+                true,
+            ),
+        };
+        listener.output.send(&Event::Spoke {
+            line,
+            event: event.into(),
+            phrase,
+            t_ms: listener.now_ms(),
+        });
+        if terminal {
+            self.phrase_counts.remove(&line);
+        }
+    }
 }
 
 impl<W: Write> Listener<W> {
@@ -117,6 +283,9 @@ impl<W: Write> Listener<W> {
             held_max_samples: 0,
             starts: HashMap::new(),
             segments: HashMap::new(),
+            observed_words: VecDeque::new(),
+            suppressed_utterances: HashSet::new(),
+            gate_opened: false,
         }
     }
 
@@ -162,6 +331,7 @@ impl<W: Write> Listener<W> {
         };
         let open = !suppressed && self.gate.is_open();
         if let Some(event) = gate_event {
+            self.gate_opened = matches!(event, GateEvent::Open { .. });
             self.output.send(&Event::Gate {
                 open: matches!(event, GateEvent::Open { .. }),
                 t_ms: self.now_ms(),
@@ -203,6 +373,7 @@ impl<W: Write> Listener<W> {
                 if let Some(text) = self.recognize(&audio, start_ms) {
                     self.endpoint.set_words(id, &text);
                     if !text.is_empty() {
+                        self.observed_words.push_back((id, text.clone()));
                         self.output.send(&Event::Words {
                             id,
                             text,
@@ -224,7 +395,14 @@ impl<W: Write> Listener<W> {
                     append_words(&mut text, &final_text);
                 }
                 self.starts.remove(&id);
-                if text.is_empty() {
+                if self.suppressed_utterances.remove(&id) {
+                    self.output.send(&Event::Dropped {
+                        id,
+                        text: String::new(),
+                        reason: "voice_control".to_string(),
+                        t_ms: self.now_ms(),
+                    });
+                } else if text.is_empty() {
                     self.output.send(&Event::Dropped {
                         id,
                         text,
@@ -261,6 +439,18 @@ impl<W: Write> Listener<W> {
             t_ms: self.now_ms(),
             held_max_ms: self.held_max_samples as u64 * 1_000 / SAMPLE_RATE as u64,
         });
+    }
+
+    fn take_gate_opened(&mut self) -> bool {
+        std::mem::take(&mut self.gate_opened)
+    }
+
+    fn take_words(&mut self) -> Option<(u64, String)> {
+        self.observed_words.pop_front()
+    }
+
+    fn suppress_utterance(&mut self, id: u64) {
+        self.suppressed_utterances.insert(id);
     }
 }
 
@@ -401,6 +591,7 @@ fn run_microphone(config: ListenerConfig) -> Result<(), String> {
     let (sender, receiver) = mpsc::channel();
     let audio_sender = sender.clone();
     let mut microphone = MacMicrophone::default();
+    let mut speech = SpeechDriver::new(microphone.output(), MacSynthesizer);
     microphone
         .start(Box::new(move |samples| {
             let _ = audio_sender.send(MicInput::Frame(Box::new(samples)));
@@ -444,9 +635,9 @@ fn run_microphone(config: ListenerConfig) -> Result<(), String> {
                             .max(listener.now_sample + ms * SAMPLE_RATE as u64 / 1_000);
                     }
                     Command::Quit => running = false,
-                    Command::Speak { .. } | Command::Restore | Command::Stop { .. } => {
-                        listener.error("speech output is not connected yet");
-                    }
+                    command @ (Command::Speak { .. }
+                    | Command::Restore
+                    | Command::Stop { .. }) => speech.command(&mut listener, command),
                     Command::Feed { .. }
                     | Command::FeedEnd
                     | Command::Simulate { .. }
@@ -458,23 +649,148 @@ fn run_microphone(config: ListenerConfig) -> Result<(), String> {
             Ok(MicInput::Closed) | Err(mpsc::RecvTimeoutError::Disconnected) => running = false,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
+        if listener.take_gate_opened() {
+            speech.lower(&mut listener);
+        }
+        while let Some((id, words)) = listener.take_words() {
+            speech.classify_words(&mut listener, id, &words);
+        }
+        speech.tick(&mut listener);
         let active = calls.active_calls().unwrap_or_default();
         if !active.is_empty() && !paused {
-            microphone.pause().map_err(|error| error.to_string())?;
+            speech.output.pause().map_err(|error| error.to_string())?;
+            if let Err(error) = microphone.pause() {
+                let _ = speech.output.resume();
+                return Err(error.to_string());
+            }
             paused = true;
             listener.output.send(&Event::Paused {
                 apps: active,
                 t_ms: listener.now_ms(),
             });
         } else if active.is_empty() && paused {
-            microphone.resume().map_err(|error| error.to_string())?;
+            speech.output.resume().map_err(|error| error.to_string())?;
+            if let Err(error) = microphone.resume() {
+                let _ = speech.output.pause();
+                return Err(error.to_string());
+            }
             paused = false;
             listener.output.send(&Event::Resumed {
                 t_ms: listener.now_ms(),
             });
         }
     }
+    speech.output.stop().map_err(|error| error.to_string())?;
     microphone.stop().map_err(|error| error.to_string())?;
     listener.finish_input();
     Ok(())
+}
+
+#[cfg(test)]
+mod speech_tests {
+    use super::*;
+    use mote_voice_macos::synth::FixtureSynthesizer;
+    use std::sync::{Arc, Mutex};
+
+    fn fixture() -> (
+        Listener<Vec<u8>>,
+        SpeechDriver<FixtureSynthesizer>,
+    ) {
+        let output = Arc::new(Mutex::new(VecDeque::new()));
+        (
+            Listener::new(
+                Vec::new(),
+                Box::new(ScriptedRecognizer::default()),
+                UTTERANCE_MS,
+            ),
+            SpeechDriver::new(output, FixtureSynthesizer),
+        )
+    }
+
+    fn recorded(listener: &Listener<Vec<u8>>) -> Vec<serde_json::Value> {
+        String::from_utf8(listener.output.writer.clone())
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn in_memory_speech_emits_phrase_progress_and_finishes() {
+        let (mut listener, mut speech) = fixture();
+        speech.command(
+            &mut listener,
+            Command::Speak {
+                line: 4,
+                text: "First phrase here, second phrase here.".into(),
+            },
+        );
+        for _ in 0..100 {
+            speech.tick(&mut listener);
+        }
+        let events = recorded(&listener);
+        assert!(events
+            .iter()
+            .any(|event| event["type"] == "spoke" && event["event"] == "started"));
+        assert!(events.iter().any(|event| {
+            event["type"] == "spoke" && event["event"] == "phrase_finished"
+        }));
+        assert!(events
+            .iter()
+            .any(|event| event["type"] == "spoke" && event["event"] == "finished"));
+    }
+
+    #[test]
+    fn lower_restore_stop_and_phrase_stop_report_conservative_boundaries() {
+        let (mut listener, mut speech) = fixture();
+        speech.command(
+            &mut listener,
+            Command::Speak {
+                line: 5,
+                text: "First phrase here, second phrase here.".into(),
+            },
+        );
+        speech.tick(&mut listener);
+        speech.lower(&mut listener);
+        speech.command(&mut listener, Command::Restore);
+        speech.command(
+            &mut listener,
+            Command::Stop {
+                line: Some(5),
+                at: Some("phrase".into()),
+            },
+        );
+        for _ in 0..60 {
+            speech.tick(&mut listener);
+        }
+        let events = recorded(&listener);
+        for expected in ["lowered", "restored", "stopped"] {
+            assert!(events
+                .iter()
+                .any(|event| event["type"] == "spoke" && event["event"] == expected));
+        }
+        assert!(!events
+            .iter()
+            .any(|event| event["type"] == "spoke" && event["event"] == "finished"));
+    }
+
+    #[test]
+    fn stop_word_interrupts_speech_without_becoming_an_owner_turn() {
+        let (mut listener, mut speech) = fixture();
+        speech.command(
+            &mut listener,
+            Command::Speak {
+                line: 6,
+                text: "A line that is still playing.".into(),
+            },
+        );
+        speech.tick(&mut listener);
+        speech.lower(&mut listener);
+        speech.classify_words(&mut listener, 17, "stop now");
+        assert!(listener.suppressed_utterances.contains(&17));
+        let events = recorded(&listener);
+        assert!(events.iter().any(|event| {
+            event["type"] == "barge" && event["stop_word"] == true
+        }));
+    }
 }

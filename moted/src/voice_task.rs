@@ -22,6 +22,7 @@ fn route(daemon: &Daemon, turn: VoiceOwnerTurn) {
         utterance_id: turn.utterance_id,
         start_ms: turn.start_ms,
         end_ms: turn.end_ms,
+        played_context: turn.played_context,
     };
     let recorded = daemon.log.append(
         "main",
@@ -64,16 +65,40 @@ fn route(daemon: &Daemon, turn: VoiceOwnerTurn) {
                 .voice
                 .owner_turn_finished(turn.session_id, turn.utterance_id, false);
         }
+        Ok(VoiceTurnOutcome::Queued { task_id }) => {
+            let _ = daemon.log.append(
+                "main",
+                "voice.task",
+                &json!({"task_id":task_id,"status":"queued"}),
+            );
+            daemon
+                .voice
+                .owner_turn_finished(turn.session_id, turn.utterance_id, true);
+        }
+        Ok(VoiceTurnOutcome::Enqueued(NativeTurnOutcome::Complete {
+            task_id, text, ..
+        })) => {
+            let _ = daemon.log.append(
+                "main",
+                "voice.task",
+                &json!({"task_id":task_id,"status":"complete"}),
+            );
+            if daemon.voice.speak(task_id, text).is_err() {
+                daemon
+                    .voice
+                    .owner_turn_failed(turn.session_id, turn.utterance_id);
+            }
+        }
         Ok(VoiceTurnOutcome::Enqueued(outcome)) => {
-            let (task_id, status, waiting) = match outcome {
-                NativeTurnOutcome::Complete { task_id, .. } => (task_id, "complete", false),
+            let (task_id, status) = match outcome {
                 NativeTurnOutcome::WaitingForApproval { task_id, .. } => {
-                    (task_id, "waiting_for_approval", true)
+                    (task_id, "waiting_for_approval")
                 }
                 NativeTurnOutcome::WaitingForInput { task_id, .. } => {
-                    (task_id, "waiting_for_input", true)
+                    (task_id, "waiting_for_input")
                 }
-                NativeTurnOutcome::Blocked { task_id } => (task_id, "blocked", true),
+                NativeTurnOutcome::Blocked { task_id } => (task_id, "blocked"),
+                NativeTurnOutcome::Complete { .. } => unreachable!(),
             };
             let _ = daemon.log.append(
                 "main",
@@ -82,7 +107,7 @@ fn route(daemon: &Daemon, turn: VoiceOwnerTurn) {
             );
             daemon
                 .voice
-                .owner_turn_finished(turn.session_id, turn.utterance_id, waiting);
+                .owner_turn_finished(turn.session_id, turn.utterance_id, true);
         }
         Err(_) => {
             let _ = daemon.log.append(

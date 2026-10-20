@@ -60,11 +60,13 @@ pub struct VoiceSource {
     pub utterance_id: u64,
     pub start_ms: u64,
     pub end_ms: u64,
+    pub played_context: Option<mote_hrns::SpokenLine>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VoiceTurnOutcome {
     Enqueued(NativeTurnOutcome),
+    Queued { task_id: TaskId },
     Duplicate { task_id: TaskId },
 }
 
@@ -230,10 +232,27 @@ impl NativeTaskRuntime {
         {
             return Ok(VoiceTurnOutcome::Duplicate { task_id });
         }
-        let context = format!(
+        let mut context = format!(
             "Owner voice request. Session {} utterance {} from {}ms through {}ms.\n{}",
             source.session_id, source.utterance_id, source.start_ms, source.end_ms, text
         );
+        if let Some(spoken) = source.played_context {
+            let played = spoken.played_text();
+            if !played.is_empty() {
+                context.push_str("\nAssistant speech heard by the owner before interruption:\n");
+                context.push_str(&played);
+            }
+        }
+        if self.driver.store().active_record()?.is_some() {
+            self.contexts.insert(task_id.clone(), context);
+            self.driver.enqueue(NewTask {
+                id: task_id.clone(),
+                scope,
+                outcome: text,
+                harness: HarnessKind::Mote,
+            })?;
+            return Ok(VoiceTurnOutcome::Queued { task_id });
+        }
         self.submit(task_id, scope, text, context)
             .map(VoiceTurnOutcome::Enqueued)
     }
@@ -263,6 +282,22 @@ mod tests {
             _schema: &RootSchema,
         ) -> Result<RawStep, LocalStepError> {
             self.0.pop_front().expect("scripted native response")
+        }
+    }
+
+    struct RecordingClient {
+        reply: Option<Result<RawStep, LocalStepError>>,
+        prompts: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl LocalStepClient for RecordingClient {
+        fn complete(
+            &mut self,
+            prompt: &StepPrompt,
+            _schema: &RootSchema,
+        ) -> Result<RawStep, LocalStepError> {
+            self.prompts.lock().unwrap().push(prompt.input().into());
+            self.reply.take().expect("recording native response")
         }
     }
 
@@ -300,6 +335,7 @@ mod tests {
             utterance_id: 7,
             start_ms: 100,
             end_ms: 900,
+            played_context: None,
         }
     }
 
@@ -383,6 +419,87 @@ mod tests {
                 .unwrap(),
             1
         );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn outstanding_approval_keeps_a_voice_turn_queued_without_another_model_step() {
+        let (root, mut runtime, _) = fixture([Ok(RawStep::new(
+            r#"{"type":"tool","name":"file_read","arguments":{"path":"notes.txt"}}"#,
+        ))]);
+        assert!(matches!(
+            runtime
+                .submit(
+                    task_id("approval-task"),
+                    scope(),
+                    "read notes".into(),
+                    "bounded context".into(),
+                )
+                .unwrap(),
+            NativeTurnOutcome::WaitingForApproval { .. }
+        ));
+        assert_eq!(
+            runtime
+                .enqueue_owner_turn(scope(), "do not bypass approval".into(), voice_source())
+                .unwrap(),
+            VoiceTurnOutcome::Queued {
+                task_id: task_id("voice-41-7")
+            }
+        );
+        assert_eq!(
+            runtime.driver().store().active(&scope()).unwrap().unwrap().id,
+            task_id("approval-task")
+        );
+        assert_eq!(
+            runtime
+                .driver()
+                .store()
+                .get(&scope(), &task_id("voice-41-7"))
+                .unwrap()
+                .unwrap()
+                .0
+                .state,
+            mote_hrns::TaskState::Queued
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn interrupted_voice_context_contains_only_words_confirmed_played() {
+        let root = std::env::temp_dir().join(format!(
+            "mote-native-played-context-{}-{}",
+            std::process::id(),
+            SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let database = root.join("mote.db");
+        let log = EventLog::open(&database).unwrap();
+        let prompts = Arc::new(Mutex::new(Vec::new()));
+        let mut runtime = NativeTaskRuntime::with_client(
+            &database,
+            log,
+            RecordingClient {
+                reply: Some(Ok(RawStep::new(
+                    r#"{"type":"complete","text":"continued","sources":[]}"#,
+                ))),
+                prompts: prompts.clone(),
+            },
+        )
+        .unwrap();
+        let mut spoken = mote_hrns::SpokenLine::new(
+            2,
+            task_id("prior-task"),
+            "First phrase, second phrase here.".into(),
+        );
+        spoken.mark_played_through(2);
+        let mut source = voice_source();
+        source.played_context = Some(spoken);
+        runtime
+            .enqueue_owner_turn(scope(), "continue".into(), source)
+            .unwrap();
+        let prompt = &prompts.lock().unwrap()[0];
+        assert!(prompt.contains("First phrase,"));
+        assert!(!prompt.contains("second phrase here"));
         std::fs::remove_dir_all(root).unwrap();
     }
 

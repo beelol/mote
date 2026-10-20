@@ -5,6 +5,22 @@ use mote_hrns::{
     TaskContextBuilder, TurnRole,
 };
 
+#[test]
+fn spoken_line_retains_only_fully_played_words() {
+    let mut line = mote_hrns::SpokenLine::new(
+        9,
+        mote_hrns::TaskId::new("voice-task").unwrap(),
+        "First phrase, second phrase here.".into(),
+    );
+    assert_eq!(line.played_text(), "");
+    line.mark_played_through(2);
+    assert_eq!(line.played_text(), "First phrase,");
+    line.mark_played_through(1);
+    assert_eq!(line.played_text(), "First phrase,");
+    line.mark_played_through(99);
+    assert_eq!(line.played_text(), line.text);
+}
+
 fn entry(source: &str, text: &str) -> ContextEntry {
     ContextEntry::new(source, text)
 }

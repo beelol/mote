@@ -158,10 +158,10 @@
 - Produces: `SpokenLine { line_id, task_id, text, played_through_word }` and records STT and TTS rows through existing ledger structures.
 
 - [x] **Step 1:** Write tests that duplicate final utterances, interleave partial words and reconnect the listener while asserting one task turn and no partial-triggered model call.
-- [ ] **Step 2:** Write scripted speech tests for lower, restore, stop word and phrase stop while an approval remains pending.
+- [x] **Step 2:** Write scripted speech tests for lower, restore, stop word and phrase stop while an approval remains pending.
 - [ ] **Step 3:** Run the tests and confirm the routing and played-word APIs are missing.
 - [ ] **Step 4:** Implement utterance deduplication, ledger entries, speech commands and context trimming at the played-word boundary.
-- [ ] **Step 5:** Run the targeted tests plus task action and approval tests.
+- [x] **Step 5:** Run the targeted tests plus task action and approval tests.
 - [ ] **Step 6:** Run workspace gates, add P2V-06 and P2V-07 evidence, commit `feat: route voice through durable tasks` and push.
 
 ### Task 7: Matrix voice surface and shared-consumer proof

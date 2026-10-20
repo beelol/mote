@@ -1,7 +1,43 @@
-use crate::Scope;
+use crate::{Scope, TaskId};
 use mote_context::{count_tokens, Pack, PartKind};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpokenLine {
+    pub line_id: u64,
+    pub task_id: TaskId,
+    pub text: String,
+    pub played_through_word: usize,
+}
+
+impl SpokenLine {
+    pub fn new(line_id: u64, task_id: TaskId, text: String) -> Self {
+        Self {
+            line_id,
+            task_id,
+            text,
+            played_through_word: 0,
+        }
+    }
+
+    pub fn mark_played_through(&mut self, word_count: usize) {
+        self.played_through_word = self.played_through_word.max(word_count).min(self.word_count());
+    }
+
+    pub fn played_text(&self) -> String {
+        self.text
+            .split_whitespace()
+            .take(self.played_through_word)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    pub fn word_count(&self) -> usize {
+        self.text.split_whitespace().count()
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
