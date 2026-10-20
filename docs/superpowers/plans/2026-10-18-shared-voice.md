@@ -117,11 +117,11 @@
 - Produces binary `mote-voice-listener --input <mic|fixture> --model <path>` with JSONL stdout and stdin.
 - Produces: `ListenerConfig { input, model_path, fixture_mode, held_audio_ms: 30_000, utterance_ms: 90_000 }`.
 
-- [ ] **Step 1:** Add fixture-mode tests for 30-second held-audio eviction, 90-second utterance termination, malformed commands and absence of PCM in emitted events.
+- [x] **Step 1:** Add fixture-mode tests for 30-second held-audio eviction, 90-second utterance termination, malformed commands and absence of PCM in emitted events.
 - [ ] **Step 2:** Run the listener test and confirm it fails before the binary exists.
-- [ ] **Step 3:** Implement the listener loop from shared crates with explicit fixture-mode capability.
-- [ ] **Step 4:** Run the bounded tests and inspect a live listener process for outbound sockets using the command recorded in P2V-04 evidence.
-- [ ] **Step 5:** Run workspace gates, add P2V-04 evidence, commit `feat: add bounded voice listener` and push.
+- [x] **Step 3:** Implement the listener loop from shared crates with explicit fixture-mode capability.
+- [x] **Step 4:** Run the bounded tests and inspect a live listener process for outbound sockets using the command recorded in P2V-04 evidence.
+- [x] **Step 5:** Run workspace gates, add P2V-04 evidence, commit `feat: add bounded voice listener` and push.
 
 ### Task 5: Mote supervision and configuration
 

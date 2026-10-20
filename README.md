@@ -147,7 +147,8 @@ authoritative. Physical iPad voice testing and external Apple work are deferred.
     daemon or network dependencies. [evidence](docs/verification/P2V-02.md)
   - [x] **P2V-03** The optional macOS crate provides local capture, call detection, Whisper and
     in-memory speech. [evidence](docs/verification/P2V-03.md)
-  - [ ] **P2V-04** The listener enforces audio bounds and opens no outbound socket.
+  - [x] **P2V-04** The listener enforces audio bounds and opens no outbound socket.
+    [evidence](docs/verification/P2V-04.md)
   - [ ] **P2V-05** `moted` includes voice in normal app builds, starts capture only after an
     explicit owner action and permission and never breaks typed interaction.
   - [ ] **P2V-06** Final utterances enter `mote-hrns` once while partial events never invoke a

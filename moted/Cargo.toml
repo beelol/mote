@@ -30,8 +30,12 @@ mote-redact.workspace = true
 mote-gateway.workspace = true
 mote-protocol.workspace = true
 mote-browser.workspace = true
+mote-voice-core.workspace = true
+mote-voice-macos.workspace = true
+mote-voice-protocol.workspace = true
 url.workspace = true
 sha2.workspace = true
+base64 = "0.22"
 matrix-lang = { path = "../crates/matrix-lang" }
 serde_json.workspace = true
 serde.workspace = true

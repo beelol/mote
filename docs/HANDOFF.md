@@ -25,12 +25,11 @@ immediate-egui circling avatar is present by default in the live iPad shell and 
 with accessible state labels and reduced motion. The surface commit `d1b2cbe` is on remote `main`.
 It reports capture as unavailable honestly until the macOS runtime and supervisor are connected.
 
-The Tencent adapter is ready for its integration commit with loopback-only transport, scoped
-sidecar validation, server-generated candidate IDs, conservative ambiguous-write recovery,
-corrections and durable forget tombstones. P2V-03 is complete and pushed in `0325980`: the macOS runtime passes focused
-tests, strict clippy, explicit Apple target compilation and the full workspace gates. The bounded
-listener implementation and focused tests are complete but uncommitted; its live no-outbound-
-socket observation and P2V-04 evidence remain. SQLite remains the default.
+The loopback-only Tencent adapter is pushed in `8394c17` with scoped sidecar validation,
+server-generated candidate IDs, conservative ambiguous-write recovery, corrections and durable
+forget tombstones. SQLite remains the default and the pinned MemoryCore lifecycle remains later
+work. P2V-03 is complete and pushed in `0325980`. P2V-04 is complete: the bounded listener passes
+its deterministic tests and a live process inspection found no network descriptors.
 
 ## Verification state
 
@@ -42,6 +41,6 @@ Preserve the owner's untracked `.DS_Store` and `.superpowers/`.
 
 ## Next action
 
-Commit and push the Tencent Task 6 adapter without claiming MBE-07. Integrate the bounded listener
-as P2V-04 after its live no-outbound-socket observation. Continue with the voice supervisor before
-claiming live voice capture or completing P2V-08.
+Commit and push the bounded listener as P2V-04, then implement the owner-activated voice supervisor
+and configuration for P2V-05. Do not claim live in-app voice or complete P2V-08 until daemon state
+and final utterances are actually connected to the app journey.

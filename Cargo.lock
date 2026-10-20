@@ -3026,6 +3026,7 @@ dependencies = [
 name = "moted"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "cron",
  "libc",
@@ -3046,6 +3047,9 @@ dependencies = [
  "mote-redact",
  "mote-testkit",
  "mote-ui",
+ "mote-voice-core",
+ "mote-voice-macos",
+ "mote-voice-protocol",
  "notify",
  "rusqlite",
  "schemars",
