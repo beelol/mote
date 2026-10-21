@@ -25,6 +25,12 @@ It is regenerated with `cargo run --quiet -p mote-gateway --example vectors`.
 Fixture private keys are deterministic test material.
 They are never runtime credentials.
 
+## Shared primitives
+
+Base32, local-range rules and the Noise primitives come from `agent-link-core`
+(agent-engine, pinned revision, default features off). That crate was extracted from this one and
+keeps the same byte format. The Overseer and Mote fixtures below verify it.
+
 ## Security boundary
 
 `GatewayConfig::new` selects prologue `mote-gateway-v1`, prefix `MOTE1`,

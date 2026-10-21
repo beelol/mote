@@ -152,6 +152,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-link-core"
+version = "0.1.0"
+source = "git+https://github.com/beelol/agent-engine?rev=2dde203862150ea284bb0d5382e89cf58648b059#2dde203862150ea284bb0d5382e89cf58648b059"
+dependencies = [
+ "anyhow",
+ "getrandom 0.3.4",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
+ "snow",
+ "zeroize",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2820,6 +2835,7 @@ dependencies = [
 name = "mote-gateway"
 version = "0.0.0"
 dependencies = [
+ "agent-link-core",
  "anyhow",
  "futures-util",
  "getrandom 0.3.4",

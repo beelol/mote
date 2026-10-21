@@ -1,137 +1,14 @@
-use anyhow::{anyhow, ensure, Result};
+use anyhow::{ensure, Result};
 use mote_protocol::{ClientFrame, HostFrame, HostId};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use snow::{Builder, HandshakeState, TransportState};
+use snow::{HandshakeState, TransportState};
 
-pub const PATTERN_SESSION: &str = "Noise_IK_25519_ChaChaPoly_SHA256";
-pub const PATTERN_PAIRING: &str = "Noise_IKpsk1_25519_ChaChaPoly_SHA256";
-pub const CHUNK: usize = 65_000;
-
-pub fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-pub fn unhex(text: &str) -> Result<Vec<u8>> {
-    ensure!(text.len() % 2 == 0 && text.is_ascii(), "invalid hex");
-    (0..text.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).map_err(|_| anyhow!("invalid hex")))
-        .collect()
-}
-
-pub fn psk_from_secret(secret: &[u8]) -> [u8; 32] {
-    Sha256::digest(secret).into()
-}
-
-pub(crate) fn public_of(private: &[u8; 32]) -> Result<[u8; 32]> {
-    use snow::resolvers::{CryptoResolver, DefaultResolver};
-    let mut dh = DefaultResolver
-        .resolve_dh(&snow::params::DHChoice::Curve25519)
-        .ok_or_else(|| anyhow!("missing curve"))?;
-    dh.set(private);
-    Ok(dh.pubkey().try_into()?)
-}
-
-pub(crate) fn handshake(
-    prologue: &[u8],
-    private: &[u8; 32],
-    remote: Option<&[u8; 32]>,
-    psk: Option<&[u8; 32]>,
-) -> Result<HandshakeState> {
-    let mut builder = Builder::new(
-        if psk.is_some() {
-            PATTERN_PAIRING
-        } else {
-            PATTERN_SESSION
-        }
-        .parse()?,
-    )
-    .prologue(prologue)?
-    .local_private_key(private)?;
-    if let Some(psk) = psk {
-        builder = builder.psk(1, psk)?;
-    }
-    Ok(if let Some(remote) = remote {
-        builder.remote_public_key(remote)?.build_initiator()?
-    } else {
-        builder.build_responder()?
-    })
-}
-
-pub fn seal(transport: &mut TransportState, message: &[u8]) -> Result<Vec<Vec<u8>>> {
-    let mut frames = Vec::new();
-    let mut chunks = message.chunks(CHUNK).peekable();
-    if chunks.peek().is_none() {
-        let mut out = vec![0; 17];
-        let n = transport.write_message(&[1], &mut out)?;
-        out.truncate(n);
-        return Ok(vec![out]);
-    }
-    while let Some(chunk) = chunks.next() {
-        let mut plain = Vec::with_capacity(chunk.len() + 1);
-        plain.push(if chunks.peek().is_some() { 0 } else { 1 });
-        plain.extend_from_slice(chunk);
-        let mut out = vec![0; plain.len() + 16];
-        let n = transport.write_message(&plain, &mut out)?;
-        out.truncate(n);
-        frames.push(out);
-    }
-    Ok(frames)
-}
-
-pub struct Opener {
-    pending: Vec<u8>,
-    limit: usize,
-    failed: bool,
-}
-
-impl Opener {
-    pub fn new(limit: usize) -> Self {
-        Self {
-            pending: Vec::new(),
-            limit,
-            failed: false,
-        }
-    }
-
-    pub fn open(
-        &mut self,
-        transport: &mut TransportState,
-        frame: &[u8],
-    ) -> Result<Option<Vec<u8>>> {
-        ensure!(!self.failed, "closed reader");
-        let result = self.open_inner(transport, frame);
-        if result.is_err() {
-            self.failed = true;
-            self.pending.clear();
-        }
-        result
-    }
-
-    fn open_inner(
-        &mut self,
-        transport: &mut TransportState,
-        frame: &[u8],
-    ) -> Result<Option<Vec<u8>>> {
-        ensure!((17..=65_535).contains(&frame.len()), "bad frame length");
-        let mut plain = vec![0; frame.len()];
-        let n = transport.read_message(frame, &mut plain)?;
-        plain.truncate(n);
-        let (flag, chunk) = plain.split_first().ok_or_else(|| anyhow!("empty frame"))?;
-        ensure!(*flag <= 1, "invalid chunk flag");
-        ensure!(
-            chunk.len() <= CHUNK && self.pending.len() + chunk.len() <= self.limit,
-            "message too large"
-        );
-        self.pending.extend_from_slice(chunk);
-        Ok(if *flag == 1 {
-            Some(std::mem::take(&mut self.pending))
-        } else {
-            None
-        })
-    }
-}
+// Handshake patterns, chunked framing and key helpers come from `agent-link-core`, which
+// keeps the same byte format; the Mote and Overseer vectors in `tests/vectors` prove it.
+pub(crate) use agent_link_core::noise::{handshake, public_of};
+pub use agent_link_core::noise::{
+    hex, psk_from_secret, seal, unhex, Opener, CHUNK, PATTERN_PAIRING, PATTERN_SESSION,
+};
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -2,6 +2,8 @@ Mote gateway contains algorithms and protocol fixtures derived from Overseer.
 Source revision: 1488b4be0ce0f67311f21c2e5ba7565f4268187d.
 Source files: daemon/src/gateway/{base32,noise,pairing,devices,classes,net}.rs
 and protocol/vectors/noise.json.
+Base32, network-range and Noise framing code now lives in agent-link-core
+(github.com/beelol/agent-engine), which carries the same notice.
 
 The pinned Overseer daemon package declares the MIT license.
 The owner authorized this scoped port.

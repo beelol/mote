@@ -1,46 +1,6 @@
-//! RFC 4648 base32 without padding, for the pairing code.
+//! RFC 4648 base32 without padding, for the pairing code. Shared with `agent-link-core`.
 
-const ALPHABET: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-
-pub fn encode(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 8 / 5 + 1);
-    let (mut buffer, mut bits) = (0u32, 0u32);
-    for &b in bytes {
-        buffer = (buffer << 8) | b as u32;
-        bits += 8;
-        while bits >= 5 {
-            bits -= 5;
-            out.push(ALPHABET[((buffer >> bits) & 31) as usize] as char);
-        }
-    }
-    if bits > 0 {
-        out.push(ALPHABET[((buffer << (5 - bits)) & 31) as usize] as char);
-    }
-    out
-}
-
-pub fn decode(text: &str) -> Option<Vec<u8>> {
-    let mut out = Vec::with_capacity(text.len() * 5 / 8);
-    let (mut buffer, mut bits) = (0u32, 0u32);
-    for c in text.chars() {
-        if c == '-' || c.is_whitespace() {
-            continue;
-        }
-        let v = ALPHABET
-            .iter()
-            .position(|&a| a as char == c.to_ascii_uppercase())? as u32;
-        buffer = (buffer << 5) | v;
-        bits += 5;
-        if bits >= 8 {
-            bits -= 8;
-            out.push(((buffer >> bits) & 0xff) as u8);
-        }
-    }
-    if bits >= 5 || (buffer & ((1 << bits) - 1)) != 0 {
-        return None;
-    }
-    Some(out)
-}
+pub use agent_link_core::base32::{decode, encode};
 
 #[cfg(test)]
 mod tests {

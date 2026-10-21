@@ -34,6 +34,16 @@ native Simulator voice journey passed on iOS 27 with Xcode 27.1.
 Preserve the owner's untracked `.DS_Store`, `.superpowers/` and Tencent target directory. Preserve
 all unrelated modified files.
 
+## Shared link crates (2026-10-21)
+
+`mote-gateway` now takes base32, local-range rules and the Noise primitives (patterns, chunked
+framing, PSK derivation, handshake builder, key helper) from `agent-link-core` in the
+agent-engine repository, pinned by Git revision with default features off so Mote keeps its own
+rusqlite 0.31 device store. The prologue `mote-gateway-v1`, the `MOTE1` prefix, the wire format,
+pairing, device store, session binding and server are unchanged. The Overseer and Mote vector
+fixtures are untouched and still pass. `cargo test --workspace` (961 tests) and
+`cargo clippy --workspace -- -D warnings` passed. Overseer has not been changed.
+
 ## Next action
 
 Complete P2V-09 source, licensing and redaction review for shared voice code, then finish P2V-10

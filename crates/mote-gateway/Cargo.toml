@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+agent-link-core = { git = "https://github.com/beelol/agent-engine", rev = "2dde203862150ea284bb0d5382e89cf58648b059", default-features = false }
 anyhow = "1"
 snow = "0.10"
 getrandom = "0.3"
